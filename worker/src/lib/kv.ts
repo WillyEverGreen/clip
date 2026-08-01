@@ -29,6 +29,16 @@ export function toPublic(entry: Entry): PublicEntry {
   return pub
 }
 
+// Compact metadata for KV list (must be under Cloudflare 1,024 bytes limit)
+export function toPublicMetadata(entry: Entry): PublicEntry {
+  const { editCodeHash: _h, editCodeSalt: _s, content, files, ...pub } = entry
+  return {
+    ...pub,
+    content: content ? content.slice(0, 80) : undefined,
+    files: files ? files.map(f => ({ id: f.id, fileName: f.fileName, fileMime: f.fileMime, fileSize: f.fileSize })).slice(0, 3) : undefined,
+  }
+}
+
 // ─── Write ────────────────────────────────────────────────────────────────────
 
 export async function putEntry(
@@ -36,12 +46,13 @@ export async function putEntry(
   entry: Entry,
 ): Promise<void> {
   const ttl = Math.min(315_360_000, Math.max(60, Math.floor((entry.expiresAt - Date.now()) / 1000)))
-  const metadata: PublicEntry = toPublic(entry)
+  const metadata: PublicEntry = toPublicMetadata(entry)
   await kv.put(key(entry.slug), JSON.stringify(entry), {
     expirationTtl: ttl,
     metadata,
   })
 }
+
 
 
 
