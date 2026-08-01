@@ -4,11 +4,20 @@ export interface Env {
   PASTE_KV: KVNamespace
   APP_PEPPER: string        // set via: wrangler secret put APP_PEPPER
   FRONTEND_ORIGIN: string   // set in wrangler.toml [vars]
+  ADMIN_SECRET?: string     // set via wrangler.toml [vars] or secret
 }
+
 
 // ─── Entry ───────────────────────────────────────────────────────────────────
 
 export type EntryType = 'text' | 'file'
+
+export interface FileItem {
+  id: string
+  fileName: string
+  fileMime: string
+  fileSize: number
+}
 
 export interface Entry {
   slug: string
@@ -22,6 +31,8 @@ export interface Entry {
   fileMime?: string
   fileSize?: number
   hasFile?: boolean         // true if file binary stored under file:{slug} in KV
+  files?: FileItem[]        // Array of attached files
+
 
   // Security — never returned to client
   editCodeHash: string

@@ -18,7 +18,8 @@ export function strictCors(configuredOrigin?: string) {
       return configuredOrigin || '*'
     },
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type'],
+    allowHeaders: ['Content-Type', 'Authorization'],
     maxAge: 600, // 10 min preflight cache
+
   })
 }

@@ -9,3 +9,5 @@ FRONTEND_ORIGIN = "https://clip.foo.ng"
 [[kv_namespaces]]
 binding = "PASTE_KV"
 id = "887b8699f2d842278081193bbc0a6645"
+preview_id = "887b8699f2d842278081193bbc0a6645"
+

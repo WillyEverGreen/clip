@@ -6,7 +6,8 @@ import { entryExists, putEntry, putFileKV } from '../lib/kv'
 import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { validateMime } from '../lib/mime'
 import { log } from '../lib/logger'
-import type { Entry } from '../lib/types'
+import type { Entry, FileItem } from '../lib/types'
+
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024  // 2 MB
 const MAX_FILE_BYTES = 25 * 1024 * 1024 // 25 MB (KV max limit)
@@ -73,20 +74,32 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
 
     // ── Build entry ──────────────────────────────────────────────────────────
     const now       = Date.now()
-    const expiresAt = now + (ttlSeconds * 1000)
+    const rawFiles = form.getAll('files') as unknown as File[]
+    const rawSingleFile = form.get('file') as unknown as File | null
+    const fileList: File[] = rawFiles.filter((f) => f && f.size > 0)
+    if (fileList.length === 0 && rawSingleFile && rawSingleFile.size > 0) {
+      fileList.push(rawSingleFile)
+    }
+
+    const isFile    = type === 'file' || fileList.length > 0
+    const FILE_TTL_SECONDS = 172_800 // 2 Days (48 Hours) auto-delete for file uploads
+    const PERMANENT_MS    = 3_153_600_000_000 // 100 Years (Permanent for text)
+
+    const expiresAt = isFile ? now + (FILE_TTL_SECONDS * 1000) : now + PERMANENT_MS
     const salt      = generateSalt()
     const pepper    = c.env.APP_PEPPER || 'clip_default_pepper'
     const editCodeHash = await hashCode(editCode, salt, pepper)
 
     const entry: Entry = {
       slug,
-      type: type === 'file' ? 'file' : 'text',
+      type: isFile ? 'file' : 'text',
       editCodeHash,
       editCodeSalt: salt,
       createdAt: now,
       expiresAt,
       views: 0,
     }
+
 
     // ── Handle TEXT entry ─────────────────────────────────────────────────────
     if (entry.type === 'text') {
@@ -104,27 +117,52 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     }
 
     // ── Handle FILE entry ─────────────────────────────────────────────────────
-    const file = form.get('file') as File | null
-    if (!file || file.size === 0) return c.json({ error: 'no_content' }, 400)
+    if (fileList.length === 0) return c.json({ error: 'no_content' }, 400)
 
-    // Server-side size enforcement
-    if (file.size > MAX_FILE_BYTES) return c.json({ error: 'file_too_large' }, 400)
 
-    // MIME magic byte check
-    if (!(await validateMime(file))) return c.json({ error: 'mime_mismatch' }, 400)
+    let totalSize = 0
+    for (const f of fileList) {
+      if (f.size > MAX_FILE_BYTES) return c.json({ error: 'file_too_large' }, 400)
+      if (!(await validateMime(f))) return c.json({ error: 'mime_mismatch' }, 400)
+      totalSize += f.size
+    }
 
-    const fileBuffer = await file.arrayBuffer()
-    await putFileKV(c.env.PASTE_KV, slug, fileBuffer, ttlSeconds)
+    if (totalSize > 50 * 1024 * 1024) {
+      return c.json({ error: 'file_too_large' }, 400)
+    }
 
-    entry.fileName = file.name
-    entry.fileMime = file.type || 'application/octet-stream'
-    entry.fileSize = file.size
+    const processedFiles: FileItem[] = []
+
+    for (let i = 0; i < fileList.length; i++) {
+      const f = fileList[i]
+      const fileId = `f_${i + 1}`
+      const fileBuffer = await f.arrayBuffer()
+
+      // Primary file stored at file:{slug} for backwards compatibility
+      if (i === 0) {
+        await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS)
+      }
+      await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS, fileId)
+
+      processedFiles.push({
+        id: fileId,
+        fileName: f.name,
+        fileMime: f.type || 'application/octet-stream',
+        fileSize: f.size,
+      })
+    }
+
     entry.hasFile  = true
+    entry.fileName = processedFiles[0].fileName
+    entry.fileMime = processedFiles[0].fileMime
+    entry.fileSize = totalSize
+    entry.files    = processedFiles
 
     await putEntry(c.env.PASTE_KV, entry)
 
-    await log('entry.created', { slug, type: 'file' }, c.env)
+    await log('entry.created', { slug, type: 'file', fileCount: processedFiles.length }, c.env)
     return c.json({ slug, expiresAt }, 201)
+
   } catch (err: any) {
     console.error('handleCreate error:', err)
     return c.json({ error: 'internal_error', details: String(err?.message || err) }, 500)

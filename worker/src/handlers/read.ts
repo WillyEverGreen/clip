@@ -25,23 +25,38 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
 
 export async function handleReadFile(c: Context<{ Bindings: Env }>) {
   const slug  = c.req.param('slug') ?? ''
+  const fileId = c.req.query('fileId') || c.req.query('id')
   if (!slug) return c.json({ error: 'not_found' }, 404)
   const entry = await getEntry(c.env.PASTE_KV, slug)
 
   if (!entry || !entry.hasFile) return c.json({ error: 'not_found' }, 404)
   if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
-  const fileData = await getFileKV(c.env.PASTE_KV, slug)
+  let fileName = entry.fileName ?? 'download'
+  let fileMime = entry.fileMime ?? 'application/octet-stream'
+  let fileSize = entry.fileSize ?? 0
+
+  if (fileId && entry.files && entry.files.length > 0) {
+    const item = entry.files.find(f => f.id === fileId)
+    if (item) {
+      fileName = item.fileName
+      fileMime = item.fileMime
+      fileSize = item.fileSize
+    }
+  }
+
+  const fileData = await getFileKV(c.env.PASTE_KV, slug, fileId)
   if (!fileData) return c.json({ error: 'not_found' }, 404)
 
-  const safeName = sanitizeFilename(entry.fileName ?? 'download')
+  const safeName = sanitizeFilename(fileName)
 
   return new Response(fileData, {
     headers: {
-      'Content-Type':        entry.fileMime ?? 'application/octet-stream',
+      'Content-Type':        fileMime,
       'Content-Disposition': `attachment; filename="${safeName}"`,
-      'Content-Length':      String(entry.fileSize ?? 0),
+      'Content-Length':      String(fileSize || fileData.byteLength),
       'Cache-Control':       'no-store',
     },
   })
 }
+

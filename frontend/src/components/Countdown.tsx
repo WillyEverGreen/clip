@@ -24,6 +24,16 @@ export default function Countdown({ expiresAt }: Props) {
   const expired = remaining === 0
   const color   = expired ? '#a1a1aa' : '#a1a1aa'
 
+  const isPermanent = remaining > 365 * 86400 * 1000
+
+  if (isPermanent) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem', color: '#10b981' }}>
+        <span>Permanent Link</span>
+      </span>
+    )
+  }
+
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem', color, fontVariantNumeric: 'tabular-nums' }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -35,4 +45,5 @@ export default function Countdown({ expiresAt }: Props) {
         : `${pad(hours)}:${pad(minutes)}:${pad(seconds)} remaining`}
     </span>
   )
+
 }

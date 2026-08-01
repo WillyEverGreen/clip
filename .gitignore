@@ -22,3 +22,11 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Admin Panel (Local / Private - Do not push to GitHub)
+worker/src/handlers/admin.ts
+worker/src/handlers/admin/
+frontend/src/pages/AdminPage.tsx
+frontend/src/components/Admin/
+ADMIN_GUIDE.md
+

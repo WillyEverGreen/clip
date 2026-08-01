@@ -40,7 +40,41 @@ app.patch('/api/entry/:slug',         handleUpdate)
 // Delete
 app.delete('/api/entry/:slug',        handleRemove)
 
+// Admin (Dynamic import so repository builds cleanly on GitHub without admin.ts)
+app.get('/api/admin/entries', async (c) => {
+  try {
+    // @ts-ignore
+    const mod = await import('./handlers/admin')
+    return mod.handleAdminList(c)
+  } catch {
+    return c.json({ error: 'not_found' }, 404)
+  }
+})
+
+app.delete('/api/admin/entry/:slug', async (c) => {
+  try {
+    // @ts-ignore
+    const mod = await import('./handlers/admin')
+    return mod.handleAdminDelete(c)
+  } catch {
+    return c.json({ error: 'not_found' }, 404)
+  }
+})
+
+app.delete('/api/admin/purge', async (c) => {
+  try {
+    // @ts-ignore
+    const mod = await import('./handlers/admin')
+    return mod.handleAdminPurgeAll(c)
+  } catch {
+    return c.json({ error: 'not_found' }, 404)
+  }
+})
+
+
+
 // ── Health check ──────────────────────────────────────────────────────────────
+
 
 app.get('/api/health', (c) => c.json({ ok: true }))
 

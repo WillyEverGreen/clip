@@ -2,6 +2,13 @@ const LIVE_WORKER_URL = 'https://clip-worker.saibalkawade10.workers.dev'
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 const BASE = import.meta.env.VITE_API_URL || (isLocal ? '' : LIVE_WORKER_URL)
 
+export interface FileItem {
+  id: string
+  fileName: string
+  fileMime: string
+  fileSize: number
+}
+
 export interface PublicEntry {
   slug: string
   type: 'text' | 'file'
@@ -10,6 +17,7 @@ export interface PublicEntry {
   fileMime?: string
   fileSize?: number
   hasFile?: boolean
+  files?: FileItem[]
   createdAt: number
   updatedAt?: number
   expiresAt: number
@@ -36,9 +44,10 @@ export async function getEntry(slug: string): Promise<PublicEntry | null> {
 }
 
 // ── File download URL ─────────────────────────────────────────────────────────
-export function fileUrl(slug: string): string {
-  return `${BASE}/api/entry/${slug}/file`
+export function fileUrl(slug: string, fileId?: string): string {
+  return fileId ? `${BASE}/api/entry/${slug}/file?id=${encodeURIComponent(fileId)}` : `${BASE}/api/entry/${slug}/file`
 }
+
 
 // ── Verify edit code ──────────────────────────────────────────────────────────
 export async function verifyEditCode(slug: string, editCode: string): Promise<boolean> {
@@ -67,6 +76,52 @@ export async function deleteEntry(slug: string, editCode: string): Promise<void>
   })
   if (!res.ok) throw await res.json()
 }
+
+// ── Admin ─────────────────────────────────────────────────────────────────────
+export interface AdminStats {
+  totalViews: number
+  textCount: number
+  fileCount: number
+  totalBytes: number
+}
+
+export interface AdminListResponse {
+  total: number
+  stats: AdminStats
+  entries: PublicEntry[]
+}
+
+export async function fetchAdminEntries(adminKey: string): Promise<AdminListResponse> {
+  const res = await fetch(`${LIVE_WORKER_URL}/api/admin/entries?key=${encodeURIComponent(adminKey)}`, {
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as AdminListResponse
+}
+
+export async function adminDeleteEntry(slug: string, adminKey: string): Promise<void> {
+  const res = await fetch(`${LIVE_WORKER_URL}/api/admin/entry/${slug}?key=${encodeURIComponent(adminKey)}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+}
+
+export async function adminPurgeAllEntries(adminKey: string): Promise<number> {
+  const res = await fetch(`${LIVE_WORKER_URL}/api/admin/purge`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json.deletedCount || 0
+}
+
+
+
+
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function formatBytes(bytes: number): string {

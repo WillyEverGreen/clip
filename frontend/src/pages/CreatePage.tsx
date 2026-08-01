@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Upload, Link as LinkIcon, ArrowRight, Clock } from 'lucide-react'
+import { FileText, Upload, Link as LinkIcon, ArrowRight, Info } from 'lucide-react'
+
 import DropZone from '../components/DropZone'
 import { createEntry, type ApiError } from '../lib/api'
 
@@ -13,10 +14,9 @@ export default function CreatePage() {
 
   const [mode,     setMode]     = useState<Mode>('text')
   const [content,  setContent]  = useState('')
-  const [file,     setFile]     = useState<File | null>(null)
+  const [files,    setFiles]    = useState<File[]>([])
   const [slug,     setSlug]     = useState('')
   const [editCode, setEditCode] = useState('')
-  const [ttl,      setTtl]      = useState('21600') // default 6 hours
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
 
@@ -27,7 +27,7 @@ export default function CreatePage() {
     missing_edit_code: 'Edit code must be 4–128 characters.',
     file_too_large:    'File exceeds 50 MB limit.',
     text_too_large:    'Text exceeds 2 MB limit.',
-    no_content:        'Please add some content.',
+    no_content:        'Please add some content or upload a file.',
     mime_mismatch:     'File type does not match its content.',
   }
 
@@ -37,15 +37,17 @@ export default function CreatePage() {
 
     if (editCode.length < 4) { setError('missing_edit_code'); return }
     if (mode === 'text' && !content.trim()) { setError('no_content'); return }
-    if (mode === 'file' && !file) { setError('no_content'); return }
+    if (mode === 'file' && files.length === 0) { setError('no_content'); return }
 
     const form = new FormData()
     form.append('type', mode)
     form.append('editCode', editCode)
-    form.append('ttl', ttl)
     if (slug.trim()) form.append('slug', slug.trim().toLowerCase())
     if (mode === 'text') form.append('content', content)
-    if (mode === 'file' && file) form.append('file', file)
+    if (mode === 'file') {
+      files.forEach((f) => form.append('files', f))
+      if (files[0]) form.append('file', files[0])
+    }
 
     setLoading(true)
     try {
@@ -66,9 +68,11 @@ export default function CreatePage() {
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{ textAlign:'center', marginBottom:'2.5rem' }}>
           <p style={{ color:'var(--text-muted)', fontSize:'0.9375rem' }}>
-            Share text or files with a custom link and secret edit code.
+            Share text and files conveniently with custom links.
           </p>
         </div>
+
+
 
         {/* ── Card ───────────────────────────────────────────────────────── */}
         <form onSubmit={handleSubmit} className="card card-glow" style={{ padding:'2.5rem' }}>
@@ -112,21 +116,31 @@ export default function CreatePage() {
             {mode === 'text' ? (
               <>
                 <label className="label">Content <span style={{color:'var(--text-muted)'}}>*</span></label>
-                <textarea
-                  className="input"
-                  placeholder="Paste your text here… Markdown is supported"
-                  value={content}
-                  onChange={e => setContent(e.target.value)}
-                  style={{ minHeight:'250px' }}
-                />
+                <div style={{ height: '250px', display: 'flex', flexDirection: 'column' }}>
+                  <textarea
+                    className="input"
+                    placeholder="Paste your text here… Markdown is supported"
+                    value={content}
+                    onChange={e => setContent(e.target.value)}
+                    style={{ flex: 1, minHeight: '250px', resize: 'none' }}
+                  />
+                </div>
               </>
             ) : (
               <>
                 <label className="label">File <span style={{color:'var(--text-muted)'}}>*</span></label>
-                <DropZone onFile={setFile} />
+                <div style={{ height: '250px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <DropZone onFiles={setFiles} height="202px" />
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                    <Info size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <span>Uploaded files will be automatically deleted after 2 days. Text and your URL remain permanent.</span>
+                  </p>
+                </div>
               </>
             )}
+
           </div>
+
 
           {/* Bottom Controls Row */}
           <div style={{ display:'flex', alignItems:'flex-end', gap:'1rem', marginTop:'1.75rem', flexWrap:'wrap' }}>
@@ -164,26 +178,6 @@ export default function CreatePage() {
               />
             </div>
 
-            {/* Expiry Selector */}
-            <div className="field" style={{ flex:'1 1 130px', marginTop: 0 }}>
-              <label className="label" style={{ display:'flex', alignItems:'center', gap:'0.3rem' }}>
-                <Clock size={12} /> Expiry
-              </label>
-              <select
-                className="input"
-                value={ttl}
-                onChange={e => setTtl(e.target.value)}
-                style={{ height:'42px', boxSizing:'border-box', padding:'0 0.75rem', background:'#000000', cursor:'pointer' }}
-              >
-                <option value="600">10 Minutes</option>
-                <option value="3600">1 Hour</option>
-                <option value="21600">6 Hours (Default)</option>
-                <option value="86400">1 Day</option>
-                <option value="604800">7 Days</option>
-                <option value="2592000">30 Days</option>
-              </select>
-            </div>
-
             {/* Submit Button */}
             <div style={{ marginTop: 0, flexShrink: 0 }}>
               <button
@@ -196,6 +190,7 @@ export default function CreatePage() {
               </button>
             </div>
           </div>
+
 
           {/* Error Message */}
           {error && (

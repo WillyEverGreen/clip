@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --remote",
     "deploy": "wrangler deploy"
   },
+
   "dependencies": {
     "hono": "^4.6.0",
     "nanoid": "^5.0.7"

@@ -35,11 +35,15 @@ export async function putEntry(
   kv: KVNamespace,
   entry: Entry,
 ): Promise<void> {
-  const ttl = Math.max(60, Math.floor((entry.expiresAt - Date.now()) / 1000))
+  const ttl = Math.min(315_360_000, Math.max(60, Math.floor((entry.expiresAt - Date.now()) / 1000)))
+  const metadata: PublicEntry = toPublic(entry)
   await kv.put(key(entry.slug), JSON.stringify(entry), {
     expirationTtl: ttl,
+    metadata,
   })
 }
+
+
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
@@ -68,8 +72,10 @@ export async function putFileKV(
   slug: string,
   data: ArrayBuffer,
   ttlSeconds?: number,
+  fileId?: string,
 ): Promise<void> {
-  await kv.put(fileKey(slug), data, {
+  const k = fileId ? `file:${slug}:${fileId}` : fileKey(slug)
+  await kv.put(k, data, {
     expirationTtl: ttlSeconds || DEFAULT_TTL_SECONDS,
   })
 }
@@ -77,13 +83,18 @@ export async function putFileKV(
 export async function getFileKV(
   kv: KVNamespace,
   slug: string,
+  fileId?: string,
 ): Promise<ArrayBuffer | null> {
-  return kv.get(fileKey(slug), 'arrayBuffer')
+  const k = fileId ? `file:${slug}:${fileId}` : fileKey(slug)
+  return kv.get(k, 'arrayBuffer')
 }
 
 export async function deleteFileKV(
   kv: KVNamespace,
   slug: string,
+  fileId?: string,
 ): Promise<void> {
-  await kv.delete(fileKey(slug))
+  const k = fileId ? `file:${slug}:${fileId}` : fileKey(slug)
+  await kv.delete(k)
 }
+

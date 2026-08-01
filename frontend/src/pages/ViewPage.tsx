@@ -9,9 +9,10 @@ import Logo              from '../components/Logo'
 export default function ViewPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate  = useNavigate()
-  const [entry,   setEntry]   = useState<PublicEntry | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [copied,  setCopied]  = useState(false)
+  const [entry,      setEntry]      = useState<PublicEntry | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [copied,     setCopied]     = useState(false)
+  const [textCopied, setTextCopied] = useState(false)
 
   useEffect(() => {
     if (!slug) return
@@ -28,6 +29,13 @@ export default function ViewPage() {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const copyTextContent = () => {
+    if (!entry?.content) return
+    navigator.clipboard.writeText(entry.content)
+    setTextCopied(true)
+    setTimeout(() => setTextCopied(false), 2000)
   }
 
   if (loading) return <LoadingScreen />
@@ -51,23 +59,26 @@ export default function ViewPage() {
               /{entry.slug}
             </h1>
 
-            {/* Countdown & Type */}
+            {/* Subtitle & Type */}
             <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', marginTop:'0.4rem', flexWrap:'wrap' }}>
-              <Countdown expiresAt={entry.expiresAt} />
-              <span style={{ color:'var(--text-dim)', fontSize:'0.75rem' }}>·</span>
               <span style={{ fontSize:'0.75rem', color:'var(--text-dim)' }}>
                 {entry.content && (entry.hasFile || entry.fileName)
                   ? `Text & File · ${formatBytes(entry.fileSize ?? 0)}`
                   : (entry.hasFile || entry.fileName)
                     ? `File · ${formatBytes(entry.fileSize ?? 0)}`
-                    : 'Text · Markdown'}
+                    : 'Text · Markdown · Permanent Link'}
               </span>
             </div>
           </div>
 
           <div style={{ display:'flex', gap:'0.5rem', flexShrink:0 }}>
+            {entry.content && (
+              <button className="btn btn-ghost" onClick={copyTextContent} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }}>
+                {textCopied ? <><Check size={14} color="#10b981" /> Copied text</> : <><Copy size={14} /> Copy text</>}
+              </button>
+            )}
             <button className="btn btn-ghost" onClick={copyLink} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem' }}>
-              {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy link</>}
+              {copied ? <><Check size={14} /> Copied link</> : <><Copy size={14} /> Copy link</>}
             </button>
             <Link to={`/${slug}/edit`} className="btn btn-ghost" style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem' }}>
               <Edit3 size={14} /> Edit
@@ -78,7 +89,19 @@ export default function ViewPage() {
         {/* ── Content ────────────────────────────────────────────────────── */}
         <div className="card card-glow" style={{ padding:'2.5rem' }}>
           {entry.content && (
-            <MarkdownRenderer content={entry.content} />
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Text Content</span>
+                <button
+                  onClick={copyTextContent}
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem' }}
+                >
+                  {textCopied ? <><Check size={13} color="#10b981" /> Copied Text</> : <><Copy size={13} /> Copy Text</>}
+                </button>
+              </div>
+              <MarkdownRenderer content={entry.content} />
+            </div>
           )}
 
           {(entry.hasFile || entry.fileName) && (
@@ -88,7 +111,7 @@ export default function ViewPage() {
           )}
         </div>
 
-        {/* ── Metadata & Expiry Footer (at the end) ────────────────────────────────── */}
+        {/* ── Metadata Footer ────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'0.75rem', marginTop:'1.75rem', flexWrap:'wrap', fontSize:'0.8125rem', color:'var(--text-muted)' }}>
           <span><strong style={{ color:'#ffffff' }}>Pub:</strong> {formatLocalDate(entry.createdAt)}</span>
           {entry.updatedAt && (
@@ -99,10 +122,14 @@ export default function ViewPage() {
           )}
           <span style={{ color:'var(--text-dim)' }}>·</span>
           <span><strong style={{ color:'#ffffff' }}>Views:</strong> {entry.views ?? 1}</span>
-          <span style={{ color:'var(--text-dim)' }}>·</span>
-          <span style={{ display:'inline-flex', alignItems:'center', gap:'0.35rem' }}>
-            <strong style={{ color:'#ffffff' }}>Expires:</strong> <Countdown expiresAt={entry.expiresAt} />
-          </span>
+          {(entry.hasFile || entry.fileName) && (
+            <>
+              <span style={{ color:'var(--text-dim)' }}>·</span>
+              <span style={{ display:'inline-flex', alignItems:'center', gap:'0.35rem' }}>
+                <strong style={{ color:'#ffffff' }}>File Expires:</strong> <Countdown expiresAt={entry.expiresAt > entry.createdAt + 365 * 86400 * 1000 ? entry.createdAt + 172_800_000 : entry.expiresAt} />
+              </span>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -110,42 +137,96 @@ export default function ViewPage() {
 }
 
 function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
-  const ext = (entry.fileName ?? '').split('.').pop()?.toUpperCase() ?? 'FILE'
+  const filesList = entry.files && entry.files.length > 0
+    ? entry.files
+    : [{ id: undefined, fileName: entry.fileName ?? 'file', fileMime: entry.fileMime ?? '', fileSize: entry.fileSize ?? 0 }]
 
-  const renderIcon = () => {
-    const mime = entry.fileMime ?? ''
-    if (mime.startsWith('image/'))  return <ImageIcon size={40} color="#ffffff" />
-    if (mime.startsWith('video/'))  return <Film size={40} color="#ffffff" />
-    if (mime.startsWith('audio/'))  return <Music size={40} color="#ffffff" />
-    if (mime.includes('zip'))        return <FileArchive size={40} color="#ffffff" />
-    if (mime === 'application/pdf') return <FileText size={40} color="#ffffff" />
-    return <File size={40} color="#ffffff" />
+  const fileExpiresAt = entry.expiresAt > entry.createdAt + 365 * 86400 * 1000
+    ? entry.createdAt + 172_800_000 // 48 hours from creation if stored as permanent
+    : entry.expiresAt
+
+  const getIcon = (mime: string) => {
+    if (mime.startsWith('image/'))  return <ImageIcon size={32} color="#ffffff" />
+    if (mime.startsWith('video/'))  return <Film size={32} color="#ffffff" />
+    if (mime.startsWith('audio/'))  return <Music size={32} color="#ffffff" />
+    if (mime.includes('zip'))        return <FileArchive size={32} color="#ffffff" />
+    if (mime === 'application/pdf') return <FileText size={32} color="#ffffff" />
+    return <File size={32} color="#ffffff" />
+  }
+
+  const handleDownloadAll = () => {
+    filesList.forEach((file, idx) => {
+      setTimeout(() => {
+        const a = document.createElement('a')
+        a.href = fileUrl(slug, file.id)
+        a.download = file.fileName
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }, idx * 300)
+    })
   }
 
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:'1.5rem', flexWrap:'wrap' }}>
-      <div style={{ background:'#000000', border:'1px solid var(--border)', padding:'1rem', borderRadius:'12px', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        {renderIcon()}
+    <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+          Attached Files ({filesList.length})
+        </div>
+        <button
+          onClick={handleDownloadAll}
+          className="btn btn-primary"
+          style={{ fontSize: '0.8125rem', padding: '0.45rem 0.9rem', gap: '0.4rem' }}
+        >
+          <Download size={14} /> Download All ({filesList.length})
+        </button>
       </div>
-      <div style={{ flex:1, minWidth:0 }}>
-        <p style={{ fontWeight:600, fontSize:'1.1rem', color:'#ffffff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-          {entry.fileName}
-        </p>
-        <p style={{ color:'var(--text-muted)', fontSize:'0.85rem', marginTop:'0.25rem' }}>
-          {ext} · {formatBytes(entry.fileSize ?? 0)}
-        </p>
-      </div>
-      <a
-        href={fileUrl(slug)}
-        className="btn btn-primary"
-        download={entry.fileName}
-        style={{ flexShrink:0, gap:'0.5rem' }}
-      >
-        <Download size={16} /> Download File
-      </a>
+
+      {filesList.map((item, i) => {
+        const ext = (item.fileName ?? '').split('.').pop()?.toUpperCase() ?? 'FILE'
+        const downloadLink = fileUrl(slug, item.id)
+
+        return (
+          <div
+            key={item.id ?? i}
+            style={{
+              display:'flex', alignItems:'center', gap:'1.25rem', flexWrap:'wrap',
+              padding:'1rem 1.25rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'12px',
+            }}
+          >
+            <div style={{ background:'#09090b', border:'1px solid var(--border)', padding:'0.75rem', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              {getIcon(item.fileMime)}
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ fontWeight:600, fontSize:'1.05rem', color:'#ffffff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {item.fileName}
+              </p>
+              <p style={{ color:'var(--text-muted)', fontSize:'0.8125rem', marginTop:'0.25rem', display:'flex', alignItems:'center', gap:'0.5rem', flexWrap:'wrap' }}>
+                <span>{ext} · {formatBytes(item.fileSize)}</span>
+                <span style={{ color:'var(--text-dim)' }}>·</span>
+                <span style={{ color:'#f87171', display:'inline-flex', alignItems:'center', gap:'0.25rem' }}>
+                  Auto-deletes in: <Countdown expiresAt={fileExpiresAt} />
+                </span>
+              </p>
+            </div>
+            <a
+              href={downloadLink}
+              className="btn btn-ghost"
+              download={item.fileName}
+              style={{ flexShrink:0, gap:'0.5rem', padding:'0.5rem 0.9rem', fontSize:'0.8125rem' }}
+            >
+              <Download size={14} /> Download
+            </a>
+          </div>
+        )
+      })}
     </div>
   )
 }
+
+
+
+
 
 function LoadingScreen() {
   return (
