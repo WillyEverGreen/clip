@@ -1,0 +1,11 @@
+{
+  "name": "clip-root",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npm --prefix frontend run build && npm --prefix worker run cf-typegen",
+    "deploy:worker": "npx wrangler@3 deploy --cwd worker",
+    "deploy:frontend": "npm --prefix frontend run build && npx wrangler@3 pages deploy frontend/dist --project-name=clip",
+    "deploy": "npm --prefix frontend run build && npx wrangler@3 deploy --cwd worker && npx wrangler@3 pages deploy frontend/dist --project-name=clip"
+  }
+}

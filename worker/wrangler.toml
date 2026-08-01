@@ -1,0 +1,11 @@
+name = "clip-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FRONTEND_ORIGIN = "https://clip.foo.ng"
+
+[[kv_namespaces]]
+binding = "PASTE_KV"
+id = "887b8699f2d842278081193bbc0a6645"

@@ -1,0 +1,5 @@
+/*
+  Cloudflare Pages SPA routing.
+  All unknown paths serve index.html so React Router handles them client-side.
+*/
+/* /index.html 200
