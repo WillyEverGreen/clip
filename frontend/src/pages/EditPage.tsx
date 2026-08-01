@@ -23,13 +23,13 @@ export default function EditPage() {
   const verifyRef = useRef<HTMLDivElement>(null)
 
   // Step 2 — edit
-  const [mode,       setMode]       = useState<Mode>('text')
-  const [content,    setContent]    = useState('')
-  const [file,       setFile]       = useState<File | null>(null)
-  const [removeFile, setRemoveFile] = useState(false)
-  const [saving,     setSaving]     = useState(false)
-  const [deleting,   setDeleting]   = useState(false)
-  const [editError,  setEditError]  = useState<string | null>(null)
+  const [mode,        setMode]        = useState<Mode>('text')
+  const [content,     setContent]     = useState('')
+  const [newFiles,    setNewFiles]    = useState<File[]>([])
+  const [removeFile,  setRemoveFile]  = useState(false)
+  const [saving,      setSaving]      = useState(false)
+  const [deleting,    setDeleting]    = useState(false)
+  const [editError,   setEditError]   = useState<string | null>(null)
 
   // Fetch existing document on mount
   useEffect(() => {
@@ -79,9 +79,13 @@ export default function EditPage() {
     if (removeFile) {
       form.append('removeFile', 'true')
     }
-    if (file) {
-      form.append('file', file)
+    if (newFiles.length > 0) {
+      newFiles.forEach((f) => {
+        form.append('files', f)
+        form.append('file', f)
+      })
     }
+
 
     setSaving(true)
     try {
@@ -227,30 +231,44 @@ export default function EditPage() {
                 <label className="label">File Attachment</label>
 
                 {/* Existing file display */}
-                {hasExistingFile && !removeFile && !file && (
-                  <div style={{ marginBottom:'1.25rem', padding:'1rem 1.25rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                      <FileIcon size={22} color="#ffffff" />
-                      <div>
-                        <div style={{ fontSize:'0.9375rem', fontWeight:600, color:'#ffffff' }}>{existing.fileName}</div>
-                        {existing.fileSize && (
-                          <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'2px' }}>{formatBytes(existing.fileSize)}</div>
-                        )}
-                      </div>
+                {hasExistingFile && !removeFile && newFiles.length === 0 && (
+                  <div style={{ marginBottom:'1.25rem', display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)' }}>
+                        Existing Attached Files ({existing.files?.length || 1})
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => setRemoveFile(true)}
+                        style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171' }}
+                      >
+                        <X size={14} /> Remove All Existing Files
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => setRemoveFile(true)}
-                      style={{ fontSize:'0.75rem', padding:'0.4rem 0.75rem', gap:'0.3rem', color:'#ffffff' }}
-                    >
-                      <X size={14} /> Remove File
-                    </button>
+
+                    {(existing.files && existing.files.length > 0
+                      ? existing.files
+                      : [{ id: undefined, fileName: existing.fileName, fileSize: existing.fileSize }]
+                    ).map((item, idx) => (
+                      <div key={item.id ?? idx} style={{ padding:'0.85rem 1.1rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                          <FileIcon size={20} color="#ffffff" />
+                          <div>
+                            <div style={{ fontSize:'0.9rem', fontWeight:600, color:'#ffffff' }}>{item.fileName}</div>
+                            {item.fileSize && (
+                              <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'2px' }}>{formatBytes(item.fileSize)}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
-                {/* New file upload or replacement dropzone */}
-                <DropZone onFile={f => { setFile(f); setRemoveFile(false) }} />
+                {/* New file upload dropzone */}
+                <DropZone onFiles={fs => { setNewFiles(fs); setRemoveFile(false) }} height="202px" />
+
               </>
             )}
           </div>
