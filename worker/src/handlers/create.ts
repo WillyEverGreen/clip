@@ -74,11 +74,17 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
 
     // ── Build entry ──────────────────────────────────────────────────────────
     const now       = Date.now()
-    const rawFiles = form.getAll('files') as unknown as File[]
-    const rawSingleFile = form.get('file') as unknown as File | null
-    const fileList: File[] = rawFiles.filter((f) => f && f.size > 0)
-    if (fileList.length === 0 && rawSingleFile && rawSingleFile.size > 0) {
-      fileList.push(rawSingleFile)
+    const rawFiles  = form.getAll('files')
+    const rawSingle = form.getAll('file')
+    const fileList: File[] = []
+
+    for (const item of [...rawFiles, ...rawSingle]) {
+      if (item && typeof item === 'object' && typeof (item as any).arrayBuffer === 'function' && (item as any).size > 0) {
+        const f = item as File
+        if (!fileList.some((ex) => ex.name === f.name && ex.size === f.size)) {
+          fileList.push(f)
+        }
+      }
     }
 
     const isFile    = type === 'file' || fileList.length > 0
@@ -86,6 +92,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     const PERMANENT_MS    = 3_153_600_000_000 // 100 Years (Permanent for text)
 
     const expiresAt = isFile ? now + (FILE_TTL_SECONDS * 1000) : now + PERMANENT_MS
+
     const salt      = generateSalt()
     const pepper    = c.env.APP_PEPPER || 'clip_default_pepper'
     const editCodeHash = await hashCode(editCode, salt, pepper)

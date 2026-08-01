@@ -23,12 +23,14 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
   const entry = await getEntry(c.env.PASTE_KV, slug)
   if (!entry) return c.json({ error: 'not_found' }, 404)
 
-  const valid = await verifyCode(
+  const pepper = c.env.APP_PEPPER || 'clip_default_pepper'
+  const valid  = await verifyCode(
     editCode,
     entry.editCodeSalt,
-    c.env.APP_PEPPER,
+    pepper,
     entry.editCodeHash,
   )
+
 
   if (!valid) {
     await log('auth.failed', { slug, ip }, c.env)
