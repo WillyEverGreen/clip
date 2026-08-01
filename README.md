@@ -1,10 +1,6 @@
 <div align="center">
 
-  <br />
-  <p align="center">
-    <img src="frontend/src/assets/C.png" width="48" height="48" alt="C" style="vertical-align: middle;" />
-    <span style="font-size: 2.75rem; font-weight: 800; letter-spacing: -0.03em; color: #ffffff; vertical-align: middle;">lip</span>
-  </p>
+  <h1>clip</h1>
 
   <p><b>Share text snippets &amp; files instantly - no accounts, no logging in on public PCs.</b></p>
 
