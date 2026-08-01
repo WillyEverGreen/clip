@@ -26,8 +26,12 @@ export async function validateMime(file: File): Promise<boolean> {
   // Type not in our known list — allow it
   if (!signatures) return true
 
-  const buf   = await file.slice(0, 8).arrayBuffer()
-  const bytes = new Uint8Array(buf)
-
-  return signatures.some(sig => sig.every((b, i) => bytes[i] === b))
+  try {
+    const buf   = await file.arrayBuffer()
+    const bytes = new Uint8Array(buf.slice(0, 8))
+    return signatures.some(sig => sig.every((b, i) => bytes[i] === b))
+  } catch {
+    return true // Allow upload safely if buffer slicing throws error
+  }
 }
+

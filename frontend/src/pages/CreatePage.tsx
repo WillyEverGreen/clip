@@ -45,9 +45,12 @@ export default function CreatePage() {
     if (slug.trim()) form.append('slug', slug.trim().toLowerCase())
     if (mode === 'text') form.append('content', content)
     if (mode === 'file') {
-      files.forEach((f) => form.append('files', f))
-      if (files[0]) form.append('file', files[0])
+      files.forEach((f) => {
+        form.append('files', f)
+        form.append('file', f)
+      })
     }
+
 
     setLoading(true)
     try {

@@ -20,20 +20,24 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
   const acceptFiles = useCallback(
     (newFiles: File[]) => {
       setError('')
-      const updated = [...selectedFiles, ...newFiles]
+      setSelectedFiles((prev) => {
+        const deduped = newFiles.filter((nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size))
+        const updated = [...prev, ...deduped]
+        const totalSize = updated.reduce((acc, f) => acc + f.size, 0)
 
-      const totalSize = updated.reduce((acc, f) => acc + f.size, 0)
-      if (totalSize > maxBytes) {
-        setError(`Total files size exceeds ${formatBytes(maxBytes)} limit.`)
-        return
-      }
+        if (totalSize > maxBytes) {
+          setError(`Total files size exceeds ${formatBytes(maxBytes)} limit.`)
+          return prev
+        }
 
-      setSelectedFiles(updated)
-      if (onFiles) onFiles(updated)
-      if (onFile) onFile(updated[0] || null)
+        if (onFiles) onFiles(updated)
+        if (onFile) onFile(updated[0] || null)
+        return updated
+      })
     },
-    [selectedFiles, maxBytes, onFiles, onFile]
+    [maxBytes, onFiles, onFile]
   )
+
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -49,12 +53,15 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
 
   const removeFile = (index: number, e: React.MouseEvent) => {
     e.stopPropagation()
-    const updated = selectedFiles.filter((_, i) => i !== index)
-    setSelectedFiles(updated)
-    if (onFiles) onFiles(updated)
-    if (onFile) onFile(updated[0] || null)
-    if (updated.length === 0 && inputRef.current) inputRef.current.value = ''
+    setSelectedFiles((prev) => {
+      const updated = prev.filter((_, i) => i !== index)
+      if (onFiles) onFiles(updated)
+      if (onFile) onFile(updated[0] || null)
+      if (updated.length === 0 && inputRef.current) inputRef.current.value = ''
+      return updated
+    })
   }
+
 
   return (
     <div>
