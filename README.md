@@ -1,6 +1,8 @@
 <div align="center">
 
-  <h1>clip</h1>
+  <a href="https://clip.foo.ng">
+    <img src="frontend/public/clip-header.png" height="50" alt="clip" />
+  </a>
 
   <p><b>Share text snippets &amp; files instantly - no accounts, no logging in on public PCs.</b></p>
 
