@@ -93,22 +93,35 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
 
         {selectedFiles.length > 0 ? (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '170px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.4rem', borderBottom: '1px solid #262626' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                {selectedFiles.length} FILE{selectedFiles.length > 1 ? 'S' : ''} SELECTED ({formatBytes(selectedFiles.reduce((a, f) => a + f.size, 0))})
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  inputRef.current?.click()
-                }}
-                className="btn btn-ghost"
-                style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
-              >
-                <Plus size={12} /> Add more
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', paddingBottom: '0.4rem', borderBottom: '1px solid #262626' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600 }}>
+                  {selectedFiles.length} FILE{selectedFiles.length > 1 ? 'S' : ''} SELECTED ({formatBytes(selectedFiles.reduce((a, f) => a + f.size, 0))} / {formatBytes(maxBytes)})
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    inputRef.current?.click()
+                  }}
+                  className="btn btn-ghost"
+                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
+                >
+                  <Plus size={12} /> Add more
+                </button>
+              </div>
+
+              {(() => {
+                const used = selectedFiles.reduce((a, f) => a + f.size, 0)
+                const pct = Math.min(100, (used / maxBytes) * 100)
+                return (
+                  <div style={{ width: '100%', height: '4px', background: '#18181b', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: pct > 90 ? '#ef4444' : '#3b82f6', borderRadius: '2px', transition: 'width 200ms ease' }} />
+                  </div>
+                )
+              })()}
             </div>
+
 
             {selectedFiles.map((file, idx) => (
               <div
