@@ -66,21 +66,40 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       }
     }
 
-    // 2. Explicit File Removal
-    if (form.get('removeFile') === 'true') {
-      if (entry.hasFile) {
+    // 2. Existing File Handling (Retention or Removal)
+    let retainedFiles: FileItem[] = []
+    const rawKeep = form.getAll('keepFileIds') as string[]
+    const removeAll = form.get('removeFile') === 'true'
+
+    if (entry.hasFile && entry.files && entry.files.length > 0) {
+      if (removeAll) {
+        // Delete all existing files from KV
         await deleteFileKV(c.env.PASTE_KV, slug)
-        if (entry.files && entry.files.length > 0) {
-          for (const f of entry.files) {
+        for (const f of entry.files) {
+          await deleteFileKV(c.env.PASTE_KV, slug, f.id)
+        }
+      } else if (rawKeep.length > 0) {
+        // Delete only unkept files
+        for (const f of entry.files) {
+          if (rawKeep.includes(f.id)) {
+            retainedFiles.push(f)
+          } else {
             await deleteFileKV(c.env.PASTE_KV, slug, f.id)
           }
         }
+      } else {
+        // Preserve all existing files by default
+        retainedFiles = [...entry.files]
       }
-      updated.hasFile  = false
-      updated.fileName = undefined
-      updated.fileMime = undefined
-      updated.fileSize = undefined
-      updated.files    = undefined
+    } else if (entry.hasFile && !removeAll) {
+      if (entry.fileName && entry.fileSize && entry.fileMime) {
+        retainedFiles.push({
+          id: 'f_1',
+          fileName: entry.fileName,
+          fileMime: entry.fileMime,
+          fileSize: entry.fileSize,
+        })
+      }
     }
 
     // 3. New File Uploads
@@ -89,51 +108,62 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
     const fileList: File[] = []
 
     for (const item of [...rawFiles, ...rawSingle]) {
-      if (item && typeof item === 'object' && 'size' in item && (item as File).size > 0) {
+      if (item && typeof item === 'object' && typeof (item as any).arrayBuffer === 'function' && (item as any).size > 0) {
         const f = item as File
-        if (!fileList.some(ex => ex.name === f.name && ex.size === f.size)) {
+        if (!fileList.some((ex) => ex.name === f.name && ex.size === f.size)) {
           fileList.push(f)
         }
       }
     }
 
+    const newlyProcessedFiles: FileItem[] = []
     if (fileList.length > 0) {
-      let totalSize = 0
+      let newFilesSize = 0
       for (const f of fileList) {
         if (f.size > MAX_FILE_BYTES) return c.json({ error: 'file_too_large' }, 400)
         if (!(await validateMime(f))) return c.json({ error: 'mime_mismatch' }, 400)
-        totalSize += f.size
+        newFilesSize += f.size
       }
 
-      if (totalSize > 50 * 1024 * 1024) {
+      const existingTotalSize = retainedFiles.reduce((acc, f) => acc + f.fileSize, 0)
+      if (existingTotalSize + newFilesSize > 50 * 1024 * 1024) {
         return c.json({ error: 'file_too_large' }, 400)
       }
 
-      const processedFiles: FileItem[] = []
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i]
-        const fileId = `f_${i + 1}_${Date.now()}`
+        const fileId = `f_${retainedFiles.length + i + 1}_${Date.now()}`
         const fileBuffer = await f.arrayBuffer()
 
-        if (i === 0) {
+        if (retainedFiles.length === 0 && i === 0) {
           await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS)
         }
         await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS, fileId)
 
-        processedFiles.push({
+        newlyProcessedFiles.push({
           id: fileId,
           fileName: f.name,
           fileMime: f.type || 'application/octet-stream',
           fileSize: f.size,
         })
       }
+    }
 
+    const combinedFiles = [...retainedFiles, ...newlyProcessedFiles]
+
+    if (combinedFiles.length > 0) {
       updated.hasFile   = true
-      updated.fileName  = processedFiles[0].fileName
-      updated.fileMime  = processedFiles[0].fileMime
-      updated.fileSize  = totalSize
-      updated.files     = processedFiles
-      updated.expiresAt = Date.now() + (FILE_TTL_SECONDS * 1000) // 48h TTL on file upload
+      updated.fileName  = combinedFiles[0].fileName
+      updated.fileMime  = combinedFiles[0].fileMime
+      updated.fileSize  = combinedFiles.reduce((acc, f) => acc + f.fileSize, 0)
+      updated.files     = combinedFiles
+      updated.expiresAt = Date.now() + (FILE_TTL_SECONDS * 1000) // Reset 48h TTL on file update
+    } else {
+      updated.hasFile  = false
+      updated.fileName = undefined
+      updated.fileMime = undefined
+      updated.fileSize = undefined
+      updated.files    = undefined
     }
 
     // 4. Update entry type dynamically
@@ -144,6 +174,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
     } else {
       updated.type = 'text'
     }
+
 
     await putEntry(c.env.PASTE_KV, updated)
 

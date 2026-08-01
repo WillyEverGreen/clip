@@ -23,13 +23,13 @@ export default function EditPage() {
   const verifyRef = useRef<HTMLDivElement>(null)
 
   // Step 2 — edit
-  const [mode,        setMode]        = useState<Mode>('text')
-  const [content,     setContent]     = useState('')
-  const [newFiles,    setNewFiles]    = useState<File[]>([])
-  const [removeFile,  setRemoveFile]  = useState(false)
-  const [saving,      setSaving]      = useState(false)
-  const [deleting,    setDeleting]    = useState(false)
-  const [editError,   setEditError]   = useState<string | null>(null)
+  const [mode,              setMode]              = useState<Mode>('text')
+  const [content,           setContent]           = useState('')
+  const [keptExistingFiles, setKeptExistingFiles] = useState<any[]>([])
+  const [newFiles,          setNewFiles]          = useState<File[]>([])
+  const [saving,            setSaving]            = useState(false)
+  const [deleting,          setDeleting]          = useState(false)
+  const [editError,         setEditError]         = useState<string | null>(null)
 
   // Fetch existing document on mount
   useEffect(() => {
@@ -41,6 +41,11 @@ export default function EditPage() {
           setMode(data.type)
           if (data.content) {
             setContent(data.content)
+          }
+          if (data.files && data.files.length > 0) {
+            setKeptExistingFiles(data.files)
+          } else if (data.fileName) {
+            setKeptExistingFiles([{ id: 'f_1', fileName: data.fileName, fileSize: data.fileSize }])
           }
         }
       })
@@ -76,9 +81,14 @@ export default function EditPage() {
     form.append('editCode', code)
     form.append('content', content)
     
-    if (removeFile) {
+    if (keptExistingFiles.length > 0) {
+      keptExistingFiles.forEach((f) => {
+        if (f.id) form.append('keepFileIds', f.id)
+      })
+    } else if (newFiles.length === 0) {
       form.append('removeFile', 'true')
     }
+
     if (newFiles.length > 0) {
       newFiles.forEach((f) => {
         form.append('files', f)
@@ -157,7 +167,7 @@ export default function EditPage() {
   }
 
   // ── Step 2: Edit ────────────────────────────────────────────────────────────
-  const hasExistingFile = existing?.hasFile || existing?.fileName
+  const hasExistingFile = keptExistingFiles.length > 0
 
   return (
     <div className="page-wrapper" style={{ justifyContent:'flex-start', paddingTop:'3rem' }}>
@@ -210,9 +220,10 @@ export default function EditPage() {
                 border: mode === 'file' ? '1px solid #71717a' : '1px solid transparent',
               }}
             >
-              <Upload size={16} /> File {hasExistingFile && !removeFile && '✓'}
+              <Upload size={16} /> File {hasExistingFile && '✓'}
             </button>
           </div>
+
 
           <div className="field">
             {mode === 'text' ? (
@@ -230,27 +241,24 @@ export default function EditPage() {
               <>
                 <label className="label">File Attachment</label>
 
-                {/* Existing file display */}
-                {hasExistingFile && !removeFile && newFiles.length === 0 && (
+                {/* Existing files list */}
+                {keptExistingFiles.length > 0 && (
                   <div style={{ marginBottom:'1.25rem', display:'flex', flexDirection:'column', gap:'0.75rem' }}>
                     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                       <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)' }}>
-                        Existing Attached Files ({existing.files?.length || 1})
+                        Existing Attached Files ({keptExistingFiles.length})
                       </span>
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        onClick={() => setRemoveFile(true)}
+                        onClick={() => setKeptExistingFiles([])}
                         style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171' }}
                       >
                         <X size={14} /> Remove All Existing Files
                       </button>
                     </div>
 
-                    {(existing.files && existing.files.length > 0
-                      ? existing.files
-                      : [{ id: undefined, fileName: existing.fileName, fileSize: existing.fileSize }]
-                    ).map((item, idx) => (
+                    {keptExistingFiles.map((item, idx) => (
                       <div key={item.id ?? idx} style={{ padding:'0.85rem 1.1rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
                           <FileIcon size={20} color="#ffffff" />
@@ -261,13 +269,30 @@ export default function EditPage() {
                             )}
                           </div>
                         </div>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setKeptExistingFiles(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ padding:'0.25rem 0.5rem', color:'var(--text-muted)', borderRadius:'6px' }}
+                          title="Remove file"
+                        >
+                          <X size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* New file upload dropzone */}
-                <DropZone onFiles={fs => { setNewFiles(fs); setRemoveFile(false) }} height="202px" />
+                {/* Add new / additional files dropzone */}
+                <div>
+                  {keptExistingFiles.length > 0 && (
+                    <div style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)', marginBottom:'0.5rem' }}>
+                      + Add More Files
+                    </div>
+                  )}
+                  <DropZone onFiles={fs => setNewFiles(fs)} height="202px" />
+                </div>
+
 
               </>
             )}
