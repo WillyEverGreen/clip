@@ -225,13 +225,6 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
             </button>
           </div>
 
-          <Link
-            to={`/${slug}/edit`}
-            className="btn btn-ghost"
-            style={{ fontSize: '0.8rem', padding: '0.45rem 0.75rem', gap: '0.35rem' }}
-          >
-            <Trash2 size={13} /> Manage / Remove Files
-          </Link>
 
           <button
             onClick={handleDownloadAll}
