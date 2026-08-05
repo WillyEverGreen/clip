@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev --remote",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
   },
-
   "dependencies": {
+    "fflate": "^0.8.3",
     "hono": "^4.6.0",
     "nanoid": "^5.0.7"
   },

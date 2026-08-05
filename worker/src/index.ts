@@ -3,10 +3,13 @@ import type { Env } from './lib/types'
 import { securityHeaders } from './lib/headers'
 import { strictCors } from './lib/cors'
 import { handleCreate } from './handlers/create'
-import { handleRead, handleReadFile } from './handlers/read'
+import { handleRead, handleReadFile, handleReadRaw } from './handlers/read'
 import { handleVerify } from './handlers/verify'
 import { handleUpdate } from './handlers/update'
 import { handleRemove } from './handlers/remove'
+
+import { handleAdminList, handleAdminDelete, handleAdminPurgeAll } from './handlers/admin'
+import { handleReadZip } from './handlers/zip'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -28,6 +31,11 @@ app.onError((err, c) => {
 app.post('/api/entry',                handleCreate)
 
 // Read
+app.get('/raw/:slug',                 handleReadRaw)
+app.get('/:slug/raw',                 handleReadRaw)
+app.get('/zip/:slug',                 handleReadZip)
+app.get('/api/entry/:slug/raw',       handleReadRaw)
+app.get('/api/entry/:slug/zip',       handleReadZip)
 app.get('/api/entry/:slug',           handleRead)
 app.get('/api/entry/:slug/file',      handleReadFile)
 
@@ -40,44 +48,12 @@ app.patch('/api/entry/:slug',         handleUpdate)
 // Delete
 app.delete('/api/entry/:slug',        handleRemove)
 
-// Admin (Dynamic import so repository builds cleanly on GitHub without admin.ts)
-app.get('/api/admin/entries', async (c) => {
-  try {
-    // @ts-ignore
-    const mod = await import('./handlers/admin')
-    return mod.handleAdminList(c)
-  } catch {
-    return c.json({ error: 'not_found' }, 404)
-  }
-})
+// Admin
+app.get('/api/admin/entries',         handleAdminList)
+app.delete('/api/admin/entry/:slug',  handleAdminDelete)
+app.delete('/api/admin/purge',        handleAdminPurgeAll)
 
-app.delete('/api/admin/entry/:slug', async (c) => {
-  try {
-    // @ts-ignore
-    const mod = await import('./handlers/admin')
-    return mod.handleAdminDelete(c)
-  } catch {
-    return c.json({ error: 'not_found' }, 404)
-  }
-})
-
-app.delete('/api/admin/purge', async (c) => {
-  try {
-    // @ts-ignore
-    const mod = await import('./handlers/admin')
-    return mod.handleAdminPurgeAll(c)
-  } catch {
-    return c.json({ error: 'not_found' }, 404)
-  }
-})
-
-
-
-// ── Health check ──────────────────────────────────────────────────────────────
-
-
+// Health check
 app.get('/api/health', (c) => c.json({ ok: true }))
-
-// ── Default export ────────────────────────────────────────────────────────────
 
 export default app

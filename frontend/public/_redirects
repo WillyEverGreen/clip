@@ -1,5 +1,4 @@
-/*
-  Cloudflare Pages SPA routing.
-  All unknown paths serve index.html so React Router handles them client-side.
-*/
+/api/* https://clip-worker.saibalkawade10.workers.dev/api/:splat 302
+/raw/* https://clip-worker.saibalkawade10.workers.dev/raw/:splat 302
+/zip/* https://clip-worker.saibalkawade10.workers.dev/zip/:splat 302
 /* /index.html 200

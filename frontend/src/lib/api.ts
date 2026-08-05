@@ -2,6 +2,11 @@ const LIVE_WORKER_URL = 'https://clip-worker.saibalkawade10.workers.dev'
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
 const BASE = import.meta.env.VITE_API_URL || (isLocal ? '' : LIVE_WORKER_URL)
 
+// Public-facing origin used for CLI commands shown to users.
+// Uses the browser's current domain (clip.foo.ng in prod, localhost in dev)
+// so commands always show the clean public URL, not the internal worker URL.
+const PUBLIC_ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'https://clip.foo.ng'
+
 export interface FileItem {
   id: string
   fileName: string
@@ -43,9 +48,19 @@ export async function getEntry(slug: string): Promise<PublicEntry | null> {
   return res.json()
 }
 
-// ── File download URL ─────────────────────────────────────────────────────────
+// ── Public-facing CLI URL helpers (use the user's domain, not the internal worker URL) ───────
 export function fileUrl(slug: string, fileId?: string): string {
-  return fileId ? `${BASE}/api/entry/${slug}/file?id=${encodeURIComponent(fileId)}` : `${BASE}/api/entry/${slug}/file`
+  return fileId
+    ? `${PUBLIC_ORIGIN}/api/entry/${slug}/file?id=${encodeURIComponent(fileId)}`
+    : `${PUBLIC_ORIGIN}/api/entry/${slug}/file`
+}
+
+export function rawUrl(slug: string): string {
+  return `${PUBLIC_ORIGIN}/raw/${slug}`
+}
+
+export function zipUrl(slug: string): string {
+  return `${PUBLIC_ORIGIN}/zip/${slug}.zip`
 }
 
 
@@ -92,7 +107,7 @@ export interface AdminListResponse {
 }
 
 export async function fetchAdminEntries(adminKey: string): Promise<AdminListResponse> {
-  const res = await fetch(`${LIVE_WORKER_URL}/api/admin/entries?key=${encodeURIComponent(adminKey)}`, {
+  const res = await fetch(`${BASE}/api/admin/entries?key=${encodeURIComponent(adminKey)}`, {
     headers: { 'Authorization': `Bearer ${adminKey}` },
   })
   const json = await res.json()
@@ -101,7 +116,7 @@ export async function fetchAdminEntries(adminKey: string): Promise<AdminListResp
 }
 
 export async function adminDeleteEntry(slug: string, adminKey: string): Promise<void> {
-  const res = await fetch(`${LIVE_WORKER_URL}/api/admin/entry/${slug}?key=${encodeURIComponent(adminKey)}`, {
+  const res = await fetch(`${BASE}/api/admin/entry/${slug}?key=${encodeURIComponent(adminKey)}`, {
     method: 'DELETE',
     headers: { 'Authorization': `Bearer ${adminKey}` },
   })
@@ -110,7 +125,7 @@ export async function adminDeleteEntry(slug: string, adminKey: string): Promise<
 }
 
 export async function adminPurgeAllEntries(adminKey: string): Promise<number> {
-  const res = await fetch(`${LIVE_WORKER_URL}/api/admin/purge`, {
+  const res = await fetch(`${BASE}/api/admin/purge`, {
     method: 'DELETE',
     headers: { 'Authorization': `Bearer ${adminKey}` },
   })
@@ -118,10 +133,6 @@ export async function adminPurgeAllEntries(adminKey: string): Promise<number> {
   if (!res.ok) throw json as ApiError
   return json.deletedCount || 0
 }
-
-
-
-
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function formatBytes(bytes: number): string {

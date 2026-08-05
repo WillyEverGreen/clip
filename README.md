@@ -25,6 +25,8 @@
 ### ✨ Features
 
 - 🚀 **Zero Friction & No Sign-up**: Open the site, paste your text or drag-and-drop a file, get your link. Done.
+- 💻 **Terminal / CLI Downloads**: Download pastes and files straight from Linux or Windows terminals using simple `curl` commands.
+- 🗜️ **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive.
 - 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, or `30 Days`.
 - 🔑 **Secret Edit Code**: Protect your links with a custom edit password to edit content or delete early.
 - 🔗 **Custom URLs**: Pick your own readable slug (`clip.foo.ng/my-notes`).
@@ -34,12 +36,45 @@
 
 ---
 
+### 💻 Terminal / CLI Usage
+
+Download your pastes & files directly from any terminal without opening a browser:
+
+#### 1. Download Everything as ZIP (Text + All Files)
+```bash
+# Linux / macOS
+curl -fLO https://clip.foo.ng/zip/<slug>.zip
+
+# Windows (PowerShell / CMD)
+curl.exe -fLO https://clip.foo.ng/zip/<slug>.zip
+```
+
+#### 2. Print Raw Text to Terminal
+```bash
+# Linux / macOS
+curl -sL https://clip.foo.ng/raw/<slug>
+
+# Windows (PowerShell / CMD)
+curl.exe -sL https://clip.foo.ng/raw/<slug>
+```
+
+#### 3. Download File Attachment
+```bash
+# Linux / macOS
+curl -fLJO https://clip.foo.ng/api/entry/<slug>/file
+
+# Windows (PowerShell / CMD)
+curl.exe -fLJO https://clip.foo.ng/api/entry/<slug>/file
+```
+
+---
+
 ### 🛠️ Tech Stack
 
 | Component | Technology |
 | :--- | :--- |
 | **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Monochrome Dark UI), Lucide Icons |
-| **Backend** | Cloudflare Workers, Hono.js, Cloudflare KV Storage |
+| **Backend** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
 | **Hosting** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
 
 ---
