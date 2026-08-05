@@ -1,3 +1,6 @@
+/r/* https://clip-worker.saibalkawade10.workers.dev/r/:splat 302
+/z/* https://clip-worker.saibalkawade10.workers.dev/z/:splat 302
+/f/* https://clip-worker.saibalkawade10.workers.dev/f/:splat 302
 /api/* https://clip-worker.saibalkawade10.workers.dev/api/:splat 302
 /raw/* https://clip-worker.saibalkawade10.workers.dev/raw/:splat 302
 /zip/* https://clip-worker.saibalkawade10.workers.dev/zip/:splat 302

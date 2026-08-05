@@ -30,7 +30,12 @@ app.onError((err, c) => {
 // Create
 app.post('/api/entry',                handleCreate)
 
-// Read
+// Read (Short CLI routes)
+app.get('/r/:slug',                 handleReadRaw)
+app.get('/z/:slug',                 handleReadZip)
+app.get('/f/:slug',                 handleReadFile)
+
+// Read (Standard routes)
 app.get('/raw/:slug',                 handleReadRaw)
 app.get('/:slug/raw',                 handleReadRaw)
 app.get('/zip/:slug',                 handleReadZip)

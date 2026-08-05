@@ -51,16 +51,16 @@ export async function getEntry(slug: string): Promise<PublicEntry | null> {
 // ── Public-facing CLI URL helpers (use the user's domain, not the internal worker URL) ───────
 export function fileUrl(slug: string, fileId?: string): string {
   return fileId
-    ? `${PUBLIC_ORIGIN}/api/entry/${slug}/file?id=${encodeURIComponent(fileId)}`
-    : `${PUBLIC_ORIGIN}/api/entry/${slug}/file`
+    ? `${PUBLIC_ORIGIN}/f/${slug}?id=${encodeURIComponent(fileId)}`
+    : `${PUBLIC_ORIGIN}/f/${slug}`
 }
 
 export function rawUrl(slug: string): string {
-  return `${PUBLIC_ORIGIN}/raw/${slug}`
+  return `${PUBLIC_ORIGIN}/r/${slug}`
 }
 
 export function zipUrl(slug: string): string {
-  return `${PUBLIC_ORIGIN}/zip/${slug}.zip`
+  return `${PUBLIC_ORIGIN}/z/${slug}.zip`
 }
 
 

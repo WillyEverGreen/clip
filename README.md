@@ -43,28 +43,28 @@ Download your pastes & files directly from any terminal without opening a browse
 #### 1. Download Everything as ZIP (Text + All Files)
 ```bash
 # Linux / macOS
-curl -fLO https://clip.foo.ng/zip/<slug>.zip
+curl -fLO https://clip.foo.ng/z/<slug>.zip
 
 # Windows (PowerShell / CMD)
-curl.exe -fLO https://clip.foo.ng/zip/<slug>.zip
+curl.exe -fLO https://clip.foo.ng/z/<slug>.zip
 ```
 
 #### 2. Print Raw Text to Terminal
 ```bash
 # Linux / macOS
-curl -sL https://clip.foo.ng/raw/<slug>
+curl -sL https://clip.foo.ng/r/<slug>
 
 # Windows (PowerShell / CMD)
-curl.exe -sL https://clip.foo.ng/raw/<slug>
+curl.exe -sL https://clip.foo.ng/r/<slug>
 ```
 
 #### 3. Download File Attachment
 ```bash
 # Linux / macOS
-curl -fLJO https://clip.foo.ng/api/entry/<slug>/file
+curl -fLJO https://clip.foo.ng/f/<slug>
 
 # Windows (PowerShell / CMD)
-curl.exe -fLJO https://clip.foo.ng/api/entry/<slug>/file
+curl.exe -fLJO https://clip.foo.ng/f/<slug>
 ```
 
 ---
