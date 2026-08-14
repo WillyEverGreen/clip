@@ -22,6 +22,7 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
 
   const entry = await getEntry(c.env.PASTE_KV, slug)
   if (!entry) return c.json({ error: 'not_found' }, 404)
+  if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
   const pepper = c.env.APP_PEPPER || 'clip_default_pepper'
   const valid  = await verifyCode(

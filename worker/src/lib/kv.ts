@@ -45,12 +45,21 @@ export async function putEntry(
   kv: KVNamespace,
   entry: Entry,
 ): Promise<void> {
-  const ttl = Math.min(315_360_000, Math.max(60, Math.floor((entry.expiresAt - Date.now()) / 1000)))
+  const ttl = Math.floor((entry.expiresAt - Date.now()) / 1000)
+  const isPermanent = ttl > 2_838_240_000 // approx 90 years in seconds
   const metadata: PublicEntry = toPublicMetadata(entry)
-  await kv.put(key(entry.slug), JSON.stringify(entry), {
-    expirationTtl: ttl,
-    metadata,
-  })
+  
+  if (isPermanent) {
+    await kv.put(key(entry.slug), JSON.stringify(entry), {
+      metadata,
+    })
+  } else {
+    const safeTtl = Math.max(60, ttl)
+    await kv.put(key(entry.slug), JSON.stringify(entry), {
+      expirationTtl: safeTtl,
+      metadata,
+    })
+  }
 }
 
 
@@ -61,9 +70,18 @@ export async function putEntry(
 export async function deleteEntry(
   kv: KVNamespace,
   slug: string,
+  entry?: Entry | null,
 ): Promise<void> {
+  const activeEntry = entry !== undefined ? entry : await getEntry(kv, slug)
+  
   await kv.delete(key(slug))
   await kv.delete(fileKey(slug))
+  
+  if (activeEntry && activeEntry.files) {
+    for (const f of activeEntry.files) {
+      await kv.delete(`file:${slug}:${f.id}`)
+    }
+  }
 }
 
 // ─── Existence check ──────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ export interface Entry {
   createdAt: number         // Unix ms (Pub)
   updatedAt?: number        // Unix ms (Edit)
   expiresAt: number         // Expiration Unix ms
+  fileExpiresAt?: number    // Expiration Unix ms for files
   views: number             // View counter
 }
 

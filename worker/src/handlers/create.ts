@@ -38,8 +38,8 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     const ttlStr   = form.get('ttl') as string | null
 
     // Parse custom TTL (seconds)
-    let ttlSeconds = DEFAULT_TTL_SECONDS
-    if (ttlStr) {
+    let ttlSeconds: number | null = null
+    if (ttlStr && ttlStr !== 'permanent') {
       const parsed = parseInt(ttlStr, 10)
       if (!isNaN(parsed) && parsed >= 60 && parsed <= 2_592_000) {
         ttlSeconds = parsed
@@ -91,7 +91,29 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     const FILE_TTL_SECONDS = 172_800 // 2 Days (48 Hours) auto-delete for file uploads
     const PERMANENT_MS    = 3_153_600_000_000 // 100 Years (Permanent for text)
 
-    const expiresAt = isFile ? now + (FILE_TTL_SECONDS * 1000) : now + PERMANENT_MS
+    let expiresAt: number
+    let fileExpiresAt: number | undefined = undefined
+
+    if (ttlSeconds !== null) {
+      expiresAt = now + (ttlSeconds * 1000)
+      if (isFile) {
+        fileExpiresAt = Math.min(expiresAt, now + (FILE_TTL_SECONDS * 1000))
+      }
+    } else {
+      // Default: permanent for text, 2 days for files
+      const content = form.get('content') as string | null
+      const hasContent = content !== null && content.trim().length > 0
+      
+      if (isFile && !hasContent) {
+        expiresAt = now + (FILE_TTL_SECONDS * 1000)
+        fileExpiresAt = expiresAt
+      } else {
+        expiresAt = now + PERMANENT_MS
+        if (isFile) {
+          fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
+        }
+      }
+    }
 
     const salt      = generateSalt()
     const pepper    = c.env.APP_PEPPER || 'clip_default_pepper'
@@ -104,6 +126,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
       editCodeSalt: salt,
       createdAt: now,
       expiresAt,
+      fileExpiresAt,
       views: 0,
     }
 
@@ -139,6 +162,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     }
 
     const processedFiles: FileItem[] = []
+    const fileTtl = entry.fileExpiresAt ? Math.max(60, Math.ceil((entry.fileExpiresAt - now) / 1000)) : FILE_TTL_SECONDS
 
     for (let i = 0; i < fileList.length; i++) {
       const f = fileList[i]
@@ -147,9 +171,9 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
 
       // Primary file stored at file:{slug} for backwards compatibility
       if (i === 0) {
-        await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS)
+        await putFileKV(c.env.PASTE_KV, slug, fileBuffer, fileTtl)
       }
-      await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS, fileId)
+      await putFileKV(c.env.PASTE_KV, slug, fileBuffer, fileTtl, fileId)
 
       processedFiles.push({
         id: fileId,

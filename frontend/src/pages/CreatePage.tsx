@@ -17,6 +17,7 @@ export default function CreatePage() {
   const [files,    setFiles]    = useState<File[]>([])
   const [slug,     setSlug]     = useState('')
   const [editCode, setEditCode] = useState('')
+  const [ttl,      setTtl]      = useState('21600')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
 
@@ -42,6 +43,7 @@ export default function CreatePage() {
     const form = new FormData()
     form.append('type', mode)
     form.append('editCode', editCode)
+    form.append('ttl', ttl)
     if (slug.trim()) form.append('slug', slug.trim().toLowerCase())
     if (mode === 'text') form.append('content', content)
     if (mode === 'file') {
@@ -179,6 +181,25 @@ export default function CreatePage() {
                 maxLength={128}
                 style={{ height:'42px', boxSizing:'border-box' }}
               />
+            </div>
+
+            {/* Expiration Select */}
+            <div className="field" style={{ flex:'1 1 150px', marginTop: 0 }}>
+              <label className="label">Expiration <span style={{color:'var(--text-muted)'}}>*</span></label>
+              <select
+                className="input"
+                value={ttl}
+                onChange={e => setTtl(e.target.value)}
+                style={{ height:'42px', boxSizing:'border-box', padding: '0 0.75rem', cursor: 'pointer', background: '#000000', color: '#ffffff', border: '1px solid var(--border)' }}
+              >
+                <option value="600">10 Minutes</option>
+                <option value="3600">1 Hour</option>
+                <option value="21600">6 Hours (Default)</option>
+                <option value="86400">1 Day</option>
+                <option value="604800">7 Days</option>
+                <option value="2592000">30 Days</option>
+                <option value="permanent">Permanent</option>
+              </select>
             </div>
 
             {/* Submit Button */}

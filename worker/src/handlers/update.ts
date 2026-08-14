@@ -26,6 +26,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
     // ── Load existing entry ───────────────────────────────────────────────────
     const entry = await getEntry(c.env.PASTE_KV, slug)
     if (!entry) return c.json({ error: 'not_found' }, 404)
+    if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
     // ── Parse form ───────────────────────────────────────────────────────────
     let form: FormData
@@ -130,15 +131,18 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
         return c.json({ error: 'file_too_large' }, 400)
       }
 
+      const newFileExpiresAt = Math.min(updated.expiresAt, Date.now() + (FILE_TTL_SECONDS * 1000))
+      const fileTtl = Math.max(60, Math.ceil((newFileExpiresAt - Date.now()) / 1000))
+
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i]
         const fileId = `f_${retainedFiles.length + i + 1}_${Date.now()}`
         const fileBuffer = await f.arrayBuffer()
 
         if (retainedFiles.length === 0 && i === 0) {
-          await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS)
+          await putFileKV(c.env.PASTE_KV, slug, fileBuffer, fileTtl)
         }
-        await putFileKV(c.env.PASTE_KV, slug, fileBuffer, FILE_TTL_SECONDS, fileId)
+        await putFileKV(c.env.PASTE_KV, slug, fileBuffer, fileTtl, fileId)
 
         newlyProcessedFiles.push({
           id: fileId,
@@ -157,13 +161,20 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       updated.fileMime  = combinedFiles[0].fileMime
       updated.fileSize  = combinedFiles.reduce((acc, f) => acc + f.fileSize, 0)
       updated.files     = combinedFiles
-      updated.expiresAt = Date.now() + (FILE_TTL_SECONDS * 1000) // Reset 48h TTL on file update
+      
+      const newFileExpiresAt = Math.min(updated.expiresAt, Date.now() + (FILE_TTL_SECONDS * 1000))
+      updated.fileExpiresAt = newFileExpiresAt
+      
+      if (!updated.content) {
+        updated.expiresAt = newFileExpiresAt
+      }
     } else {
       updated.hasFile  = false
       updated.fileName = undefined
       updated.fileMime = undefined
       updated.fileSize = undefined
       updated.files    = undefined
+      updated.fileExpiresAt = undefined
     }
 
     // 4. Update entry type dynamically

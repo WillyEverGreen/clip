@@ -84,8 +84,10 @@ export default function ViewPage() {
                   ? `Text & File · ${formatBytes(entry.fileSize ?? 0)}`
                   : (entry.hasFile || entry.fileName)
                     ? `File · ${formatBytes(entry.fileSize ?? 0)}`
-                    : 'Text · Markdown · Permanent Link'}
+                    : 'Text · Markdown'}
               </span>
+              <span style={{ color:'var(--text-dim)', fontSize:'0.75rem' }}>·</span>
+              <Countdown expiresAt={entry.expiresAt} />
             </div>
           </div>
 

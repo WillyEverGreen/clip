@@ -26,7 +26,8 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
   }
 
   // 2. Add each attached file
-  if (entry.hasFile) {
+  const filesExpired = entry.fileExpiresAt && Date.now() > entry.fileExpiresAt
+  if (entry.hasFile && !filesExpired) {
     if (entry.files && entry.files.length > 0) {
       for (const file of entry.files) {
         const data = await getFileKV(c.env.PASTE_KV, slug, file.id)

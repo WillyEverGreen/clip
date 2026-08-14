@@ -7,6 +7,7 @@ const RESERVED = new Set([
   '404', 'not-found', 'admin', 'login', 'signup',
   'static', '_next', '_headers', '_redirects',
   'favicon.ico', 'robots.txt', 'sitemap.xml',
+  'raw', 'zip', 'r', 'z', 'f',
 ])
 
 // ─── Auto-generator ───────────────────────────────────────────────────────────

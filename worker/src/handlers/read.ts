@@ -16,6 +16,7 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
 
   if (!entry || !entry.hasFile) return c.json({ error: 'not_found' }, 404)
   if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+  if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt) return c.json({ error: 'expired' }, 404)
 
   let fileName = entry.fileName ?? 'download'
   let fileMime = entry.fileMime ?? 'application/octet-stream'
@@ -55,6 +56,17 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.text('Not found', 404)
   if (Date.now() > entry.expiresAt) return c.text('Expired', 404)
 
+  // Self-heal: clear expired files
+  if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
+    entry.hasFile = false
+    entry.fileName = undefined
+    entry.fileMime = undefined
+    entry.fileSize = undefined
+    entry.files = undefined
+    entry.fileExpiresAt = undefined
+    await putEntry(c.env.PASTE_KV, entry)
+  }
+
   entry.views = (entry.views ?? 0) + 1
   await putEntry(c.env.PASTE_KV, entry)
 
@@ -78,6 +90,18 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
   const entry = await getEntry(c.env.PASTE_KV, slug)
 
   if (!entry) return c.json({ error: 'not_found' }, 404)
+  if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+
+  // Self-heal: clear expired files
+  if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
+    entry.hasFile = false
+    entry.fileName = undefined
+    entry.fileMime = undefined
+    entry.fileSize = undefined
+    entry.files = undefined
+    entry.fileExpiresAt = undefined
+    await putEntry(c.env.PASTE_KV, entry)
+  }
 
   const userAgent = c.req.header('user-agent')?.toLowerCase() || ''
   const accept = c.req.header('accept')?.toLowerCase() || ''
