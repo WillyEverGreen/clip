@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { Env } from '../lib/types'
 import { getEntry, putEntry, toPublic, getFileKV } from '../lib/kv'
+import { isEncrypted, decryptContent } from '../lib/crypto'
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_.\-]/g, '_').slice(0, 128)
@@ -74,7 +75,26 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
     return handleReadFile(c)
   }
 
-  return new Response(entry.content ?? '', {
+  let textContent = entry.content ?? ''
+
+  // If content is encrypted, check if password was provided in query or header
+  if (textContent && isEncrypted(textContent)) {
+    const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass')
+    if (password) {
+      const decrypted = await decryptContent(textContent, password)
+      if (decrypted !== null) {
+        return new Response(decrypted, {
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Cache-Control': 'no-store',
+          },
+        })
+      }
+      return c.text(`Error: Incorrect password for encrypted paste /${slug}.\nUsage: curl -H "X-Password: <password>" https://clip.foo.ng/r/${slug}\n`, 401)
+    }
+  }
+
+  return new Response(textContent, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-store',

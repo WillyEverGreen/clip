@@ -73,6 +73,52 @@ export async function verifyCode(
   return diff === 0
 }
 
+// ─── Content Payload Encryption / Decryption ────────────────────────────────
+
+const PBKDF2_PAYLOAD_ITERATIONS = 250_000
+
+export interface EncryptedPayload {
+  encrypted: true
+  iv: string
+  salt: string
+  ciphertext: string
+}
+
+export function isEncrypted(content: string): boolean {
+  try {
+    const p = JSON.parse(content)
+    return p?.encrypted === true
+  } catch {
+    return false
+  }
+}
+
+export async function decryptContent(raw: string, password: string): Promise<string | null> {
+  try {
+    const payload: EncryptedPayload = JSON.parse(raw)
+    if (!payload.encrypted) return null
+
+    const salt   = Uint8Array.from(atob(payload.salt),       c => c.charCodeAt(0))
+    const iv     = Uint8Array.from(atob(payload.iv),         c => c.charCodeAt(0))
+    const cipher = Uint8Array.from(atob(payload.ciphertext), c => c.charCodeAt(0))
+
+    const enc = new TextEncoder()
+    const rawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: PBKDF2_PAYLOAD_ITERATIONS, hash: 'SHA-256' },
+      rawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    )
+
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher)
+    return new TextDecoder().decode(plainBuf)
+  } catch {
+    return null
+  }
+}
+
 // ─── IP hashing (for privacy-safe logging) ────────────────────────────────────
 
 export async function hashIp(ip: string, pepper: string): Promise<string> {
@@ -82,5 +128,5 @@ export async function hashIp(ip: string, pepper: string): Promise<string> {
   return Array.from(new Uint8Array(hash))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
-    .slice(0, 12) // short prefix — enough for debugging, not enough to reverse
+    .slice(0, 12)
 }

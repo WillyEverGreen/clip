@@ -97,7 +97,9 @@ export default function ViewPage() {
   const displayContent     = contentIsEncrypted ? decryptedContent : entry.content
   const hasActualText      = entry.content && displayContent !== '{"file_lock":true}'
 
-  const textCurlCmd = cliOs === 'linux' ? `curl -sL ${rawEndpoint}` : `curl.exe -sL ${rawEndpoint}`
+  const textCurlCmd = contentIsEncrypted
+    ? (cliOs === 'linux' ? `curl -sL -H "X-Password: <password>" ${rawEndpoint}` : `curl.exe -sL -H "X-Password: <password>" ${rawEndpoint}`)
+    : (cliOs === 'linux' ? `curl -sL ${rawEndpoint}` : `curl.exe -sL ${rawEndpoint}`)
   const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO ${fileEndpoint}` : `curl.exe -fLJO ${fileEndpoint}`
   const zipCurlCmd  = cliOs === 'linux' ? `curl -fLO ${zipEndpoint}` : `curl.exe -fLO ${zipEndpoint}`
 
