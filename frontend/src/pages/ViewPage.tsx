@@ -29,9 +29,21 @@ export default function ViewPage() {
   useEffect(() => {
     if (!slug) return
     getEntry(slug)
-      .then(e => {
-        if (!e || Date.now() > e.expiresAt) navigate('/404')
-        else setEntry(e)
+      .then(async e => {
+        if (!e || Date.now() > e.expiresAt) {
+          navigate('/404')
+          return
+        }
+        setEntry(e)
+        if (e.content && isEncrypted(e.content)) {
+          const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug)
+          if (sessionPass) {
+            const result = await decryptContent(e.content, sessionPass)
+            if (result !== null) {
+              setDecryptedContent(result)
+            }
+          }
+        }
       })
       .catch(() => navigate('/404'))
       .finally(() => setLoading(false))
@@ -66,6 +78,7 @@ export default function ViewPage() {
       setDecryptError(true)
     } else {
       setDecryptedContent(result)
+      sessionStorage.setItem('clip_decrypt_' + slug, decryptPassword)
     }
   }
 
@@ -81,6 +94,7 @@ export default function ViewPage() {
 
   const contentIsEncrypted = entry.content ? isEncrypted(entry.content) : false
   const displayContent     = contentIsEncrypted ? decryptedContent : entry.content
+  const hasActualText      = entry.content && displayContent !== '{"file_lock":true}'
 
   const textCurlCmd = cliOs === 'linux' ? `curl -sL ${rawEndpoint}` : `curl.exe -sL ${rawEndpoint}`
   const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO ${fileEndpoint}` : `curl.exe -fLJO ${fileEndpoint}`
@@ -383,7 +397,7 @@ export default function ViewPage() {
           ) : (
             <>
               {/* Text content section */}
-              {entry.type === 'text' && entry.content && (
+              {hasActualText && (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -402,7 +416,7 @@ export default function ViewPage() {
 
               {/* File card section */}
               {(entry.hasFile || entry.fileName) && (
-                <div style={{ marginTop: (entry.type === 'text' && entry.content) ? '2rem' : 0, paddingTop: (entry.type === 'text' && entry.content) ? '2rem' : 0, borderTop: (entry.type === 'text' && entry.content) ? '1px solid var(--border)' : 'none' }}>
+                <div style={{ marginTop: hasActualText ? '2rem' : 0, paddingTop: hasActualText ? '2rem' : 0, borderTop: hasActualText ? '1px solid var(--border)' : 'none' }}>
                   <FileCard entry={entry} slug={slug!} />
                 </div>
               )}
