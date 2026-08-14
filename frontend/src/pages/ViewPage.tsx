@@ -182,20 +182,22 @@ export default function ViewPage() {
           <div
             style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(0, 0, 0, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '1.5rem', zIndex: 99999,
+              background: 'rgba(0, 0, 0, 0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '1.25rem', zIndex: 99999,
             }}
             onClick={() => setShowCliModal(false)}
           >
             <div
               className="card animate-fade-up"
               style={{
-                width: '100%', maxWidth: '640px', background: '#0a0a0a', border: '1px solid #27272a',
-                padding: '1.75rem', borderRadius: '14px', position: 'relative',
+                width: '100%', maxWidth: '640px', maxHeight: '88vh', background: '#0a0a0a', border: '1px solid #27272a',
+                borderRadius: '16px', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.85)',
               }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              {/* Modal Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.1rem 1.5rem', borderBottom: '1px solid #27272a', background: '#0e0e10', flexShrink: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <Terminal size={20} color="#10b981" />
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>Terminal CLI</h3>
@@ -205,120 +207,143 @@ export default function ViewPage() {
                 </button>
               </div>
 
-              {/* Download / Upload Tabs */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                <button onClick={() => setCliTab('download')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='download' ? '#27272a' : 'transparent', color: cliTab==='download' ? '#ffffff' : '#a1a1aa' }}>
-                  ⬇️ Download
-                </button>
-                <button onClick={() => setCliTab('upload')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='upload' ? '#27272a' : 'transparent', color: cliTab==='upload' ? '#ffffff' : '#a1a1aa' }}>
-                  ⬆️ Upload
-                </button>
-              </div>
-              {/* OS Selector */}
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa' }}>
-                  🐧 Linux / macOS
-                </button>
-                <button onClick={() => setCliOs('windows')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'windows' ? '#27272a' : 'transparent', color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa' }}>
-                  🪟 Windows (PowerShell)
-                </button>
-              </div>
-              {/* ── DOWNLOAD TAB ──────────────────────────────────────── */}
-              {cliTab === 'download' && (<>
-              {/* ZIP Bundle */}
-              <div style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(96,165,250,0.08) 100%)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '10px', padding: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
-                  <FileArchive size={15} color="#10b981" />
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981', margin: 0 }}>Download Everything as ZIP:</label>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                  <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem', color: '#10b981', overflowX: 'auto', whiteSpace: 'nowrap' }}>{zipCurlCmd}</code>
-                  <button onClick={() => copyCliCommand(zipCurlCmd, 'zip_cmd')} className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', gap: '0.3rem', flexShrink: 0 }}>
-                    {cliCmdCopied === 'zip_cmd' ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy</>}
+              {/* Modal Body with Custom Scrollbar */}
+              <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1 }}>
+                {/* Download / Upload Tabs */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
+                  <button onClick={() => setCliTab('download')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='download' ? '#27272a' : 'transparent', color: cliTab==='download' ? '#ffffff' : '#a1a1aa' }}>
+                    ⬇️ Download
+                  </button>
+                  <button onClick={() => setCliTab('upload')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='upload' ? '#27272a' : 'transparent', color: cliTab==='upload' ? '#ffffff' : '#a1a1aa' }}>
+                    ⬆️ Upload
                   </button>
                 </div>
-                <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.5rem 0 0', lineHeight: 1.4 }}>Downloads <strong style={{ color: '#a1a1aa' }}>{entry.slug}.zip</strong>{(entry.hasFile || entry.fileName) ? ' · text + all files' : ' · text as txt'}.</p>
-              </div>
+                {/* OS Selector */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
+                  <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa' }}>
+                    🐧 Linux / macOS
+                  </button>
+                  <button onClick={() => setCliOs('windows')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'windows' ? '#27272a' : 'transparent', color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa' }}>
+                    🪟 Windows (PowerShell)
+                  </button>
+                </div>
 
-              <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 1rem' }}>Or download individually:</p>
-
-              {entry.content && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', display: 'block', marginBottom: '0.4rem' }}>📄 Print text to terminal:</label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                    <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', overflowX: 'auto', whiteSpace: 'nowrap' }}>{textCurlCmd}</code>
-                    <button onClick={() => copyCliCommand(textCurlCmd, 'text_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', gap: '0.3rem', flexShrink: 0 }}>
-                      {cliCmdCopied === 'text_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
+                {/* ── DOWNLOAD TAB ──────────────────────────────────────── */}
+                {cliTab === 'download' && (<>
+                {/* ZIP Bundle */}
+                <div style={{ marginBottom: '1.25rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(96,165,250,0.08) 100%)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '10px', padding: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
+                    <FileArchive size={15} color="#10b981" />
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981', margin: 0 }}>Download Everything as ZIP:</label>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #27272a' }}>
+                    <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem', color: '#10b981', overflowX: 'auto', whiteSpace: 'nowrap' }}>{zipCurlCmd}</code>
+                    <button onClick={() => copyCliCommand(zipCurlCmd, 'zip_cmd')} className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', gap: '0.3rem', flexShrink: 0 }}>
+                      {cliCmdCopied === 'zip_cmd' ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy</>}
                     </button>
                   </div>
+                  <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.5rem 0 0', lineHeight: 1.4 }}>Downloads <strong style={{ color: '#a1a1aa' }}>{entry.slug}.zip</strong>{(entry.hasFile || entry.fileName) ? ' · text + all files' : ' · text as txt'}.</p>
                 </div>
-              )}
 
-              {(entry.hasFile || entry.fileName) && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', display: 'block', marginBottom: '0.4rem' }}>📁 Download file(s):</label>
-                  {entry.files && entry.files.length > 1 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {entry.files.map((f) => {
-                        const fCmd = cliOs === 'linux' ? `curl -LO ${fileUrl(entry.slug, f.id)}` : `curl.exe -LO ${fileUrl(entry.slug, f.id)}`
-                        const fId = `file_${f.id}`
-                        return (
-                          <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.45rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                            <span style={{ fontSize: '0.7rem', color: '#60a5fa', whiteSpace: 'nowrap', flexShrink: 0 }}>{f.fileName}</span>
-                            <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.72rem', color: '#7dd3fc', overflowX: 'auto', whiteSpace: 'nowrap' }}>{fCmd}</code>
-                            <button onClick={() => copyCliCommand(fCmd, fId)} className="btn btn-ghost" style={{ fontSize: '0.7rem', padding: '0.2rem 0.45rem', gap: '0.25rem', flexShrink: 0 }}>
-                              {cliCmdCopied === fId ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
-                            </button>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                      <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.775rem', color: '#60a5fa', overflowX: 'auto', whiteSpace: 'nowrap' }}>{fileCurlCmd}</code>
-                      <button onClick={() => copyCliCommand(fileCurlCmd, 'file_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', gap: '0.3rem', flexShrink: 0 }}>
-                        {cliCmdCopied === 'file_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-              <p style={{ fontSize: '0.72rem', color: '#52525b', margin: '0.5rem 0 0', lineHeight: 1.4 }}>💡 Use the ZIP bundle to get everything in one command.</p>
-              </>)}
+                <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 0.85rem' }}>Or download individually:</p>
 
-              {/* ── UPLOAD TAB ────────────────────────────────────────── */}
-              {cliTab === 'upload' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                  <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', padding: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                      <Upload size={15} color="#60a5fa" />
-                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', margin: 0 }}>Upload a text paste:</label>
+                {entry.content && (
+                  <div style={{ marginBottom: '1.25rem' }}>
+                    <div style={{ background: '#000000', borderRadius: '10px', border: '1px solid #27272a', padding: '0.75rem 1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#a3e635' }}>📄 Print text to terminal</span>
+                        <button onClick={() => copyCliCommand(textCurlCmd, 'text_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.3rem' }}>
+                          {cliCmdCopied === 'text_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
+                        </button>
+                      </div>
+                      <div style={{ background: '#09090b', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #1f1f23' }}>
+                        <code style={{ fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', overflowX: 'auto', whiteSpace: 'nowrap', display: 'block' }}>{textCurlCmd}</code>
+                      </div>
                     </div>
-                    <div style={{ background: '#000000', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #27272a', position: 'relative' }}>
-                      <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{uploadCurlText}</pre>
-                      <button onClick={() => copyCliCommand(uploadCurlText, 'upload_text')} className="btn btn-ghost" style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem' }}>
-                        {cliCmdCopied === 'upload_text' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
-                      </button>
-                    </div>
-                    <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Replace <code style={{ color: '#d1d5db' }}>yourfile.txt</code> with your file path. The JSON response contains the <code style={{ color: '#d1d5db' }}>slug</code> of the new link.</p>
                   </div>
+                )}
 
-                  <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', padding: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                      <Upload size={15} color="#60a5fa" />
-                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', margin: 0 }}>Upload a file:</label>
+                {(entry.hasFile || entry.fileName) && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa' }}>📁 Attached Files ({(entry.files && entry.files.length > 0) ? entry.files.length : 1}):</label>
                     </div>
-                    <div style={{ background: '#000000', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #27272a', position: 'relative' }}>
-                      <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.775rem', color: '#7dd3fc', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{uploadCurlFile}</pre>
-                      <button onClick={() => copyCliCommand(uploadCurlFile, 'upload_file')} className="btn btn-ghost" style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem' }}>
-                        {cliCmdCopied === 'upload_file' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
-                      </button>
-                    </div>
-                    <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Supports images, PDFs, archives, and any file up to 50 MB.</p>
+                    {entry.files && entry.files.length > 1 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
+                        {entry.files.map((f) => {
+                          const fCmd = cliOs === 'linux' ? `curl -LO ${fileUrl(entry.slug, f.id)}` : `curl.exe -LO ${fileUrl(entry.slug, f.id)}`
+                          const fId = `file_${f.id}`
+                          return (
+                            <div key={f.id} style={{ background: '#000000', borderRadius: '8px', border: '1px solid #27272a', padding: '0.65rem 0.85rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                                <span style={{ fontSize: '0.785rem', fontWeight: 600, color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '380px' }} title={f.fileName}>
+                                  📄 {f.fileName}
+                                </span>
+                                <button onClick={() => copyCliCommand(fCmd, fId)} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem', flexShrink: 0 }}>
+                                  {cliCmdCopied === fId ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
+                                </button>
+                              </div>
+                              <div style={{ background: '#09090b', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #1f1f23' }}>
+                                <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.72rem', color: '#7dd3fc', overflowX: 'auto', whiteSpace: 'nowrap', display: 'block' }}>{fCmd}</code>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ background: '#000000', borderRadius: '8px', border: '1px solid #27272a', padding: '0.65rem 0.85rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.785rem', fontWeight: 600, color: '#e4e4e7' }}>
+                            📄 {entry.fileName || 'file'}
+                          </span>
+                          <button onClick={() => copyCliCommand(fileCurlCmd, 'file_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.3rem' }}>
+                            {cliCmdCopied === 'file_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
+                          </button>
+                        </div>
+                        <div style={{ background: '#09090b', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #1f1f23' }}>
+                          <code style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#60a5fa', overflowX: 'auto', whiteSpace: 'nowrap', display: 'block' }}>{fileCurlCmd}</code>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p style={{ fontSize: '0.72rem', color: '#52525b', lineHeight: 1.4 }}>💡 Set <code style={{ color: '#d1d5db' }}>ttl=permanent</code> for a link that never expires.</p>
-                </div>
-              )}
+                )}
+                <p style={{ fontSize: '0.72rem', color: '#52525b', margin: '0.5rem 0 0', lineHeight: 1.4 }}>💡 Use the ZIP bundle to get everything in one command.</p>
+                </>)}
+
+                {/* ── UPLOAD TAB ────────────────────────────────────────── */}
+                {cliTab === 'upload' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', padding: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <Upload size={15} color="#60a5fa" />
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', margin: 0 }}>Upload a text paste:</label>
+                      </div>
+                      <div style={{ background: '#000000', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #27272a', position: 'relative' }}>
+                        <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{uploadCurlText}</pre>
+                        <button onClick={() => copyCliCommand(uploadCurlText, 'upload_text')} className="btn btn-ghost" style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem' }}>
+                          {cliCmdCopied === 'upload_text' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
+                        </button>
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Replace <code style={{ color: '#d1d5db' }}>yourfile.txt</code> with your file path. The JSON response contains the <code style={{ color: '#d1d5db' }}>slug</code> of the new link.</p>
+                    </div>
+
+                    <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', padding: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <Upload size={15} color="#60a5fa" />
+                        <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', margin: 0 }}>Upload a file:</label>
+                      </div>
+                      <div style={{ background: '#000000', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #27272a', position: 'relative' }}>
+                        <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.775rem', color: '#7dd3fc', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{uploadCurlFile}</pre>
+                        <button onClick={() => copyCliCommand(uploadCurlFile, 'upload_file')} className="btn btn-ghost" style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem' }}>
+                          {cliCmdCopied === 'upload_file' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
+                        </button>
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Supports images, PDFs, archives, and any file up to 50 MB.</p>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: '#52525b', lineHeight: 1.4 }}>💡 Set <code style={{ color: '#d1d5db' }}>ttl=permanent</code> for a link that never expires.</p>
+                  </div>
+                )}
+              </div>
 
             </div>
           </div>,
