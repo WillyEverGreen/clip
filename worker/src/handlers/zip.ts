@@ -1,6 +1,7 @@
 import type { Context } from 'hono'
 import type { Env } from '../lib/types'
 import { getEntry, getFileKV } from '../lib/kv'
+import { isEncrypted, decryptContent } from '../lib/crypto'
 import { zipSync, strToU8 } from 'fflate'
 
 // ── GET /zip/:slug ────────────────────────────────────────────────────────────
@@ -22,7 +23,19 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
 
   // 1. Add text content as <slug>.txt
   if (entry.content) {
-    zipFiles[`${slug}.txt`] = strToU8(entry.content)
+    let contentToZip = entry.content
+    if (isEncrypted(entry.content)) {
+      const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
+      if (password) {
+        const decrypted = await decryptContent(entry.content, password)
+        if (decrypted !== null) {
+          contentToZip = decrypted
+        } else {
+          return c.text(`Error: Incorrect password for encrypted paste /${slug}.\nUsage: curl -fLO "https://clip.foo.ng/z/${slug}.zip?pass=<password>"\n`, 401)
+        }
+      }
+    }
+    zipFiles[`${slug}.txt`] = strToU8(contentToZip)
   }
 
   // 2. Add each attached file

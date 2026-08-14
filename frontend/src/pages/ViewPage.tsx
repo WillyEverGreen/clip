@@ -97,11 +97,17 @@ export default function ViewPage() {
   const displayContent     = contentIsEncrypted ? decryptedContent : entry.content
   const hasActualText      = entry.content && displayContent !== '{"file_lock":true}'
 
-  const textCurlCmd = contentIsEncrypted
-    ? (cliOs === 'linux' ? `curl -sL -H "X-Password: <password>" ${rawEndpoint}` : `curl.exe -sL -H "X-Password: <password>" ${rawEndpoint}`)
-    : (cliOs === 'linux' ? `curl -sL ${rawEndpoint}` : `curl.exe -sL ${rawEndpoint}`)
-  const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO ${fileEndpoint}` : `curl.exe -fLJO ${fileEndpoint}`
-  const zipCurlCmd  = cliOs === 'linux' ? `curl -fLO ${zipEndpoint}` : `curl.exe -fLO ${zipEndpoint}`
+  const activePass = contentIsEncrypted
+    ? (decryptPassword || (slug ? sessionStorage.getItem('clip_decrypt_' + slug) : null) || '<password>')
+    : null
+
+  const rawUrlWithPass = activePass ? `${rawEndpoint}?pass=${activePass}` : rawEndpoint
+  const zipUrlWithPass = activePass ? `${zipEndpoint}?pass=${activePass}` : zipEndpoint
+  const fileUrlWithPass = activePass ? `${fileEndpoint}?pass=${activePass}` : fileEndpoint
+
+  const textCurlCmd = cliOs === 'linux' ? `curl -sL "${rawUrlWithPass}"` : `curl.exe -sL "${rawUrlWithPass}"`
+  const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO "${fileUrlWithPass}"` : `curl.exe -fLJO "${fileUrlWithPass}"`
+  const zipCurlCmd  = cliOs === 'linux' ? `curl -fLO "${zipUrlWithPass}"` : `curl.exe -fLO "${zipUrlWithPass}"`
 
   // CLI Upload commands
   const uploadCurlText = cliOs === 'linux'
@@ -264,7 +270,8 @@ export default function ViewPage() {
                     {entry.files && entry.files.length > 1 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
                         {entry.files.map((f) => {
-                          const fCmd = cliOs === 'linux' ? `curl -LO ${fileUrl(entry.slug, f.id)}` : `curl.exe -LO ${fileUrl(entry.slug, f.id)}`
+                          const singleFileUrl = activePass ? `${fileUrl(entry.slug, f.id)}?pass=${activePass}` : fileUrl(entry.slug, f.id)
+                          const fCmd = cliOs === 'linux' ? `curl -LO "${singleFileUrl}"` : `curl.exe -LO "${singleFileUrl}"`
                           const fId = `file_${f.id}`
                           return (
                             <div key={f.id} className="modal-inner-card" style={{ padding:'0.65rem 0.85rem' }}>

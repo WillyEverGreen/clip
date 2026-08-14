@@ -79,7 +79,7 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
 
   // If content is encrypted, check if password was provided in query or header
   if (textContent && isEncrypted(textContent)) {
-    const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass')
+    const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
     if (password) {
       const decrypted = await decryptContent(textContent, password)
       if (decrypted !== null) {
@@ -90,7 +90,7 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
           },
         })
       }
-      return c.text(`Error: Incorrect password for encrypted paste /${slug}.\nUsage: curl -H "X-Password: <password>" https://clip.foo.ng/r/${slug}\n`, 401)
+      return c.text(`Error: Incorrect password for encrypted paste /${slug}.\nUsage: curl -sL "https://clip.foo.ng/r/${slug}?pass=<password>"\n`, 401)
     }
   }
 
