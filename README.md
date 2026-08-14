@@ -28,6 +28,7 @@
 - 💻 **Terminal / CLI Downloads**: Download pastes and files straight from Linux or Windows terminals using simple `curl` commands.
 - 🗜️ **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive.
 - 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, or `30 Days`.
+- 🔒 **Zero-Knowledge Password Lock**: Secure your text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption. The server never sees your password or plaintext data.
 - 🔑 **Secret Edit Code**: Protect your links with a custom edit password to edit content or delete early.
 - 🔗 **Custom URLs**: Pick your own readable slug (`clip.foo.ng/my-notes`).
 - 📁 **File & Markdown Support**: Render rich formatted Markdown text and upload files alongside your snippets.

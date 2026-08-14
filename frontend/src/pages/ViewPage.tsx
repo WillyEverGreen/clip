@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Trash2, Terminal, X, QrCode, Lock, Unlock, Upload } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
 import { isEncrypted, decryptContent } from '../lib/crypto'
 import Countdown         from '../components/Countdown'
@@ -20,24 +20,11 @@ export default function ViewPage() {
   const [cliOs,             setCliOs]             = useState<'linux' | 'windows'>('linux')
   const [cliTab,            setCliTab]            = useState<'download' | 'upload'>('download')
   const [cliCmdCopied,      setCliCmdCopied]      = useState<string | null>(null)
-  const [theme,             setTheme]             = useState<'mono' | 'cyberpunk' | 'amber'>(
-    () => (localStorage.getItem('clip_theme') as 'mono' | 'cyberpunk' | 'amber') || 'mono'
-  )
   // Encryption state
   const [decryptPassword,   setDecryptPassword]   = useState('')
   const [decryptedContent,  setDecryptedContent]  = useState<string | null>(null)
   const [decryptError,      setDecryptError]      = useState(false)
   const [decrypting,        setDecrypting]        = useState(false)
-
-  // Apply theme to <body>
-  useEffect(() => {
-    document.body.dataset.theme = theme === 'mono' ? '' : theme
-    localStorage.setItem('clip_theme', theme)
-  }, [theme])
-
-  const cycleTheme = useCallback(() => {
-    setTheme(t => t === 'mono' ? 'cyberpunk' : t === 'cyberpunk' ? 'amber' : 'mono')
-  }, [])
 
   useEffect(() => {
     if (!slug) return
@@ -94,8 +81,6 @@ export default function ViewPage() {
 
   const contentIsEncrypted = entry.content ? isEncrypted(entry.content) : false
   const displayContent     = contentIsEncrypted ? decryptedContent : entry.content
-
-  const themeEmoji = theme === 'mono' ? '⚪' : theme === 'cyberpunk' ? '🟢' : '🟡'
 
   const textCurlCmd = cliOs === 'linux' ? `curl -sL ${rawEndpoint}` : `curl.exe -sL ${rawEndpoint}`
   const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO ${fileEndpoint}` : `curl.exe -fLJO ${fileEndpoint}`
@@ -157,14 +142,6 @@ export default function ViewPage() {
           </div>
 
           <div style={{ display:'flex', gap:'0.5rem', flexShrink:0, flexWrap:'wrap', alignItems:'center' }}>
-            {/* Theme Toggle */}
-            <button
-              className="theme-btn"
-              onClick={cycleTheme}
-              title={`Theme: ${theme} (click to cycle)`}
-            >
-              {themeEmoji}
-            </button>
             <button className="btn btn-ghost" onClick={() => setShowCliModal(true)} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }} title="Terminal Commands">
               <Terminal size={14} color="#10b981" /> Terminal CLI
             </button>
@@ -371,75 +348,65 @@ export default function ViewPage() {
         )}
 
         {/* ── Content ────────────────────────────────────────────────────── */}
-        <div className="card card-glow" style={{ padding:'2.5rem' }}>
-          {entry.content && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Text Content</span>
-                  {contentIsEncrypted && !decryptedContent && (
-                    <span className="lock-badge"><Lock size={10} /> Encrypted</span>
-                  )}
-                  {decryptedContent && (
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:'0.3rem', color:'#4ade80', fontSize:'0.72rem', fontWeight:700 }}><Unlock size={10} /> Decrypted</span>
-                  )}
-                </div>
-                {!contentIsEncrypted && (
-                  <button onClick={copyTextContent} className="btn btn-ghost" style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem' }}>
-                    {textCopied ? <><Check size={13} color="#10b981" /> Copied Text</> : <><Copy size={13} /> Copy Text</>}
-                  </button>
-                )}
+        <div className="card card-glow card-content">
+          {contentIsEncrypted && !decryptedContent ? (
+            <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+              <div style={{ width:60, height:60, borderRadius:'50%', background:'#0a0a0a', border:'1px solid #3f3f46', display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:'1.25rem' }}>
+                <Lock size={26} color="#ffffff" />
               </div>
-
-              {/* Encrypted: show unlock screen or decrypted content */}
-              {contentIsEncrypted && !decryptedContent ? (
-                <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
-                  <div style={{ width:60, height:60, borderRadius:'50%', background:'#0a0a0a', border:'1px solid #2d1f00', display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:'1.25rem' }}>
-                    <Lock size={26} color="#fbbf24" />
-                  </div>
-                  <h2 style={{ fontSize:'1.2rem', fontWeight:700, color:'#ffffff', marginBottom:'0.5rem' }}>This paste is password protected</h2>
-                  <p style={{ fontSize:'0.875rem', color:'var(--text-muted)', marginBottom:'1.5rem', lineHeight:1.6 }}>Enter the view password to decrypt and read the content.<br/>The decryption happens entirely in your browser.</p>
-                  <div style={{ display:'flex', gap:'0.6rem', maxWidth:'360px', margin:'0 auto' }}>
-                    <input
-                      className="input"
-                      type="password"
-                      placeholder="Enter view password…"
-                      value={decryptPassword}
-                      onChange={e => { setDecryptPassword(e.target.value); setDecryptError(false) }}
-                      onKeyDown={e => e.key === 'Enter' && handleDecrypt()}
-                      style={{ flex:1 }}
-                      autoFocus
-                    />
-                    <button
-                      className="btn btn-primary"
-                      onClick={handleDecrypt}
-                      disabled={decrypting}
-                      style={{ flexShrink:0, padding:'0 1.25rem' }}
-                    >
-                      {decrypting ? <div className="spinner" /> : <Unlock size={15} />}
-                    </button>
-                  </div>
-                  {decryptError && (
-                    <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'#f87171' }}>❌ Wrong password — please try again.</p>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {decryptedContent && (
-                    <button onClick={copyTextContent} className="btn btn-ghost" style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem', marginBottom:'1rem', display:'flex' }}>
-                      {textCopied ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy decrypted text</>}
-                    </button>
-                  )}
-                  <MarkdownRenderer content={displayContent ?? ''} />
-                </>
+              <h2 style={{ fontSize:'1.2rem', fontWeight:700, color:'#ffffff', marginBottom:'0.5rem' }}>This page is password protected</h2>
+              <p style={{ fontSize:'0.875rem', color:'var(--text-muted)', marginBottom:'1.5rem', lineHeight:1.6 }}>Enter the view password to decrypt and access the content.<br/>The decryption happens entirely in your browser.</p>
+              <div style={{ display:'flex', gap:'0.6rem', maxWidth:'360px', margin:'0 auto' }}>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Enter password…"
+                  value={decryptPassword}
+                  onChange={e => { setDecryptPassword(e.target.value); setDecryptError(false) }}
+                  onKeyDown={e => e.key === 'Enter' && handleDecrypt()}
+                  style={{ flex:1 }}
+                  autoFocus
+                />
+                <button
+                  className="btn btn-primary"
+                  onClick={handleDecrypt}
+                  disabled={decrypting}
+                  style={{ flexShrink:0, padding:'0 1.25rem' }}
+                >
+                  {decrypting ? <div className="spinner" /> : <Unlock size={15} />}
+                </button>
+              </div>
+              {decryptError && (
+                <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'#f87171' }}>❌ Wrong password — please try again.</p>
               )}
             </div>
-          )}
+          ) : (
+            <>
+              {/* Text content section */}
+              {entry.type === 'text' && entry.content && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Text Content</span>
+                      {decryptedContent && (
+                        <span style={{ display:'inline-flex', alignItems:'center', gap:'0.3rem', color:'#4ade80', fontSize:'0.72rem', fontWeight:700 }}><Unlock size={10} /> Decrypted</span>
+                      )}
+                    </div>
+                    <button onClick={copyTextContent} className="btn btn-ghost" style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem' }}>
+                      {textCopied ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy Text</>}
+                    </button>
+                  </div>
+                  <MarkdownRenderer content={displayContent ?? ''} />
+                </div>
+              )}
 
-          {(entry.hasFile || entry.fileName) && (
-            <div style={{ marginTop: entry.content ? '2rem' : 0, paddingTop: entry.content ? '2rem' : 0, borderTop: entry.content ? '1px solid var(--border)' : 'none' }}>
-              <FileCard entry={entry} slug={slug!} />
-            </div>
+              {/* File card section */}
+              {(entry.hasFile || entry.fileName) && (
+                <div style={{ marginTop: (entry.type === 'text' && entry.content) ? '2rem' : 0, paddingTop: (entry.type === 'text' && entry.content) ? '2rem' : 0, borderTop: (entry.type === 'text' && entry.content) ? '1px solid var(--border)' : 'none' }}>
+                  <FileCard entry={entry} slug={slug!} />
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -458,7 +425,7 @@ export default function ViewPage() {
             <>
               <span style={{ color:'var(--text-dim)' }}>·</span>
               <span style={{ display:'inline-flex', alignItems:'center', gap:'0.35rem' }}>
-                <strong style={{ color:'#ffffff' }}>File Expires:</strong> <Countdown expiresAt={entry.expiresAt > entry.createdAt + 365 * 86400 * 1000 ? entry.createdAt + 172_800_000 : entry.expiresAt} />
+                <strong style={{ color:'#ffffff' }}>File Expires:</strong> <Countdown expiresAt={entry.fileExpiresAt ?? entry.expiresAt} />
               </span>
             </>
           )}
@@ -482,9 +449,7 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
     ? entry.files
     : [{ id: undefined, fileName: entry.fileName ?? 'file', fileMime: entry.fileMime ?? '', fileSize: entry.fileSize ?? 0 }]
 
-  const fileExpiresAt = entry.expiresAt > entry.createdAt + 365 * 86400 * 1000
-    ? entry.createdAt + 172_800_000
-    : entry.expiresAt
+  const fileExpiresAt = entry.fileExpiresAt ?? entry.expiresAt
 
   const totalSize = filesList.reduce((acc, f) => acc + (f.fileSize || 0), 0)
   const maxStorage = 50 * 1024 * 1024
@@ -573,7 +538,7 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
           style={{
             height: '100%',
             width: `${usedPercent}%`,
-            background: usedPercent > 90 ? '#ef4444' : usedPercent > 75 ? '#f59e0b' : 'linear-gradient(90deg, #3b82f6, #60a5fa)',
+            background: usedPercent > 90 ? '#ef4444' : usedPercent > 75 ? '#71717a' : 'linear-gradient(90deg, #3b82f6, #60a5fa)',
             borderRadius: '3px',
             transition: 'width 300ms ease',
           }}

@@ -61,6 +61,10 @@ export default function CreatePage() {
         form.append('files', f)
         form.append('file', f)
       })
+      if (lockContent && viewPassword) {
+        const placeholder = await encryptContent('{"file_lock":true}', viewPassword)
+        form.append('content', placeholder)
+      }
     }
 
 
@@ -90,7 +94,7 @@ export default function CreatePage() {
 
 
         {/* ── Card ───────────────────────────────────────────────────────── */}
-        <form onSubmit={handleSubmit} className="card card-glow" style={{ padding:'2.5rem' }}>
+        <form onSubmit={handleSubmit} className="card card-glow card-content">
 
           {/* Toggle */}
           <div style={{ display:'flex', gap:'0.5rem', marginBottom:'2rem', padding:'0.3rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)' }}>
@@ -148,7 +152,7 @@ export default function CreatePage() {
                   <DropZone onFiles={setFiles} height="202px" />
                   <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
                     <Info size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                    <span>Uploaded files will be automatically deleted after 2 days. Text and your URL remain permanent.</span>
+                    <span>Uploaded files automatically delete after 2 days (or sooner based on selected expiration). Text and URL persist until expiration.</span>
                   </p>
                 </div>
               </>
@@ -164,7 +168,7 @@ export default function CreatePage() {
               <label className="label">Custom URL <span style={{color:'var(--text-dim)'}}>(optional)</span></label>
               <div className="url-group" style={{ display:'flex', alignItems:'stretch', height:'42px' }}>
                 <span className="url-prefix" style={{ height:'42px', boxSizing:'border-box', padding:'0 0.85rem', background:'#000000', border:'1px solid var(--border)', borderRight:'none', borderRadius:'10px 0 0 10px', color:'var(--text-dim)', fontSize:'0.85rem', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'0.35rem', transition:'all 180ms ease' }}>
-                  <LinkIcon size={14} /> {HOST}
+                  <LinkIcon size={14} /> <span className="url-hostname">{HOST}</span>
                 </span>
                 <input
                   className="input"
@@ -213,44 +217,75 @@ export default function CreatePage() {
             </div>
 
             {/* Lock / View Password */}
-            {mode === 'text' && (
-              <div className="field" style={{ flex:'1 1 150px', marginTop: 0 }}>
+            {(mode === 'text' || mode === 'file') && (
+              <div className="field" style={{ flex:'1.2 1 180px', marginTop: 0 }}>
                 <label className="label">Password Lock</label>
                 <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem' }}>
-                  <label style={{ display:'flex', alignItems:'center', gap:'0.5rem', cursor:'pointer', userSelect:'none', height:'42px', padding:'0 0.75rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      height: '42px',
+                      padding: '0 0.75rem',
+                      background: '#000000',
+                      border: lockContent ? '1px solid var(--border-active)' : '1px solid var(--border)',
+                      borderRadius: '10px',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={lockContent}
-                      onChange={e => setLockContent(e.target.checked)}
-                      style={{ accentColor:'var(--accent)', width:15, height:15 }}
+                      onChange={e => {
+                        setLockContent(e.target.checked)
+                        if (!e.target.checked) setViewPassword('')
+                      }}
+                      style={{ accentColor: '#71717a', width: 15, height: 15, cursor: 'pointer' }}
                     />
-                    <Lock size={13} style={{ color: lockContent ? 'var(--accent)' : 'var(--text-dim)' }} />
-                    <span style={{ fontSize:'0.8125rem', color: lockContent ? 'var(--text)' : 'var(--text-muted)' }}>Encrypt paste</span>
+                    {!lockContent ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
+                        <Lock size={13} style={{ color: 'var(--text-dim)' }} />
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>Encrypt paste</span>
+                      </div>
+                    ) : (
+                      <input
+                        type="password"
+                        placeholder="View password..."
+                        value={viewPassword}
+                        onChange={e => setViewPassword(e.target.value)}
+                        minLength={4}
+                        maxLength={128}
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          flex: 1,
+                          height: '32px',
+                          background: 'transparent',
+                          border: 'none',
+                          padding: '0 4px',
+                          fontSize: '0.8125rem',
+                          color: '#ffffff',
+                          outline: 'none',
+                          boxShadow: 'none'
+                        }}
+                        autoFocus
+                      />
+                    )}
                   </label>
-                  {lockContent && (
-                    <input
-                      className="input"
-                      type="password"
-                      placeholder="View password (min 4 chars)"
-                      value={viewPassword}
-                      onChange={e => setViewPassword(e.target.value)}
-                      minLength={4}
-                      maxLength={128}
-                      style={{ height:'36px', boxSizing:'border-box', fontSize:'0.8125rem' }}
-                      autoFocus
-                    />
-                  )}
                 </div>
               </div>
             )}
 
             {/* Submit Button */}
-            <div style={{ marginTop: 0, flexShrink: 0 }}>
+            <div className="submit-container" style={{ marginTop: 0, flexGrow: 1 }}>
               <button
                 type="submit"
-                className="btn btn-primary"
+                className="btn btn-primary btn-submit"
                 disabled={loading}
-                style={{ padding:'0 1.5rem', fontSize:'0.9375rem', height:'42px', minWidth:'130px' }}
+                style={{ padding:'0 1.5rem', fontSize:'0.9375rem', height:'42px', minWidth:'130px', width: '100%' }}
               >
                 {loading ? <><div className="spinner" />Creating…</> : <>Create Link <ArrowRight size={16} /></>}
               </button>

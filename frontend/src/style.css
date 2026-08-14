@@ -28,45 +28,6 @@
   --transition:    180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── Theme: Cyberpunk (Neon Green) ──────────────────────────────────────── */
-body[data-theme="cyberpunk"] {
-  --bg:            #000000;
-  --surface:       #020c06;
-  --surface-hover: #041208;
-  --border:        #0d3320;
-  --border-active: #22c55e;
-  --accent:        #22c55e;
-  --accent-glow:   rgba(34,197,94,0.12);
-  --text:          #e2ffe8;
-  --text-muted:    #4ade80;
-  --text-dim:      #166534;
-}
-body[data-theme="cyberpunk"] .btn-primary   { background:#166534; border-color:#22c55e; color:#e2ffe8; }
-body[data-theme="cyberpunk"] .btn-primary:hover:not(:disabled) { background:#15803d; border-color:#4ade80; }
-body[data-theme="cyberpunk"] .card          { border-color: var(--border); }
-body[data-theme="cyberpunk"] .card-glow     { box-shadow: 0 0 0 1px #0d3320, 0 12px 40px rgba(34,197,94,0.15); }
-body[data-theme="cyberpunk"] .input:focus   { border-color:#22c55e; box-shadow:0 0 0 1px #22c55e, 0 0 16px rgba(34,197,94,0.2); }
-body[data-theme="cyberpunk"] .markdown-body a { color:#4ade80; }
-
-/* ── Theme: Amber (Retro Terminal) ──────────────────────────────────────── */
-body[data-theme="amber"] {
-  --bg:            #000000;
-  --surface:       #0c0800;
-  --surface-hover: #130f00;
-  --border:        #2d1f00;
-  --border-active: #f59e0b;
-  --accent:        #f59e0b;
-  --accent-glow:   rgba(245,158,11,0.12);
-  --text:          #fef3c7;
-  --text-muted:    #fbbf24;
-  --text-dim:      #78350f;
-}
-body[data-theme="amber"] .btn-primary   { background:#78350f; border-color:#f59e0b; color:#fef3c7; }
-body[data-theme="amber"] .btn-primary:hover:not(:disabled) { background:#92400e; border-color:#fbbf24; }
-body[data-theme="amber"] .card          { border-color: var(--border); }
-body[data-theme="amber"] .card-glow     { box-shadow: 0 0 0 1px #2d1f00, 0 12px 40px rgba(245,158,11,0.15); }
-body[data-theme="amber"] .input:focus   { border-color:#f59e0b; box-shadow:0 0 0 1px #f59e0b, 0 0 16px rgba(245,158,11,0.2); }
-body[data-theme="amber"] .markdown-body a { color:#fbbf24; }
 
 /* ── Background — Solid Black ────────────────────────────────────────────── */
 html, body {
@@ -96,6 +57,11 @@ h3 { font-size: 1.1rem; font-weight: 600; color: #ffffff; }
 .card-glow {
   box-shadow: 0 0 0 1px #1a1a1a, 0 12px 32px rgba(0,0,0,0.8);
 }
+
+.card-content {
+  padding: 2.5rem;
+}
+
 
 /* ── Inputs & Microinteractions ──────────────────────────────────────────── */
 .input {
@@ -409,9 +375,9 @@ textarea:-webkit-autofill {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: rgba(245,158,11,0.1);
-  border: 1px solid rgba(245,158,11,0.35);
-  color: #fbbf24;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #e4e4e7;
   font-size: 0.72rem;
   font-weight: 700;
   padding: 0.2rem 0.55rem;
@@ -425,3 +391,24 @@ textarea:-webkit-autofill {
 ::-webkit-scrollbar-track { background: #000000; }
 ::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+/* ── Responsive overrides ────────────────────────────────────────────────── */
+@media (max-width: 540px) {
+  .page-wrapper {
+    padding: 1rem 0.5rem;
+  }
+  .card-content {
+    padding: 1.1rem;
+  }
+  .url-hostname {
+    display: none;
+  }
+  .url-prefix::after {
+    content: '/';
+  }
+  .submit-container {
+    width: 100%;
+    margin-top: 0.5rem !important;
+  }
+}
+

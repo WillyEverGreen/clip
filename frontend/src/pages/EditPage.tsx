@@ -189,7 +189,7 @@ export default function EditPage() {
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="card card-glow" style={{ padding:'2.5rem' }}>
+        <form onSubmit={handleSave} className="card card-glow card-content">
           {/* Mode Tabs */}
           <div style={{ display:'flex', gap:'0.5rem', marginBottom:'2rem', padding:'0.3rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)' }}>
             <button

@@ -26,6 +26,7 @@ export interface PublicEntry {
   createdAt: number
   updatedAt?: number
   expiresAt: number
+  fileExpiresAt?: number
   views?: number
 }
 
