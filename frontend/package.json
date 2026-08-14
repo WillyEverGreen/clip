@@ -27,6 +27,7 @@
     "marked-gfm-heading-id": "^4.1.4",
     "marked-katex-extension": "^5.1.10",
     "prismjs": "^1.30.0",
+    "qrcode.react": "^4.2.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2"

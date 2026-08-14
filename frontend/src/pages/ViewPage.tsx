@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
 import { isEncrypted, decryptContent } from '../lib/crypto'
 import Countdown         from '../components/Countdown'
@@ -89,7 +90,6 @@ export default function ViewPage() {
   const fileEndpoint = fileUrl(entry.slug)
   const zipEndpoint  = zipUrl(entry.slug)
   const pageUrl      = window.location.href
-  const qrUrl        = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&color=ffffff&bgcolor=000000&data=${encodeURIComponent(pageUrl)}`
   const uploadOrigin = window.location.origin
 
   const contentIsEncrypted = entry.content ? isEncrypted(entry.content) : false
@@ -341,15 +341,17 @@ export default function ViewPage() {
                 </div>
                 <button onClick={() => setShowQrModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}><X size={16} /></button>
               </div>
-              <div style={{ background: '#000000', borderRadius: '12px', padding: '1rem', border: '1px solid #27272a', display: 'inline-block', marginBottom: '1.25rem' }}>
-                <img
-                  src={qrUrl}
-                  alt={`QR code for ${pageUrl}`}
-                  width={200} height={200}
-                  style={{ display: 'block', imageRendering: 'pixelated' }}
+              <div style={{ background: '#ffffff', borderRadius: '14px', padding: '1.25rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+                <QRCodeSVG
+                  value={pageUrl}
+                  size={200}
+                  bgColor="#ffffff"
+                  fgColor="#000000"
+                  level="H"
+                  includeMargin={false}
                 />
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.5 }}>{pageUrl}</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.5, fontFamily: 'var(--font-mono)' }}>{pageUrl}</p>
               <button
                 onClick={() => copyCliCommand(pageUrl, 'qr_link')}
                 className="btn btn-ghost"
