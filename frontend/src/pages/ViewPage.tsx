@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
 import { isEncrypted, decryptContent } from '../lib/crypto'
@@ -156,22 +156,22 @@ export default function ViewPage() {
             </div>
           </div>
 
-          <div style={{ display:'flex', gap:'0.5rem', flexShrink:0, flexWrap:'wrap', alignItems:'center' }}>
-            <button className="btn btn-ghost" onClick={() => setShowCliModal(true)} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }} title="Terminal Commands">
+          <div className="top-bar-actions">
+            <button className="btn btn-ghost btn-compact-mobile" onClick={() => setShowCliModal(true)} title="Terminal Commands">
               <Terminal size={14} color="#10b981" /> Terminal CLI
             </button>
-            <button className="btn btn-ghost" onClick={() => setShowQrModal(true)} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }} title="Share via QR Code">
+            <button className="btn btn-ghost btn-compact-mobile" onClick={() => setShowQrModal(true)} title="Share via QR Code">
               <QrCode size={14} /> QR Code
             </button>
             {entry.content && (
-              <button className="btn btn-ghost" onClick={copyTextContent} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }}>
+              <button className="btn btn-ghost btn-compact-mobile" onClick={copyTextContent}>
                 {textCopied ? <><Check size={14} color="#10b981" /> Copied text</> : <><Copy size={14} /> Copy text</>}
               </button>
             )}
-            <button className="btn btn-ghost" onClick={copyLink} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem' }}>
+            <button className="btn btn-ghost btn-compact-mobile" onClick={copyLink}>
               {copied ? <><Check size={14} /> Copied link</> : <><Copy size={14} /> Copy link</>}
             </button>
-            <Link to={`/${slug}/edit`} className="btn btn-ghost" style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem' }}>
+            <Link to={`/${slug}/edit`} className="btn btn-ghost btn-compact-mobile">
               <Edit3 size={14} /> Edit
             </Link>
           </div>
@@ -211,20 +211,20 @@ export default function ViewPage() {
               <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1 }}>
                 {/* Download / Upload Tabs */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                  <button onClick={() => setCliTab('download')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='download' ? '#27272a' : 'transparent', color: cliTab==='download' ? '#ffffff' : '#a1a1aa' }}>
-                    ⬇️ Download
+                  <button onClick={() => setCliTab('download')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='download' ? '#27272a' : 'transparent', color: cliTab==='download' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
+                    <Download size={14} /> Download
                   </button>
-                  <button onClick={() => setCliTab('upload')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='upload' ? '#27272a' : 'transparent', color: cliTab==='upload' ? '#ffffff' : '#a1a1aa' }}>
-                    ⬆️ Upload
+                  <button onClick={() => setCliTab('upload')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='upload' ? '#27272a' : 'transparent', color: cliTab==='upload' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
+                    <Upload size={14} /> Upload
                   </button>
                 </div>
                 {/* OS Selector */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                  <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa' }}>
-                    🐧 Linux / macOS
+                  <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
+                    <Terminal size={14} /> Linux / macOS
                   </button>
-                  <button onClick={() => setCliOs('windows')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'windows' ? '#27272a' : 'transparent', color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa' }}>
-                    🪟 Windows (PowerShell)
+                  <button onClick={() => setCliOs('windows')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'windows' ? '#27272a' : 'transparent', color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
+                    <Monitor size={14} /> Windows (PowerShell)
                   </button>
                 </div>
 
@@ -251,7 +251,10 @@ export default function ViewPage() {
                   <div style={{ marginBottom: '1.25rem' }}>
                     <div style={{ background: '#000000', borderRadius: '10px', border: '1px solid #27272a', padding: '0.75rem 1rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#a3e635' }}>📄 Print text to terminal</span>
+                        <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                          <FileText size={14} color="#a3e635" />
+                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#a3e635' }}>Print text to terminal</span>
+                        </div>
                         <button onClick={() => copyCliCommand(textCurlCmd, 'text_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.3rem' }}>
                           {cliCmdCopied === 'text_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
                         </button>
@@ -266,7 +269,10 @@ export default function ViewPage() {
                 {(entry.hasFile || entry.fileName) && (
                   <div style={{ marginBottom: '1rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa' }}>📁 Attached Files ({(entry.files && entry.files.length > 0) ? entry.files.length : 1}):</label>
+                      <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                        <Folder size={14} color="#60a5fa" />
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa', margin:0 }}>Attached Files ({(entry.files && entry.files.length > 0) ? entry.files.length : 1}):</label>
+                      </div>
                     </div>
                     {entry.files && entry.files.length > 1 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
@@ -276,9 +282,12 @@ export default function ViewPage() {
                           return (
                             <div key={f.id} style={{ background: '#000000', borderRadius: '8px', border: '1px solid #27272a', padding: '0.65rem 0.85rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                                <span style={{ fontSize: '0.785rem', fontWeight: 600, color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '380px' }} title={f.fileName}>
-                                  📄 {f.fileName}
-                                </span>
+                                <div style={{ display:'flex', alignItems:'center', gap:'0.35rem', overflow:'hidden' }}>
+                                  <FileText size={13} color="#93c5fa" style={{ flexShrink:0 }} />
+                                  <span style={{ fontSize: '0.785rem', fontWeight: 600, color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '360px' }} title={f.fileName}>
+                                    {f.fileName}
+                                  </span>
+                                </div>
                                 <button onClick={() => copyCliCommand(fCmd, fId)} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem', flexShrink: 0 }}>
                                   {cliCmdCopied === fId ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
                                 </button>
@@ -293,9 +302,12 @@ export default function ViewPage() {
                     ) : (
                       <div style={{ background: '#000000', borderRadius: '8px', border: '1px solid #27272a', padding: '0.65rem 0.85rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                          <span style={{ fontSize: '0.785rem', fontWeight: 600, color: '#e4e4e7' }}>
-                            📄 {entry.fileName || 'file'}
-                          </span>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.35rem' }}>
+                            <FileText size={13} color="#93c5fa" />
+                            <span style={{ fontSize: '0.785rem', fontWeight: 600, color: '#e4e4e7' }}>
+                              {entry.fileName || 'file'}
+                            </span>
+                          </div>
                           <button onClick={() => copyCliCommand(fileCurlCmd, 'file_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.3rem' }}>
                             {cliCmdCopied === 'file_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
                           </button>
@@ -307,7 +319,10 @@ export default function ViewPage() {
                     )}
                   </div>
                 )}
-                <p style={{ fontSize: '0.72rem', color: '#52525b', margin: '0.5rem 0 0', lineHeight: 1.4 }}>💡 Use the ZIP bundle to get everything in one command.</p>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.4rem', marginTop:'0.75rem' }}>
+                  <Sparkles size={12} color="#71717a" />
+                  <p style={{ fontSize: '0.72rem', color: '#71717a', margin: 0, lineHeight: 1.4 }}>Use the ZIP bundle to get everything in one command.</p>
+                </div>
                 </>)}
 
                 {/* ── UPLOAD TAB ────────────────────────────────────────── */}
@@ -340,7 +355,10 @@ export default function ViewPage() {
                       </div>
                       <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Supports images, PDFs, archives, and any file up to 50 MB.</p>
                     </div>
-                    <p style={{ fontSize: '0.72rem', color: '#52525b', lineHeight: 1.4 }}>💡 Set <code style={{ color: '#d1d5db' }}>ttl=permanent</code> for a link that never expires.</p>
+                    <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                      <Sparkles size={12} color="#71717a" />
+                      <p style={{ fontSize: '0.72rem', color: '#71717a', margin:0, lineHeight: 1.4 }}>Set <code style={{ color: '#d1d5db' }}>ttl=permanent</code> for a link that never expires.</p>
+                    </div>
                   </div>
                 )}
               </div>

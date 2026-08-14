@@ -520,12 +520,42 @@ textarea:-webkit-autofill {
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
 /* ── Responsive overrides ────────────────────────────────────────────────── */
-@media (max-width: 540px) {
+.top-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+@media (max-width: 640px) {
   .page-wrapper {
-    padding: 1rem 0.5rem;
+    padding: 0.65rem 0.35rem !important;
+    justify-content: flex-start !important;
+  }
+  .content-box {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .card {
+    border: 1px solid #1f1f23 !important;
+    border-radius: 12px !important;
   }
   .card-content {
-    padding: 1.1rem;
+    padding: 0.85rem 0.75rem !important;
+  }
+  .card-glow {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7) !important;
+  }
+  .top-bar-actions {
+    gap: 0.35rem !important;
+    width: 100% !important;
+    margin-top: 0.25rem !important;
+  }
+  .btn-compact-mobile {
+    padding: 0.42rem 0.65rem !important;
+    font-size: 0.75rem !important;
+    gap: 0.3rem !important;
   }
   .url-hostname {
     display: none;
@@ -536,6 +566,46 @@ textarea:-webkit-autofill {
   .submit-container {
     width: 100%;
     margin-top: 0.5rem !important;
+  }
+  .markdown-body {
+    font-size: 0.875rem !important;
+    line-height: 1.65 !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+  .markdown-body pre {
+    padding: 0.75rem 0.85rem !important;
+    font-size: 0.8rem !important;
+    border-radius: 8px !important;
+  }
+  .code-block-container {
+    margin: 0.85rem 0 !important;
+    border-radius: 8px !important;
+    border: 1px solid #1f1f23 !important;
+  }
+  .code-block-header {
+    padding: 0.3rem 0.75rem !important;
+    font-size: 0.65rem !important;
+  }
+  .katex-display {
+    padding: 0.65rem 0.75rem !important;
+    margin: 0.85rem 0 !important;
+    font-size: 0.875em !important;
+    border-radius: 8px !important;
+    border: 1px solid #1f1f23 !important;
+  }
+  .input, textarea.input {
+    font-size: 0.875rem !important;
+    padding: 0.65rem 0.85rem !important;
+    border: 1px solid #1f1f23 !important;
+  }
+  .toggle-pill {
+    padding: 0.2rem !important;
+    border: 1px solid #1f1f23 !important;
+  }
+  .toggle-btn {
+    padding: 0.55rem 0.5rem !important;
+    font-size: 0.8125rem !important;
   }
 }
 
