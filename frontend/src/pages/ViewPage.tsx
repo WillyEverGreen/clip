@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Trash2, Terminal, X } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Trash2, Terminal, X, QrCode, Lock, Unlock, Upload } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
+import { isEncrypted, decryptContent } from '../lib/crypto'
 import Countdown         from '../components/Countdown'
 import MarkdownRenderer  from '../components/MarkdownRenderer'
 import Logo              from '../components/Logo'
@@ -15,8 +16,28 @@ export default function ViewPage() {
   const [copied,            setCopied]            = useState(false)
   const [textCopied,        setTextCopied]        = useState(false)
   const [showCliModal,      setShowCliModal]      = useState(false)
+  const [showQrModal,       setShowQrModal]       = useState(false)
   const [cliOs,             setCliOs]             = useState<'linux' | 'windows'>('linux')
+  const [cliTab,            setCliTab]            = useState<'download' | 'upload'>('download')
   const [cliCmdCopied,      setCliCmdCopied]      = useState<string | null>(null)
+  const [theme,             setTheme]             = useState<'mono' | 'cyberpunk' | 'amber'>(
+    () => (localStorage.getItem('clip_theme') as 'mono' | 'cyberpunk' | 'amber') || 'mono'
+  )
+  // Encryption state
+  const [decryptPassword,   setDecryptPassword]   = useState('')
+  const [decryptedContent,  setDecryptedContent]  = useState<string | null>(null)
+  const [decryptError,      setDecryptError]      = useState(false)
+  const [decrypting,        setDecrypting]        = useState(false)
+
+  // Apply theme to <body>
+  useEffect(() => {
+    document.body.dataset.theme = theme === 'mono' ? '' : theme
+    localStorage.setItem('clip_theme', theme)
+  }, [theme])
+
+  const cycleTheme = useCallback(() => {
+    setTheme(t => t === 'mono' ? 'cyberpunk' : t === 'cyberpunk' ? 'amber' : 'mono')
+  }, [])
 
   useEffect(() => {
     if (!slug) return
@@ -48,16 +69,60 @@ export default function ViewPage() {
     setTimeout(() => setCliCmdCopied(null), 2000)
   }
 
+  const handleDecrypt = async () => {
+    if (!entry?.content || decryptPassword.length < 4) return
+    setDecrypting(true)
+    setDecryptError(false)
+    const result = await decryptContent(entry.content, decryptPassword)
+    setDecrypting(false)
+    if (result === null) {
+      setDecryptError(true)
+    } else {
+      setDecryptedContent(result)
+    }
+  }
+
   if (loading) return <LoadingScreen />
   if (!entry)  return null
 
   const rawEndpoint  = rawUrl(entry.slug)
   const fileEndpoint = fileUrl(entry.slug)
   const zipEndpoint  = zipUrl(entry.slug)
+  const pageUrl      = window.location.href
+  const qrUrl        = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&color=ffffff&bgcolor=000000&data=${encodeURIComponent(pageUrl)}`
+  const uploadOrigin = window.location.origin
+
+  const contentIsEncrypted = entry.content ? isEncrypted(entry.content) : false
+  const displayContent     = contentIsEncrypted ? decryptedContent : entry.content
+
+  const themeEmoji = theme === 'mono' ? '⚪' : theme === 'cyberpunk' ? '🟢' : '🟡'
 
   const textCurlCmd = cliOs === 'linux' ? `curl -sL ${rawEndpoint}` : `curl.exe -sL ${rawEndpoint}`
   const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO ${fileEndpoint}` : `curl.exe -fLJO ${fileEndpoint}`
   const zipCurlCmd  = cliOs === 'linux' ? `curl -fLO ${zipEndpoint}` : `curl.exe -fLO ${zipEndpoint}`
+
+  // CLI Upload commands
+  const uploadCurlText = cliOs === 'linux'
+    ? `curl -X POST ${uploadOrigin}/api/entry \\
+  -F "type=text" \\
+  -F "content=@yourfile.txt" \\
+  -F "editCode=YourSecret" \\
+  -F "ttl=86400"`
+    : `curl.exe -X POST ${uploadOrigin}/api/entry ^
+  -F "type=text" ^
+  -F "content=@yourfile.txt" ^
+  -F "editCode=YourSecret" ^
+  -F "ttl=86400"`
+
+  const uploadCurlFile = cliOs === 'linux'
+    ? `curl -X POST ${uploadOrigin}/api/entry \\
+  -F "type=file" \\
+  -F "files=@photo.jpg" \\
+  -F "editCode=YourSecret"`
+    : `curl.exe -X POST ${uploadOrigin}/api/entry ^
+  -F "type=file" ^
+  -F "files=@photo.jpg" ^
+  -F "editCode=YourSecret"`
 
   return (
     <div className="page-wrapper" style={{ justifyContent:'flex-start', paddingTop:'2.5rem' }}>
@@ -91,9 +156,20 @@ export default function ViewPage() {
             </div>
           </div>
 
-          <div style={{ display:'flex', gap:'0.5rem', flexShrink:0, flexWrap:'wrap' }}>
-            <button className="btn btn-ghost" onClick={() => setShowCliModal(true)} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }} title="Terminal Download Commands">
+          <div style={{ display:'flex', gap:'0.5rem', flexShrink:0, flexWrap:'wrap', alignItems:'center' }}>
+            {/* Theme Toggle */}
+            <button
+              className="theme-btn"
+              onClick={cycleTheme}
+              title={`Theme: ${theme} (click to cycle)`}
+            >
+              {themeEmoji}
+            </button>
+            <button className="btn btn-ghost" onClick={() => setShowCliModal(true)} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }} title="Terminal Commands">
               <Terminal size={14} color="#10b981" /> Terminal CLI
+            </button>
+            <button className="btn btn-ghost" onClick={() => setShowQrModal(true)} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }} title="Share via QR Code">
+              <QrCode size={14} /> QR Code
             </button>
             {entry.content && (
               <button className="btn btn-ghost" onClick={copyTextContent} style={{ fontSize:'0.8125rem', padding:'0.6rem 1rem', gap:'0.4rem' }}>
@@ -130,94 +206,65 @@ export default function ViewPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                   <Terminal size={20} color="#10b981" />
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>Terminal Download Commands</h3>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>Terminal CLI</h3>
                 </div>
                 <button onClick={() => setShowCliModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}>
                   <X size={16} />
                 </button>
               </div>
 
-              {/* OS Selector Tabs */}
+              {/* Download / Upload Tabs */}
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                <button
-                  onClick={() => setCliOs('linux')}
-                  style={{
-                    flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer',
-                    fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease',
-                    background: cliOs === 'linux' ? '#27272a' : 'transparent',
-                    color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa',
-                  }}
-                >
-                  🐧 Linux / macOS (bash / zsh)
+                <button onClick={() => setCliTab('download')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='download' ? '#27272a' : 'transparent', color: cliTab==='download' ? '#ffffff' : '#a1a1aa' }}>
+                  ⬇️ Download
                 </button>
-                <button
-                  onClick={() => setCliOs('windows')}
-                  style={{
-                    flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer',
-                    fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease',
-                    background: cliOs === 'windows' ? '#27272a' : 'transparent',
-                    color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa',
-                  }}
-                >
-                  🪟 Windows (PowerShell / CMD)
+                <button onClick={() => setCliTab('upload')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='upload' ? '#27272a' : 'transparent', color: cliTab==='upload' ? '#ffffff' : '#a1a1aa' }}>
+                  ⬆️ Upload
                 </button>
               </div>
-
-              {/* ── ZIP Bundle: Download Everything ───────────────────── */}
+              {/* OS Selector */}
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
+                <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa' }}>
+                  🐧 Linux / macOS
+                </button>
+                <button onClick={() => setCliOs('windows')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'windows' ? '#27272a' : 'transparent', color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa' }}>
+                  🪟 Windows (PowerShell)
+                </button>
+              </div>
+              {/* ── DOWNLOAD TAB ──────────────────────────────────────── */}
+              {cliTab === 'download' && (<>
+              {/* ZIP Bundle */}
               <div style={{ marginBottom: '1.5rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(96,165,250,0.08) 100%)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '10px', padding: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
                   <FileArchive size={15} color="#10b981" />
-                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981', margin: 0 }}>
-                    Download Everything (Text + All Files) as ZIP:
-                  </label>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981', margin: 0 }}>Download Everything as ZIP:</label>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                  <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem', color: '#10b981', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                    {zipCurlCmd}
-                  </code>
-                  <button
-                    onClick={() => copyCliCommand(zipCurlCmd, 'zip_cmd')}
-                    className="btn btn-ghost"
-                    style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', gap: '0.3rem', flexShrink: 0 }}
-                  >
+                  <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.8125rem', color: '#10b981', overflowX: 'auto', whiteSpace: 'nowrap' }}>{zipCurlCmd}</code>
+                  <button onClick={() => copyCliCommand(zipCurlCmd, 'zip_cmd')} className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', gap: '0.3rem', flexShrink: 0 }}>
                     {cliCmdCopied === 'zip_cmd' ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy</>}
                   </button>
                 </div>
-                <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
-                  Downloads <strong style={{ color: '#a1a1aa' }}>{entry.slug}.zip</strong> containing text as <code style={{ color: '#d1d5db' }}>{entry.slug}.txt</code>{(entry.hasFile || entry.fileName) ? ' + all attached files' : ''} to your current directory.
-                </p>
+                <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.5rem 0 0', lineHeight: 1.4 }}>Downloads <strong style={{ color: '#a1a1aa' }}>{entry.slug}.zip</strong>{(entry.hasFile || entry.fileName) ? ' · text + all files' : ' · text as txt'}.</p>
               </div>
 
-              {/* ── Separator ──────────────────────────────────────────── */}
               <p style={{ fontSize: '0.7rem', fontWeight: 600, color: '#52525b', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 1rem' }}>Or download individually:</p>
 
-              {/* Text Command Section */}
               {entry.content && (
                 <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', display: 'block', marginBottom: '0.4rem' }}>
-                    📄 Print text to terminal:
-                  </label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', display: 'block', marginBottom: '0.4rem' }}>📄 Print text to terminal:</label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                    <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                      {textCurlCmd}
-                    </code>
-                    <button
-                      onClick={() => copyCliCommand(textCurlCmd, 'text_cmd')}
-                      className="btn btn-ghost"
-                      style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', gap: '0.3rem', flexShrink: 0 }}
-                    >
+                    <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', overflowX: 'auto', whiteSpace: 'nowrap' }}>{textCurlCmd}</code>
+                    <button onClick={() => copyCliCommand(textCurlCmd, 'text_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', gap: '0.3rem', flexShrink: 0 }}>
                       {cliCmdCopied === 'text_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* File Command Section */}
               {(entry.hasFile || entry.fileName) && (
                 <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', display: 'block', marginBottom: '0.4rem' }}>
-                    📁 Download file(s) to current folder:
-                  </label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', display: 'block', marginBottom: '0.4rem' }}>📁 Download file(s):</label>
                   {entry.files && entry.files.length > 1 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                       {entry.files.map((f) => {
@@ -227,11 +274,7 @@ export default function ViewPage() {
                           <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.45rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a' }}>
                             <span style={{ fontSize: '0.7rem', color: '#60a5fa', whiteSpace: 'nowrap', flexShrink: 0 }}>{f.fileName}</span>
                             <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.72rem', color: '#7dd3fc', overflowX: 'auto', whiteSpace: 'nowrap' }}>{fCmd}</code>
-                            <button
-                              onClick={() => copyCliCommand(fCmd, fId)}
-                              className="btn btn-ghost"
-                              style={{ fontSize: '0.7rem', padding: '0.2rem 0.45rem', gap: '0.25rem', flexShrink: 0 }}
-                            >
+                            <button onClick={() => copyCliCommand(fCmd, fId)} className="btn btn-ghost" style={{ fontSize: '0.7rem', padding: '0.2rem 0.45rem', gap: '0.25rem', flexShrink: 0 }}>
                               {cliCmdCopied === fId ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
                             </button>
                           </div>
@@ -240,24 +283,89 @@ export default function ViewPage() {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#000000', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                      <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.775rem', color: '#60a5fa', overflowX: 'auto', whiteSpace: 'nowrap' }}>
-                        {fileCurlCmd}
-                      </code>
-                      <button
-                        onClick={() => copyCliCommand(fileCurlCmd, 'file_cmd')}
-                        className="btn btn-ghost"
-                        style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', gap: '0.3rem', flexShrink: 0 }}
-                      >
+                      <code style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.775rem', color: '#60a5fa', overflowX: 'auto', whiteSpace: 'nowrap' }}>{fileCurlCmd}</code>
+                      <button onClick={() => copyCliCommand(fileCurlCmd, 'file_cmd')} className="btn btn-ghost" style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', gap: '0.3rem', flexShrink: 0 }}>
                         {cliCmdCopied === 'file_cmd' ? <><Check size={12} color="#10b981" /> Copied</> : <><Copy size={12} /> Copy</>}
                       </button>
                     </div>
                   )}
                 </div>
               )}
+              <p style={{ fontSize: '0.72rem', color: '#52525b', margin: '0.5rem 0 0', lineHeight: 1.4 }}>💡 Use the ZIP bundle to get everything in one command.</p>
+              </>)}
 
-              <p style={{ fontSize: '0.72rem', color: '#52525b', margin: '0.5rem 0 0', lineHeight: 1.4 }}>
-                💡 Commands work in any terminal. Use the ZIP bundle to get everything in one go.
-              </p>
+              {/* ── UPLOAD TAB ────────────────────────────────────────── */}
+              {cliTab === 'upload' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                  <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', padding: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <Upload size={15} color="#60a5fa" />
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', margin: 0 }}>Upload a text paste:</label>
+                    </div>
+                    <div style={{ background: '#000000', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #27272a', position: 'relative' }}>
+                      <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.775rem', color: '#a3e635', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{uploadCurlText}</pre>
+                      <button onClick={() => copyCliCommand(uploadCurlText, 'upload_text')} className="btn btn-ghost" style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem' }}>
+                        {cliCmdCopied === 'upload_text' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Replace <code style={{ color: '#d1d5db' }}>yourfile.txt</code> with your file path. The JSON response contains the <code style={{ color: '#d1d5db' }}>slug</code> of the new link.</p>
+                  </div>
+
+                  <div style={{ background: 'rgba(96,165,250,0.06)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '10px', padding: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <Upload size={15} color="#60a5fa" />
+                      <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#60a5fa', margin: 0 }}>Upload a file:</label>
+                    </div>
+                    <div style={{ background: '#000000', padding: '0.75rem 1rem', borderRadius: '8px', border: '1px solid #27272a', position: 'relative' }}>
+                      <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '0.775rem', color: '#7dd3fc', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{uploadCurlFile}</pre>
+                      <button onClick={() => copyCliCommand(uploadCurlFile, 'upload_file')} className="btn btn-ghost" style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', fontSize: '0.72rem', padding: '0.2rem 0.5rem', gap: '0.25rem' }}>
+                        {cliCmdCopied === 'upload_file' ? <><Check size={11} color="#10b981" /> Copied</> : <><Copy size={11} /> Copy</>}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: '#6b7280', margin: '0.6rem 0 0', lineHeight: 1.4 }}>Supports images, PDFs, archives, and any file up to 50 MB.</p>
+                  </div>
+                  <p style={{ fontSize: '0.72rem', color: '#52525b', lineHeight: 1.4 }}>💡 Set <code style={{ color: '#d1d5db' }}>ttl=permanent</code> for a link that never expires.</p>
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
+
+        {/* ── QR Code Modal ──────────────────────────────────────────────────── */}
+        {showQrModal && (
+          <div
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', zIndex: 1000 }}
+            onClick={() => setShowQrModal(false)}
+          >
+            <div
+              className="card animate-fade-up"
+              style={{ width: '100%', maxWidth: '360px', background: '#0a0a0a', border: '1px solid #27272a', padding: '2rem', borderRadius: '16px', position: 'relative', textAlign: 'center' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <QrCode size={20} />
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>Scan to Open</h3>
+                </div>
+                <button onClick={() => setShowQrModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}><X size={16} /></button>
+              </div>
+              <div style={{ background: '#000000', borderRadius: '12px', padding: '1rem', border: '1px solid #27272a', display: 'inline-block', marginBottom: '1.25rem' }}>
+                <img
+                  src={qrUrl}
+                  alt={`QR code for ${pageUrl}`}
+                  width={200} height={200}
+                  style={{ display: 'block', imageRendering: 'pixelated' }}
+                />
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.5 }}>{pageUrl}</p>
+              <button
+                onClick={() => copyCliCommand(pageUrl, 'qr_link')}
+                className="btn btn-ghost"
+                style={{ marginTop: '1rem', width: '100%', fontSize: '0.8125rem' }}
+              >
+                {cliCmdCopied === 'qr_link' ? <><Check size={14} color="#10b981" /> Link Copied!</> : <><Copy size={14} /> Copy Link</>}
+              </button>
             </div>
           </div>
         )}
@@ -267,16 +375,64 @@ export default function ViewPage() {
           {entry.content && (
             <div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Text Content</span>
-                <button
-                  onClick={copyTextContent}
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem' }}
-                >
-                  {textCopied ? <><Check size={13} color="#10b981" /> Copied Text</> : <><Copy size={13} /> Copy Text</>}
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>Text Content</span>
+                  {contentIsEncrypted && !decryptedContent && (
+                    <span className="lock-badge"><Lock size={10} /> Encrypted</span>
+                  )}
+                  {decryptedContent && (
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:'0.3rem', color:'#4ade80', fontSize:'0.72rem', fontWeight:700 }}><Unlock size={10} /> Decrypted</span>
+                  )}
+                </div>
+                {!contentIsEncrypted && (
+                  <button onClick={copyTextContent} className="btn btn-ghost" style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem' }}>
+                    {textCopied ? <><Check size={13} color="#10b981" /> Copied Text</> : <><Copy size={13} /> Copy Text</>}
+                  </button>
+                )}
               </div>
-              <MarkdownRenderer content={entry.content} />
+
+              {/* Encrypted: show unlock screen or decrypted content */}
+              {contentIsEncrypted && !decryptedContent ? (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                  <div style={{ width:60, height:60, borderRadius:'50%', background:'#0a0a0a', border:'1px solid #2d1f00', display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:'1.25rem' }}>
+                    <Lock size={26} color="#fbbf24" />
+                  </div>
+                  <h2 style={{ fontSize:'1.2rem', fontWeight:700, color:'#ffffff', marginBottom:'0.5rem' }}>This paste is password protected</h2>
+                  <p style={{ fontSize:'0.875rem', color:'var(--text-muted)', marginBottom:'1.5rem', lineHeight:1.6 }}>Enter the view password to decrypt and read the content.<br/>The decryption happens entirely in your browser.</p>
+                  <div style={{ display:'flex', gap:'0.6rem', maxWidth:'360px', margin:'0 auto' }}>
+                    <input
+                      className="input"
+                      type="password"
+                      placeholder="Enter view password…"
+                      value={decryptPassword}
+                      onChange={e => { setDecryptPassword(e.target.value); setDecryptError(false) }}
+                      onKeyDown={e => e.key === 'Enter' && handleDecrypt()}
+                      style={{ flex:1 }}
+                      autoFocus
+                    />
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleDecrypt}
+                      disabled={decrypting}
+                      style={{ flexShrink:0, padding:'0 1.25rem' }}
+                    >
+                      {decrypting ? <div className="spinner" /> : <Unlock size={15} />}
+                    </button>
+                  </div>
+                  {decryptError && (
+                    <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'#f87171' }}>❌ Wrong password — please try again.</p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {decryptedContent && (
+                    <button onClick={copyTextContent} className="btn btn-ghost" style={{ fontSize: '0.785rem', padding: '0.35rem 0.75rem', gap: '0.35rem', marginBottom:'1rem', display:'flex' }}>
+                      {textCopied ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy decrypted text</>}
+                    </button>
+                  )}
+                  <MarkdownRenderer content={displayContent ?? ''} />
+                </>
+              )}
             </div>
           )}
 

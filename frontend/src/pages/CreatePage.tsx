@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Upload, Link as LinkIcon, ArrowRight, Info } from 'lucide-react'
+import { FileText, Upload, Link as LinkIcon, ArrowRight, Info, Lock } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
 import { createEntry, type ApiError } from '../lib/api'
+import { encryptContent } from '../lib/crypto'
 
 type Mode = 'text' | 'file'
 
@@ -12,24 +13,27 @@ const HOST = window.location.origin + '/'
 export default function CreatePage() {
   const navigate = useNavigate()
 
-  const [mode,     setMode]     = useState<Mode>('text')
-  const [content,  setContent]  = useState('')
-  const [files,    setFiles]    = useState<File[]>([])
-  const [slug,     setSlug]     = useState('')
-  const [editCode, setEditCode] = useState('')
-  const [ttl,      setTtl]      = useState('21600')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [mode,          setMode]          = useState<Mode>('text')
+  const [content,       setContent]       = useState('')
+  const [files,         setFiles]         = useState<File[]>([])
+  const [slug,          setSlug]          = useState('')
+  const [editCode,      setEditCode]      = useState('')
+  const [ttl,           setTtl]           = useState('21600')
+  const [lockContent,   setLockContent]   = useState(false)
+  const [viewPassword,  setViewPassword]  = useState('')
+  const [loading,       setLoading]       = useState(false)
+  const [error,         setError]         = useState<string | null>(null)
 
   const errorLabels: Record<string, string> = {
-    slug_taken:        'That URL is already taken. Try another.',
-    slug_invalid:      'URL must be 3–50 chars, lowercase letters, numbers, hyphens only.',
-    slug_reserved:     'That URL is reserved. Please choose another.',
-    missing_edit_code: 'Edit code must be 4–128 characters.',
-    file_too_large:    'File exceeds 50 MB limit.',
-    text_too_large:    'Text exceeds 2 MB limit.',
-    no_content:        'Please add some content or upload a file.',
-    mime_mismatch:     'File type does not match its content.',
+    slug_taken:          'That URL is already taken. Try another.',
+    slug_invalid:        'URL must be 3–50 chars, lowercase letters, numbers, hyphens only.',
+    slug_reserved:       'That URL is reserved. Please choose another.',
+    missing_edit_code:   'Edit code must be 4–128 characters.',
+    view_password_short: 'View password must be at least 4 characters.',
+    file_too_large:      'File exceeds 50 MB limit.',
+    text_too_large:      'Text exceeds 2 MB limit.',
+    no_content:          'Please add some content or upload a file.',
+    mime_mismatch:       'File type does not match its content.',
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -39,13 +43,19 @@ export default function CreatePage() {
     if (editCode.length < 4) { setError('missing_edit_code'); return }
     if (mode === 'text' && !content.trim()) { setError('no_content'); return }
     if (mode === 'file' && files.length === 0) { setError('no_content'); return }
+    if (lockContent && viewPassword.length < 4) { setError('view_password_short'); return }
 
     const form = new FormData()
     form.append('type', mode)
     form.append('editCode', editCode)
     form.append('ttl', ttl)
     if (slug.trim()) form.append('slug', slug.trim().toLowerCase())
-    if (mode === 'text') form.append('content', content)
+    if (mode === 'text') {
+      const finalContent = lockContent && viewPassword
+        ? await encryptContent(content, viewPassword)
+        : content
+      form.append('content', finalContent)
+    }
     if (mode === 'file') {
       files.forEach((f) => {
         form.append('files', f)
@@ -201,6 +211,38 @@ export default function CreatePage() {
                 <option value="permanent">Permanent</option>
               </select>
             </div>
+
+            {/* Lock / View Password */}
+            {mode === 'text' && (
+              <div className="field" style={{ flex:'1 1 150px', marginTop: 0 }}>
+                <label className="label">Password Lock</label>
+                <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem' }}>
+                  <label style={{ display:'flex', alignItems:'center', gap:'0.5rem', cursor:'pointer', userSelect:'none', height:'42px', padding:'0 0.75rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px' }}>
+                    <input
+                      type="checkbox"
+                      checked={lockContent}
+                      onChange={e => setLockContent(e.target.checked)}
+                      style={{ accentColor:'var(--accent)', width:15, height:15 }}
+                    />
+                    <Lock size={13} style={{ color: lockContent ? 'var(--accent)' : 'var(--text-dim)' }} />
+                    <span style={{ fontSize:'0.8125rem', color: lockContent ? 'var(--text)' : 'var(--text-muted)' }}>Encrypt paste</span>
+                  </label>
+                  {lockContent && (
+                    <input
+                      className="input"
+                      type="password"
+                      placeholder="View password (min 4 chars)"
+                      value={viewPassword}
+                      onChange={e => setViewPassword(e.target.value)}
+                      minLength={4}
+                      maxLength={128}
+                      style={{ height:'36px', boxSizing:'border-box', fontSize:'0.8125rem' }}
+                      autoFocus
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Submit Button */}
             <div style={{ marginTop: 0, flexShrink: 0 }}>
