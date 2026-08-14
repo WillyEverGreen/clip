@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -177,12 +178,12 @@ export default function ViewPage() {
         </div>
 
         {/* ── Terminal CLI Modal ───────────────────────────────────────────── */}
-        {showCliModal && (
+        {showCliModal && createPortal(
           <div
             style={{
               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
               background: 'rgba(0, 0, 0, 0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '1.5rem', zIndex: 1000,
+              padding: '1.5rem', zIndex: 99999,
             }}
             onClick={() => setShowCliModal(false)}
           >
@@ -320,13 +321,14 @@ export default function ViewPage() {
               )}
 
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* ── QR Code Modal ──────────────────────────────────────────────────── */}
-        {showQrModal && (
+        {showQrModal && createPortal(
           <div
-            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', zIndex: 1000 }}
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', zIndex: 99999 }}
             onClick={() => setShowQrModal(false)}
           >
             <div
@@ -360,7 +362,8 @@ export default function ViewPage() {
                 {cliCmdCopied === 'qr_link' ? <><Check size={14} color="#10b981" /> Link Copied!</> : <><Copy size={14} /> Copy Link</>}
               </button>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* ── Content ────────────────────────────────────────────────────── */}
