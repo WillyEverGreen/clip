@@ -519,6 +519,70 @@ textarea:-webkit-autofill {
 ::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
+/* ── Modal Dialogs ───────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  z-index: 99999;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 640px;
+  max-height: 88vh;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid #27272a;
+  background: #0e0e10;
+  flex-shrink: 0;
+}
+
+.modal-body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-card-qr {
+  width: 100%;
+  max-width: 380px;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  padding: 1.75rem;
+  border-radius: 16px;
+  position: relative;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+}
+
+.modal-inner-card {
+  background: #000000;
+  border-radius: 10px;
+  border: 1px solid #27272a;
+  padding: 0.75rem 1rem;
+}
+
 /* ── Responsive overrides ────────────────────────────────────────────────── */
 .top-bar-actions {
   display: flex;
@@ -530,7 +594,7 @@ textarea:-webkit-autofill {
 
 @media (max-width: 640px) {
   .page-wrapper {
-    padding: 0.65rem 0.35rem !important;
+    padding: 0.5rem 0.25rem !important;
     justify-content: flex-start !important;
   }
   .content-box {
@@ -542,7 +606,7 @@ textarea:-webkit-autofill {
     border-radius: 12px !important;
   }
   .card-content {
-    padding: 0.85rem 0.75rem !important;
+    padding: 0.75rem 0.6rem !important;
   }
   .card-glow {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7) !important;
@@ -556,6 +620,30 @@ textarea:-webkit-autofill {
     padding: 0.42rem 0.65rem !important;
     font-size: 0.75rem !important;
     gap: 0.3rem !important;
+  }
+  .modal-backdrop {
+    padding: 0.35rem 0.25rem !important;
+  }
+  .modal-card {
+    max-width: 100% !important;
+    max-height: 94vh !important;
+    border-radius: 12px !important;
+    border: 1px solid #1f1f23 !important;
+  }
+  .modal-header {
+    padding: 0.75rem 0.85rem !important;
+  }
+  .modal-body {
+    padding: 0.75rem 0.65rem !important;
+  }
+  .modal-card-qr {
+    max-width: 100% !important;
+    padding: 1.25rem 0.75rem !important;
+    border-radius: 12px !important;
+  }
+  .modal-inner-card {
+    padding: 0.6rem 0.7rem !important;
+    border-radius: 8px !important;
   }
   .url-hostname {
     display: none;

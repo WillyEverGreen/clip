@@ -179,28 +179,13 @@ export default function ViewPage() {
 
         {/* ── Terminal CLI Modal ───────────────────────────────────────────── */}
         {showCliModal && createPortal(
-          <div
-            style={{
-              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(0, 0, 0, 0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '1.25rem', zIndex: 99999,
-            }}
-            onClick={() => setShowCliModal(false)}
-          >
-            <div
-              className="card animate-fade-up"
-              style={{
-                width: '100%', maxWidth: '640px', maxHeight: '88vh', background: '#0a0a0a', border: '1px solid #27272a',
-                borderRadius: '16px', position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.85)',
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
+          <div className="modal-backdrop" onClick={() => setShowCliModal(false)}>
+            <div className="modal-card card animate-fade-up" onClick={(e) => e.stopPropagation()}>
               {/* Modal Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.1rem 1.5rem', borderBottom: '1px solid #27272a', background: '#0e0e10', flexShrink: 0 }}>
+              <div className="modal-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <Terminal size={20} color="#10b981" />
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>Terminal CLI</h3>
+                  <Terminal size={18} color="#10b981" />
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>Terminal CLI</h3>
                 </div>
                 <button onClick={() => setShowCliModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}>
                   <X size={16} />
@@ -208,7 +193,7 @@ export default function ViewPage() {
               </div>
 
               {/* Modal Body with Custom Scrollbar */}
-              <div style={{ padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1 }}>
+              <div className="modal-body">
                 {/* Download / Upload Tabs */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
                   <button onClick={() => setCliTab('download')} style={{ flex:1, padding:'0.5rem 0.75rem', borderRadius:'6px', cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, border:'none', transition:'all 150ms ease', background: cliTab==='download' ? '#27272a' : 'transparent', color: cliTab==='download' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
@@ -231,7 +216,7 @@ export default function ViewPage() {
                 {/* ── DOWNLOAD TAB ──────────────────────────────────────── */}
                 {cliTab === 'download' && (<>
                 {/* ZIP Bundle */}
-                <div style={{ marginBottom: '1.25rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(96,165,250,0.08) 100%)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '10px', padding: '1rem' }}>
+                <div style={{ marginBottom: '1.25rem', background: 'linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(96,165,250,0.08) 100%)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem' }}>
                     <FileArchive size={15} color="#10b981" />
                     <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981', margin: 0 }}>Download Everything as ZIP:</label>
@@ -249,7 +234,7 @@ export default function ViewPage() {
 
                 {entry.content && (
                   <div style={{ marginBottom: '1.25rem' }}>
-                    <div style={{ background: '#000000', borderRadius: '10px', border: '1px solid #27272a', padding: '0.75rem 1rem' }}>
+                    <div className="modal-inner-card">
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
                           <FileText size={14} color="#a3e635" />
@@ -280,7 +265,7 @@ export default function ViewPage() {
                           const fCmd = cliOs === 'linux' ? `curl -LO ${fileUrl(entry.slug, f.id)}` : `curl.exe -LO ${fileUrl(entry.slug, f.id)}`
                           const fId = `file_${f.id}`
                           return (
-                            <div key={f.id} style={{ background: '#000000', borderRadius: '8px', border: '1px solid #27272a', padding: '0.65rem 0.85rem' }}>
+                            <div key={f.id} className="modal-inner-card" style={{ padding:'0.65rem 0.85rem' }}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
                                 <div style={{ display:'flex', alignItems:'center', gap:'0.35rem', overflow:'hidden' }}>
                                   <FileText size={13} color="#93c5fa" style={{ flexShrink:0 }} />
@@ -300,7 +285,7 @@ export default function ViewPage() {
                         })}
                       </div>
                     ) : (
-                      <div style={{ background: '#000000', borderRadius: '8px', border: '1px solid #27272a', padding: '0.65rem 0.85rem' }}>
+                      <div className="modal-inner-card" style={{ padding:'0.65rem 0.85rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:'0.35rem' }}>
                             <FileText size={13} color="#93c5fa" />
@@ -370,37 +355,31 @@ export default function ViewPage() {
 
         {/* ── QR Code Modal ──────────────────────────────────────────────────── */}
         {showQrModal && createPortal(
-          <div
-            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem', zIndex: 99999 }}
-            onClick={() => setShowQrModal(false)}
-          >
-            <div
-              className="card animate-fade-up"
-              style={{ width: '100%', maxWidth: '360px', background: '#0a0a0a', border: '1px solid #27272a', padding: '2rem', borderRadius: '16px', position: 'relative', textAlign: 'center' }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <QrCode size={20} />
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>Scan to Open</h3>
+          <div className="modal-backdrop" onClick={() => setShowQrModal(false)}>
+            <div className="modal-card-qr card animate-fade-up" onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <QrCode size={18} />
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#ffffff' }}>Scan to Open</h3>
                 </div>
                 <button onClick={() => setShowQrModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}><X size={16} /></button>
               </div>
-              <div style={{ background: '#ffffff', borderRadius: '14px', padding: '1.25rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+              <div style={{ background: '#ffffff', borderRadius: '12px', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', width: 'fit-content' }}>
                 <QRCodeSVG
                   value={pageUrl}
-                  size={200}
+                  size={190}
                   bgColor="#ffffff"
                   fgColor="#000000"
                   level="H"
                   includeMargin={false}
+                  style={{ display: 'block' }}
                 />
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.5, fontFamily: 'var(--font-mono)' }}>{pageUrl}</p>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.5, fontFamily: 'var(--font-mono)', margin: '0 0 1rem', textAlign: 'center', width: '100%' }}>{pageUrl}</p>
               <button
                 onClick={() => copyCliCommand(pageUrl, 'qr_link')}
                 className="btn btn-ghost"
-                style={{ marginTop: '1rem', width: '100%', fontSize: '0.8125rem' }}
+                style={{ width: '100%', fontSize: '0.8125rem', padding: '0.65rem 1rem' }}
               >
                 {cliCmdCopied === 'qr_link' ? <><Check size={14} color="#10b981" /> Link Copied!</> : <><Copy size={14} /> Copy Link</>}
               </button>
