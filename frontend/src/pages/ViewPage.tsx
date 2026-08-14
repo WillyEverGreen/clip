@@ -221,6 +221,20 @@ export default function ViewPage() {
                   </button>
                 </div>
 
+                {/* Encrypted link notification & password statement */}
+                {contentIsEncrypted && (
+                  <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: '8px', padding: '0.65rem 0.85rem', marginBottom: '1.15rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Lock size={14} color="#eab308" style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.75rem', color: '#e4e4e7', lineHeight: 1.45 }}>
+                      {activePass && activePass !== '<password>' ? (
+                        <>🔒 <strong>Encrypted Link</strong>: Password <strong style={{ color: '#facc15' }}>"{activePass}"</strong> is automatically pre-filled in your commands.</>
+                      ) : (
+                        <>🔒 <strong>Encrypted Link</strong>: Replace <code style={{ color: '#facc15', background:'rgba(255,255,255,0.08)', padding:'0.1rem 0.35rem', borderRadius:'4px' }}>&lt;password&gt;</code> in the commands with your actual encryption password.</>
+                      )}
+                    </span>
+                  </div>
+                )}
+
                 {/* ── DOWNLOAD TAB ──────────────────────────────────────── */}
                 {cliTab === 'download' && (<>
                 {/* ZIP Bundle */}
