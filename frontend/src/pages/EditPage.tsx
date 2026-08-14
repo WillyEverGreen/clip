@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X } from 'lucide-react'
+import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock } from 'lucide-react'
 import { verifyEditCode, getEntry, updateEntry, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
+import { isEncrypted, decryptContent, encryptContent } from '../lib/crypto'
 import DropZone from '../components/DropZone'
 
 type Step = 'verify' | 'edit'
@@ -31,26 +32,64 @@ export default function EditPage() {
   const [deleting,          setDeleting]          = useState(false)
   const [editError,         setEditError]         = useState<string | null>(null)
 
+  // Encryption states
+  const [viewPassword,         setViewPassword]         = useState('')
+  const [isLocked,             setIsLocked]             = useState(false)
+  const [decryptPasswordInput, setDecryptPasswordInput] = useState('')
+  const [decryptError,         setDecryptError]         = useState(false)
+
   // Fetch existing document on mount
   useEffect(() => {
     if (!slug) return
     getEntry(slug)
-      .then(data => {
+      .then(async data => {
         if (data) {
           setExisting(data)
           setMode(data.type)
-          if (data.content) {
-            setContent(data.content)
-          }
           if (data.files && data.files.length > 0) {
             setKeptExistingFiles(data.files)
           } else if (data.fileName) {
             setKeptExistingFiles([{ id: 'f_1', fileName: data.fileName, fileSize: data.fileSize }])
           }
+
+          if (data.content) {
+            if (isEncrypted(data.content)) {
+              // Try auto-decryption using cached sessionStorage password
+              const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug)
+              if (sessionPass) {
+                const decrypted = await decryptContent(data.content, sessionPass)
+                if (decrypted !== null) {
+                  setContent(decrypted === '{"file_lock":true}' ? '' : decrypted)
+                  setViewPassword(sessionPass)
+                } else {
+                  setIsLocked(true)
+                }
+              } else {
+                setIsLocked(true)
+              }
+            } else {
+              setContent(data.content)
+            }
+          }
         }
       })
       .finally(() => setLoadingDoc(false))
   }, [slug])
+
+  // Unlock encrypted paste in editor
+  async function handleDecryptEdit() {
+    if (!existing?.content || !slug) return
+    setDecryptError(false)
+    const decrypted = await decryptContent(existing.content, decryptPasswordInput)
+    if (decrypted !== null) {
+      setContent(decrypted === '{"file_lock":true}' ? '' : decrypted)
+      setViewPassword(decryptPasswordInput)
+      setIsLocked(false)
+      sessionStorage.setItem('clip_decrypt_' + slug, decryptPasswordInput)
+    } else {
+      setDecryptError(true)
+    }
+  }
 
   // Verify
   async function handleVerify(e: React.FormEvent) {
@@ -77,28 +116,32 @@ export default function EditPage() {
     if (!slug) return
     setEditError(null)
 
-    const form = new FormData()
-    form.append('editCode', code)
-    form.append('content', content)
-    
-    if (keptExistingFiles.length > 0) {
-      keptExistingFiles.forEach((f) => {
-        if (f.id) form.append('keepFileIds', f.id)
-      })
-    } else if (newFiles.length === 0) {
-      form.append('removeFile', 'true')
-    }
-
-    if (newFiles.length > 0) {
-      newFiles.forEach((f) => {
-        form.append('files', f)
-        form.append('file', f)
-      })
-    }
-
-
     setSaving(true)
     try {
+      let finalContent = content
+      if (viewPassword) {
+        finalContent = await encryptContent(content || '{"file_lock":true}', viewPassword)
+      }
+
+      const form = new FormData()
+      form.append('editCode', code)
+      form.append('content', finalContent)
+      
+      if (keptExistingFiles.length > 0) {
+        keptExistingFiles.forEach((f) => {
+          if (f.id) form.append('keepFileIds', f.id)
+        })
+      } else if (newFiles.length === 0) {
+        form.append('removeFile', 'true')
+      }
+
+      if (newFiles.length > 0) {
+        newFiles.forEach((f) => {
+          form.append('files', f)
+          form.append('file', f)
+        })
+      }
+
       await updateEntry(slug, form)
       navigate(`/${slug}`)
     } catch (err) {
@@ -189,127 +232,164 @@ export default function EditPage() {
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="card card-glow card-content">
-          {/* Mode Tabs */}
-          <div style={{ display:'flex', gap:'0.5rem', marginBottom:'2rem', padding:'0.3rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)' }}>
-            <button
-              type="button"
-              onClick={() => setMode('text')}
-              style={{
-                flex:1, padding:'0.7rem', borderRadius:'8px', cursor:'pointer',
-                fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
-                display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
-                transition:'all 150ms ease',
-                background: mode === 'text' ? '#52525b' : 'transparent',
-                color: mode === 'text' ? '#ffffff' : 'var(--text-muted)',
-                border: mode === 'text' ? '1px solid #71717a' : '1px solid transparent',
-              }}
-            >
-              <FileText size={16} /> Text
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('file')}
-              style={{
-                flex:1, padding:'0.7rem', borderRadius:'8px', cursor:'pointer',
-                fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
-                display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
-                transition:'all 150ms ease',
-                background: mode === 'file' ? '#52525b' : 'transparent',
-                color: mode === 'file' ? '#ffffff' : 'var(--text-muted)',
-                border: mode === 'file' ? '1px solid #71717a' : '1px solid transparent',
-              }}
-            >
-              <Upload size={16} /> File {hasExistingFile && '✓'}
-            </button>
-          </div>
-
-
-          <div className="field">
-            {mode === 'text' ? (
-              <>
-                <label className="label">Text Content</label>
-                <textarea
+        <div className="card card-glow card-content">
+          {isLocked ? (
+            <div style={{ textAlign:'center', padding:'2.5rem 1rem' }}>
+              <div style={{ width:54, height:54, borderRadius:'50%', background:'#121212', border:'1px solid #3f3f46', display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:'1.25rem' }}>
+                <Lock size={24} color="#ffffff" />
+              </div>
+              <h3 style={{ fontSize:'1.2rem', fontWeight:700, color:'#ffffff', marginBottom:'0.5rem' }}>Paste is Encrypted</h3>
+              <p style={{ fontSize:'0.85rem', color:'var(--text-muted)', marginBottom:'1.75rem', maxWidth:'360px', margin:'0 auto 1.75rem', lineHeight:1.6 }}>
+                Enter the view password to decrypt and edit this paste.
+              </p>
+              <div style={{ display:'flex', gap:'0.6rem', maxWidth:'320px', margin:'0 auto' }}>
+                <input
                   className="input"
-                  style={{ minHeight:'250px' }}
-                  value={content}
-                  onChange={e => setContent(e.target.value)}
-                  placeholder="Paste or edit your text here… Markdown supported"
+                  type="password"
+                  placeholder="Enter view password…"
+                  value={decryptPasswordInput}
+                  onChange={e => { setDecryptPasswordInput(e.target.value); setDecryptError(false) }}
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleDecryptEdit())}
+                  style={{ flex:1 }}
+                  autoFocus
                 />
-              </>
-            ) : (
-              <>
-                <label className="label">File Attachment</label>
-
-                {/* Existing files list */}
-                {keptExistingFiles.length > 0 && (
-                  <div style={{ marginBottom:'1.25rem', display:'flex', flexDirection:'column', gap:'0.75rem' }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)' }}>
-                        Existing Attached Files ({keptExistingFiles.length})
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setKeptExistingFiles([])}
-                        style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171' }}
-                      >
-                        <X size={14} /> Remove All Existing Files
-                      </button>
-                    </div>
-
-                    {keptExistingFiles.map((item, idx) => (
-                      <div key={item.id ?? idx} style={{ padding:'0.85rem 1.1rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                          <FileIcon size={20} color="#ffffff" />
-                          <div>
-                            <div style={{ fontSize:'0.9rem', fontWeight:600, color:'#ffffff' }}>{item.fileName}</div>
-                            {item.fileSize && (
-                              <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'2px' }}>{formatBytes(item.fileSize)}</div>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => setKeptExistingFiles(prev => prev.filter((_, i) => i !== idx))}
-                          style={{ padding:'0.25rem 0.5rem', color:'var(--text-muted)', borderRadius:'6px' }}
-                          title="Remove file"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Add new / additional files dropzone */}
-                <div>
-                  {keptExistingFiles.length > 0 && (
-                    <div style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)', marginBottom:'0.5rem' }}>
-                      + Add More Files
-                    </div>
-                  )}
-                  <DropZone onFiles={fs => setNewFiles(fs)} height="202px" />
-                </div>
-
-
-              </>
-            )}
-          </div>
-
-          {editError && (
-            <div style={{ marginTop:'1rem', padding:'0.75rem 1rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.875rem', color:'#ffffff' }}>
-              {editError}
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleDecryptEdit}
+                  style={{ flexShrink:0, padding:'0 1.25rem' }}
+                >
+                  <Unlock size={15} />
+                </button>
+              </div>
+              {decryptError && (
+                <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'#f87171' }}>❌ Wrong password — please try again.</p>
+              )}
             </div>
-          )}
+          ) : (
+            <form onSubmit={handleSave}>
+              {/* Mode Tabs */}
+              <div style={{ display:'flex', gap:'0.5rem', marginBottom:'2rem', padding:'0.3rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)' }}>
+                <button
+                  type="button"
+                  onClick={() => setMode('text')}
+                  style={{
+                    flex:1, padding:'0.7rem', borderRadius:'8px', cursor:'pointer',
+                    fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
+                    transition:'all 150ms ease',
+                    background: mode === 'text' ? '#52525b' : 'transparent',
+                    color: mode === 'text' ? '#ffffff' : 'var(--text-muted)',
+                    border: mode === 'text' ? '1px solid #71717a' : '1px solid transparent',
+                  }}
+                >
+                  <FileText size={16} /> Text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('file')}
+                  style={{
+                    flex:1, padding:'0.7rem', borderRadius:'8px', cursor:'pointer',
+                    fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
+                    transition:'all 150ms ease',
+                    background: mode === 'file' ? '#52525b' : 'transparent',
+                    color: mode === 'file' ? '#ffffff' : 'var(--text-muted)',
+                    border: mode === 'file' ? '1px solid #71717a' : '1px solid transparent',
+                  }}
+                >
+                  <Upload size={16} /> File {hasExistingFile && '✓'}
+                </button>
+              </div>
 
-          <div style={{ display:'flex', justifyContent:'flex-end', marginTop:'1.75rem' }}>
-            <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding:'0.75rem 2rem', fontSize:'0.9375rem', gap:'0.5rem' }}>
-              {saving ? <><div className="spinner"/>Saving…</> : <><Check size={18} /> Save Changes</>}
-            </button>
-          </div>
-        </form>
+
+              <div className="field">
+                {mode === 'text' ? (
+                  <>
+                    <label className="label">Text Content</label>
+                    <textarea
+                      className="input"
+                      style={{ minHeight:'250px' }}
+                      value={content}
+                      onChange={e => setContent(e.target.value)}
+                      placeholder="Paste or edit your text here… Markdown supported"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <label className="label">File Attachment</label>
+
+                    {/* Existing files list */}
+                    {keptExistingFiles.length > 0 && (
+                      <div style={{ marginBottom:'1.25rem', display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                          <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)' }}>
+                            Existing Attached Files ({keptExistingFiles.length})
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => setKeptExistingFiles([])}
+                            style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171' }}
+                          >
+                            <X size={14} /> Remove All Existing Files
+                          </button>
+                        </div>
+
+                        {keptExistingFiles.map((item, idx) => (
+                          <div key={item.id ?? idx} style={{ padding:'0.85rem 1.1rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                            <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                              <FileIcon size={20} color="#ffffff" />
+                              <div>
+                                <div style={{ fontSize:'0.9rem', fontWeight:600, color:'#ffffff' }}>{item.fileName}</div>
+                                {item.fileSize && (
+                                  <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'2px' }}>{formatBytes(item.fileSize)}</div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => setKeptExistingFiles(prev => prev.filter((_, i) => i !== idx))}
+                              style={{ padding:'0.25rem 0.5rem', color:'var(--text-muted)', borderRadius:'6px' }}
+                              title="Remove file"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add new / additional files dropzone */}
+                    <div>
+                      {keptExistingFiles.length > 0 && (
+                        <div style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)', marginBottom:'0.5rem' }}>
+                          + Add More Files
+                        </div>
+                      )}
+                      <DropZone onFiles={fs => setNewFiles(fs)} height="202px" />
+                    </div>
+
+
+                  </>
+                )}
+              </div>
+
+              {editError && (
+                <div style={{ marginTop:'1rem', padding:'0.75rem 1rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.875rem', color:'#ffffff' }}>
+                  {editError}
+                </div>
+              )}
+
+              <div style={{ display:'flex', justifyContent:'flex-end', marginTop:'1.75rem' }}>
+                <button type="submit" className="btn btn-primary" disabled={saving} style={{ padding:'0.75rem 2rem', fontSize:'0.9375rem', gap:'0.5rem' }}>
+                  {saving ? <><div className="spinner"/>Saving…</> : <><Check size={18} /> Save Changes</>}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       </div>
     </div>
   )

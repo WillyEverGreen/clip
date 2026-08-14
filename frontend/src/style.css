@@ -301,47 +301,148 @@ textarea:-webkit-autofill {
   color: #ffffff;
   font-size: 0.9375rem;
 }
-.markdown-body h1,.markdown-body h2,.markdown-body h3 { margin: 1.5rem 0 0.75rem; color: #ffffff; }
-.markdown-body p   { margin: 0.75rem 0; color: #e5e5e5; }
-.markdown-body ul,.markdown-body ol { margin: 0.75rem 0; padding-left: 1.5rem; }
-.markdown-body li  { margin: 0.3rem 0; color: #e5e5e5; }
+.markdown-body h1 { font-size: 1.6rem; font-weight: 700; margin: 1.75rem 0 0.85rem; color: #ffffff; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+.markdown-body h2 { font-size: 1.35rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #ffffff; }
+.markdown-body h3 { font-size: 1.15rem; font-weight: 600; margin: 1.25rem 0 0.6rem; color: #ffffff; }
+.markdown-body h4 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #ffffff; }
+.markdown-body p  { margin: 0.85rem 0; color: #e4e4e7; line-height: 1.75; }
+.markdown-body ul, .markdown-body ol { margin: 0.85rem 0; padding-left: 1.6rem; }
+.markdown-body li { margin: 0.35rem 0; color: #e4e4e7; line-height: 1.65; }
 .markdown-body blockquote {
-  border-left: 2px solid #ffffff;
-  padding: 0.5rem 1rem;
-  margin: 1rem 0;
-  color: var(--text-muted);
-  background: #141414;
+  border-left: 3px solid #71717a;
+  padding: 0.6rem 1.1rem;
+  margin: 1.25rem 0;
+  color: #a1a1aa;
+  background: #101010;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-style: normal;
 }
-.markdown-body pre {
-  background: #060606;
+.markdown-body blockquote p { margin: 0.3rem 0; }
+
+/* ── Code Blocks with Header ────────────────────────────────────────────── */
+.code-block-container {
+  margin: 1.25rem 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1.1rem 1.25rem;
+  background: #080808;
+  overflow: hidden;
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.85rem;
+  background: #141414;
+  border-bottom: 1px solid var(--border);
+}
+.code-block-lang {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: #a1a1aa;
+  letter-spacing: 0.05em;
+}
+.markdown-body pre {
+  background: #080808;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
   overflow-x: auto;
-  margin: 1rem 0;
+  margin: 1.25rem 0;
   font-family: var(--font-mono);
   font-size: 0.875rem;
+  line-height: 1.6;
   position: relative;
+}
+.code-block-container pre {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
 }
 .markdown-body code {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  background: #18181b;
+  background: #1c1c1f;
   padding: 0.15em 0.4em;
   border-radius: 4px;
-  color: #e5e7eb;
+  color: #f4f4f5;
+  border: 1px solid rgba(255,255,255,0.06);
 }
-.markdown-body pre code { background: none; padding: 0; font-size: inherit; }
-.markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
-.markdown-body table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-.markdown-body th,.markdown-body td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
-.markdown-body th { background: #141414; font-weight: 600; color: #ffffff; }
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  border: none;
+}
+.markdown-body a { color: #ffffff; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+.markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.75rem 0; }
+
+/* ── KaTeX Math Display ─────────────────────────────────────────────────── */
+.markdown-body .katex-display {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #09090b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.markdown-body .katex {
+  font-size: 1.08em;
+  color: #ffffff;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.markdown-body th {
+  background: #141414;
+  font-weight: 600;
+  color: #ffffff;
+}
+.markdown-body tr:nth-child(even) td {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ── Checkboxes / Task lists ────────────────────────────────────────────── */
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.5rem;
+  accent-color: #ffffff;
+  vertical-align: middle;
+}
+.markdown-body kbd {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.5);
+  color: #ffffff;
+}
+.markdown-body mark {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+}
 
 /* ── Prism Token Colors (matches dark theme) ─────────────────────────────── */
-.token.comment,.token.prolog,.token.doctype,.token.cdata { color: #6b7280; font-style: italic; }
-.token.punctuation                { color: #9ca3af; }
+.token.comment,.token.prolog,.token.doctype,.token.cdata { color: #71717a; font-style: italic; }
+.token.punctuation                { color: #a1a1aa; }
 .token.property,.token.tag,.token.boolean,.token.number,.token.constant,.token.symbol { color: #f87171; }
 .token.selector,.token.attr-name,.token.string,.token.char,.token.builtin { color: #86efac; }
 .token.operator,.token.entity,.token.url { color: #93c5fd; }

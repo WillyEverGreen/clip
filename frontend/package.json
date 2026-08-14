@@ -10,6 +10,7 @@
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",
+    "@types/katex": "^0.16.8",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
@@ -20,8 +21,11 @@
   "dependencies": {
     "@types/prismjs": "^1.26.6",
     "dompurify": "^3.4.12",
+    "katex": "^0.18.4",
     "lucide-react": "^1.28.0",
     "marked": "^18.0.7",
+    "marked-gfm-heading-id": "^4.1.4",
+    "marked-katex-extension": "^5.1.10",
     "prismjs": "^1.30.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
