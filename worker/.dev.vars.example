@@ -1,0 +1,5 @@
+# Admin authorization key for managing clips (fetch entries, delete entries, purge databases)
+ADMIN_SECRET=test_admin_secret_key
+
+# Optional application pepper used to hash IP addresses and passwords
+APP_PEPPER=clip_local_dev_pepper

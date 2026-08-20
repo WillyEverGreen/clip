@@ -82,20 +82,17 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 
 ### 🚀 Local Development
 
+Run both the frontend and backend locally with just two commands from the root workspace directory:
+
 ```bash
-# 1. Clone the repository
-git clone https://github.com/WillyEverGreen/clip.git
-cd clip
+# 1. Install all dependencies (installs root, frontend, and worker dependencies automatically)
+npm install
 
-# 2. Install dependencies (Frontend & Worker)
-cd frontend && npm install
-cd ../worker && npm install
-cd ..
-
-# 3. Run Frontend Development Server
-cd frontend
+# 2. Run both Vite frontend and Wrangler worker concurrently
 npm run dev
 ```
+
+For a detailed breakdown of the codebase architecture, environment setup, and contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide.
 
 ---
 

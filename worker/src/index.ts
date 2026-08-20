@@ -11,6 +11,9 @@ import { handleRemove } from './handlers/remove'
 import { handleAdminList, handleAdminDelete, handleAdminPurgeAll } from './handlers/admin'
 import { handleReadZip } from './handlers/zip'
 
+// Re-export Durable Object so wrangler can register it
+export { ClipRoom } from './durable/ClipRoom'
+
 const app = new Hono<{ Bindings: Env }>()
 
 // ── Global middleware ─────────────────────────────────────────────────────────
@@ -43,6 +46,22 @@ app.get('/api/entry/:slug/raw',       handleReadRaw)
 app.get('/api/entry/:slug/zip',       handleReadZip)
 app.get('/api/entry/:slug',           handleRead)
 app.get('/api/entry/:slug/file',      handleReadFile)
+
+// SSE — real-time update stream (proxied to ClipRoom Durable Object)
+app.get('/api/entry/:slug/events', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'sse_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  // Forward the raw request; the DO manages the stream lifetime
+  return obj.fetch(
+    new Request(`https://clip-do/room/${slug}/events`, {
+      method:  'GET',
+      headers: c.req.raw.headers,
+    }),
+  )
+})
 
 // Verify edit code
 app.post('/api/entry/:slug/verify',   handleVerify)

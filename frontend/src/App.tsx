@@ -1,9 +1,12 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import CreatePage  from './pages/CreatePage'
-import ViewPage    from './pages/ViewPage'
-import EditPage    from './pages/EditPage'
-import ExpiredPage from './pages/ExpiredPage'
+
+// All pages are lazy-loaded so the initial JS bundle stays tiny.
+// Each page chunk is only downloaded when the user navigates to it.
+const CreatePage  = lazy(() => import('./pages/CreatePage'))
+const ViewPage    = lazy(() => import('./pages/ViewPage'))
+const EditPage    = lazy(() => import('./pages/EditPage'))
+const ExpiredPage = lazy(() => import('./pages/ExpiredPage'))
 
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').catch(() => ({
@@ -27,5 +30,3 @@ export default function App() {
     </BrowserRouter>
   )
 }
-
-

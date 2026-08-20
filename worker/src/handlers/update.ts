@@ -5,6 +5,7 @@ import { verifyCode } from '../lib/crypto'
 import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { validateMime } from '../lib/mime'
 import { log } from '../lib/logger'
+import { notifyRoom } from '../lib/notify'
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
 const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -189,6 +190,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
 
     await putEntry(c.env.PASTE_KV, updated)
 
+    c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
     await log('entry.updated', { slug }, c.env)
     return c.json({ slug })
   } catch (err: any) {

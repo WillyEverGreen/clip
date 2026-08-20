@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock } from 'lucide-react'
-import { verifyEditCode, getEntry, updateEntry, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
+import { verifyEditCode, getEntry, updateEntryWithProgress, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
 import { isEncrypted, decryptContent, encryptContent } from '../lib/crypto'
 import DropZone from '../components/DropZone'
 
@@ -31,6 +31,7 @@ export default function EditPage() {
   const [saving,            setSaving]            = useState(false)
   const [deleting,          setDeleting]          = useState(false)
   const [editError,         setEditError]         = useState<string | null>(null)
+  const [uploadProgress,    setUploadProgress]    = useState<number | null>(null)
 
   // Encryption states
   const [viewPassword,         setViewPassword]         = useState('')
@@ -142,13 +143,21 @@ export default function EditPage() {
         })
       }
 
-      await updateEntry(slug, form)
+      const hasNewFiles = newFiles.length > 0
+      await updateEntryWithProgress(slug, form, (pct) => {
+        if (hasNewFiles) setUploadProgress(pct)
+      })
+      if (hasNewFiles) {
+        setUploadProgress(100)
+        await new Promise((r) => setTimeout(r, 800))
+      }
       navigate(`/${slug}`)
     } catch (err) {
       const e = err as ApiError
       setEditError(e.error ?? 'Failed to save. Please try again.')
     } finally {
       setSaving(false)
+      setUploadProgress(null)
     }
   }
 
@@ -368,7 +377,12 @@ export default function EditPage() {
                           + Add More Files
                         </div>
                       )}
-                      <DropZone onFiles={fs => setNewFiles(fs)} height="202px" />
+                      <DropZone
+                        onFiles={fs => setNewFiles(fs)}
+                        height="202px"
+                        uploadProgress={uploadProgress}
+                        uploadingFileNames={newFiles.map(f => f.name)}
+                      />
                     </div>
 
 

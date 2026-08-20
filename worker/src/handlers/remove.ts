@@ -4,6 +4,7 @@ import { getEntry, deleteEntry } from '../lib/kv'
 import { verifyCode } from '../lib/crypto'
 import { log } from '../lib/logger'
 import { getClientIp } from '../lib/rateLimit'
+import { notifyRoom } from '../lib/notify'
 
 export async function handleRemove(c: Context<{ Bindings: Env }>) {
   const slug = c.req.param('slug') ?? ''
@@ -40,6 +41,7 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
 
   await deleteEntry(c.env.PASTE_KV, slug)
 
+  c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
   await log('entry.deleted', { slug }, c.env)
   return c.json({ success: true })
 }

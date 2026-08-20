@@ -7,10 +7,29 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_.\-]/g, '_').slice(0, 128)
 }
 
+// ── ETag helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Generates a stable ETag for an entry based on slug + last mutation time + file size.
+ * Cheap to compute (no hashing) and safe for public cache validation.
+ */
+function makeETag(slug: string, updatedAt: number, extra?: number): string {
+  return `"${slug}-${updatedAt}-${extra ?? 0}"`
+}
+
+/**
+ * Returns true if the client already has a fresh copy (matching ETag).
+ * Allows the handler to short-circuit with 304 Not Modified.
+ */
+function isNotModified(req: Request, etag: string): boolean {
+  const ifNoneMatch = req.headers.get('If-None-Match')
+  return ifNoneMatch === etag || ifNoneMatch === '*'
+}
+
 // ── GET /api/entry/:slug/file ─────────────────────────────────────────────────
 
 export async function handleReadFile(c: Context<{ Bindings: Env }>) {
-  const slug  = c.req.param('slug') ?? ''
+  const slug   = c.req.param('slug') ?? ''
   const fileId = c.req.query('fileId') || c.req.query('id')
   if (!slug) return c.json({ error: 'not_found' }, 404)
   const entry = await getEntry(c.env.PASTE_KV, slug)
@@ -32,6 +51,15 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
     }
   }
 
+  // ── ETag / 304 for file downloads ─────────────────────────────────────────
+  const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt, fileSize)
+  if (isNotModified(c.req.raw, etag)) {
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Cache-Control': 'public, max-age=10, stale-while-revalidate=60' },
+    })
+  }
+
   const fileData = await getFileKV(c.env.PASTE_KV, slug, fileId)
   if (!fileData) return c.json({ error: 'not_found' }, 404)
 
@@ -42,7 +70,8 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
       'Content-Type':        fileMime,
       'Content-Disposition': `attachment; filename="${safeName}"`,
       'Content-Length':      String(fileSize || fileData.byteLength),
-      'Cache-Control':       'no-store',
+      'ETag':                etag,
+      'Cache-Control':       'public, max-age=10, stale-while-revalidate=60',
     },
   })
 }
@@ -57,7 +86,7 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.text('Not found', 404)
   if (Date.now() > entry.expiresAt) return c.text('Expired', 404)
 
-  // Self-heal: clear expired files
+  // Self-heal: clear expired files (non-blocking — don't delay the response)
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
     entry.hasFile = false
     entry.fileName = undefined
@@ -65,11 +94,26 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
     entry.fileSize = undefined
     entry.files = undefined
     entry.fileExpiresAt = undefined
-    await putEntry(c.env.PASTE_KV, entry)
+    // Non-blocking: self-heal write does not block response
+    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
   }
 
+  // ── ETag / 304 for raw text ────────────────────────────────────────────────
+  const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt)
+  if (isNotModified(c.req.raw, etag)) {
+    // Still increment view count in background even on 304
+    entry.views = (entry.views ?? 0) + 1
+    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Cache-Control': 'no-cache' },
+    })
+  }
+
+  // ── Increment view count non-blocking ──────────────────────────────────────
+  // Response is returned immediately; KV write happens in background.
   entry.views = (entry.views ?? 0) + 1
-  await putEntry(c.env.PASTE_KV, entry)
+  c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
 
   if (entry.type === 'file' || (!entry.content && entry.hasFile)) {
     return handleReadFile(c)
@@ -97,7 +141,8 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
   return new Response(textContent, {
     headers: {
       'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-store',
+      'ETag':         etag,
+      'Cache-Control': 'no-cache',
     },
   })
 }
@@ -112,7 +157,7 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.json({ error: 'not_found' }, 404)
   if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
-  // Self-heal: clear expired files
+  // Self-heal: clear expired files (non-blocking — don't delay the response)
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
     entry.hasFile = false
     entry.fileName = undefined
@@ -120,7 +165,7 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
     entry.fileSize = undefined
     entry.files = undefined
     entry.fileExpiresAt = undefined
-    await putEntry(c.env.PASTE_KV, entry)
+    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
   }
 
   const userAgent = c.req.header('user-agent')?.toLowerCase() || ''
@@ -131,9 +176,30 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
     return handleReadRaw(c)
   }
 
-  entry.views = (entry.views ?? 0) + 1
-  await putEntry(c.env.PASTE_KV, entry)
+  const isPolling = !!c.req.query('_t') || c.req.query('poll') === 'true'
 
-  return c.json(toPublic(entry))
+  // ── ETag / 304 for JSON API ────────────────────────────────────────────────
+  const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt)
+  if (isNotModified(c.req.raw, etag)) {
+    // Skip incrementing view count in background if it's a polling/refresh request
+    if (!isPolling) {
+      entry.views = (entry.views ?? 0) + 1
+      c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+    }
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Cache-Control': 'no-cache' },
+    })
+  }
+
+  // ── Increment view count non-blocking ──────────────────────────────────────
+  if (!isPolling) {
+    entry.views = (entry.views ?? 0) + 1
+    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+  }
+
+  return c.json(toPublic(entry), 200, {
+    'ETag':          etag,
+    'Cache-Control': 'no-cache',
+  })
 }
-

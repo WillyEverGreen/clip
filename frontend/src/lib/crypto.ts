@@ -7,17 +7,36 @@
 const PBKDF2_ITERATIONS = 250_000
 const KEY_USAGE: KeyUsage[] = ['encrypt', 'decrypt']
 
+// ── PBKDF2 Key cache ──────────────────────────────────────────────────────────
+// Avoids re-deriving the key (250,000 iterations) on every re-render or retry.
+// Keyed by `password::base64(salt)` so different salts always derive fresh keys.
+// Bounded to 50 entries to prevent memory bloat on long-lived sessions.
+const keyCache = new Map<string, CryptoKey>()
+const KEY_CACHE_MAX = 50
+
 async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+  const cacheKey = `${password}::${btoa(String.fromCharCode(...salt))}`
+  const cached = keyCache.get(cacheKey)
+  if (cached) return cached
+
   const enc = new TextEncoder()
   const raw = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
-  return crypto.subtle.deriveKey(
+  const derived = await crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
     raw,
     { name: 'AES-GCM', length: 256 },
     false,
     KEY_USAGE,
   )
+
+  // Evict oldest entry if cache is full
+  if (keyCache.size >= KEY_CACHE_MAX) {
+    keyCache.delete(keyCache.keys().next().value!)
+  }
+  keyCache.set(cacheKey, derived)
+  return derived
 }
+
 
 export interface EncryptedPayload {
   encrypted: true

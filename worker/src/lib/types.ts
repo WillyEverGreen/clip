@@ -2,6 +2,7 @@
 
 export interface Env {
   PASTE_KV: KVNamespace
+  CLIP_DO: DurableObjectNamespace  // ClipRoom — SSE fan-out per slug
   APP_PEPPER: string        // set via: wrangler secret put APP_PEPPER
   FRONTEND_ORIGIN: string   // set in wrangler.toml [vars]
   ADMIN_SECRET?: string     // set via wrangler.toml [vars] or secret

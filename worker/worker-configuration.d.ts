@@ -3,4 +3,6 @@
 interface Env {
 	PASTE_KV: KVNamespace;
 	FRONTEND_ORIGIN: "https://clip.foo.ng";
+	ADMIN_SECRET: string;
+	CLIP_DO: DurableObjectNamespace<import("./src/index").ClipRoom>;
 }

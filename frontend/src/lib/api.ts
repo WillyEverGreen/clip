@@ -41,10 +41,77 @@ export async function createEntry(data: FormData): Promise<CreateResponse> {
   return json as CreateResponse
 }
 
+/**
+ * Like createEntry but reports upload progress via onProgress(0..100).
+ * Falls back to plain fetch if XHR is unavailable.
+ */
+export function createEntryWithProgress(
+  data: FormData,
+  onProgress: (pct: number) => void,
+): Promise<CreateResponse> {
+  return xhrUpload<CreateResponse>(`${BASE}/api/entry`, 'POST', data, onProgress)
+}
+
+/**
+ * Like updateEntry but reports upload progress via onProgress(0..100).
+ */
+export function updateEntryWithProgress(
+  slug: string,
+  data: FormData,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  return xhrUpload<void>(`${BASE}/api/entry/${slug}`, 'PATCH', data, onProgress)
+}
+
+/** Generic XHR wrapper with upload progress */
+function xhrUpload<T>(url: string, method: string, data: FormData, onProgress: (pct: number) => void): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(method, url)
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+
+    xhr.onload = () => {
+      onProgress(100)
+      let json: any
+      try { json = JSON.parse(xhr.responseText) } catch { json = {} }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(json as T)
+      } else {
+        reject(json as ApiError)
+      }
+    }
+
+    xhr.onerror = () => reject({ error: 'network_error' } as ApiError)
+    xhr.ontimeout = () => reject({ error: 'timeout' } as ApiError)
+
+    xhr.send(data)
+  })
+}
+
 // ── Read ──────────────────────────────────────────────────────────────────────
-export async function getEntry(slug: string): Promise<PublicEntry | null> {
-  const res = await fetch(`${BASE}/api/entry/${slug}`)
+export async function getEntry(slug: string, cacheBust?: string, isPoll?: boolean): Promise<PublicEntry | null> {
+  let url = `${BASE}/api/entry/${slug}`
+  const params = new URLSearchParams()
+  if (cacheBust) params.append('_t', cacheBust)
+  if (isPoll) params.append('poll', 'true')
+  
+  const queryString = params.toString()
+  if (queryString) {
+    url += `?${queryString}`
+  }
+
+  const res = await fetch(url, {
+    // Bypass browser HTTP cache to always get the freshest data
+    cache: 'no-store',
+  })
   if (res.status === 404) return null
+  // 304 Not Modified — no body to parse; caller should keep existing data
+  if (res.status === 304) return null
   if (!res.ok) throw await res.json()
   return res.json()
 }

@@ -7,11 +7,22 @@ interface Props {
   onFiles?: (files: File[]) => void
   maxBytes?: number
   height?: string
+  /** 0–100 while uploading, null when idle */
+  uploadProgress?: number | null
+  /** File names shown in the progress bar */
+  uploadingFileNames?: string[]
 }
 
 const MAX = 50 * 1024 * 1024 // 50 MB total limit
 
-export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '202px' }: Props) {
+export default function DropZone({
+  onFile,
+  onFiles,
+  maxBytes = MAX,
+  height = '202px',
+  uploadProgress = null,
+  uploadingFileNames = [],
+}: Props) {
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [error, setError] = useState('')
@@ -21,7 +32,9 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
     (newFiles: File[]) => {
       setError('')
       setSelectedFiles((prev) => {
-        const deduped = newFiles.filter((nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size))
+        const deduped = newFiles.filter(
+          (nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size),
+        )
         const updated = [...prev, ...deduped]
         const totalSize = updated.reduce((acc, f) => acc + f.size, 0)
 
@@ -35,9 +48,8 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
         return updated
       })
     },
-    [maxBytes, onFiles, onFile]
+    [maxBytes, onFiles, onFile],
   )
-
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -62,20 +74,113 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
     })
   }
 
+  // ── Upload progress overlay ───────────────────────────────────────────────
+  if (uploadProgress !== null) {
+    const isDone = uploadProgress >= 100
+    const displayNames = uploadingFileNames.slice(0, 2)
+    const extra = uploadingFileNames.length - 2
 
+    return (
+      <div>
+        <div
+          className="dropzone"
+          style={{ height, minHeight: height, cursor: 'default', pointerEvents: 'none' }}
+        >
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {/* Header row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600, letterSpacing: '0.04em' }}>
+                {isDone
+                  ? '✓ UPLOAD COMPLETE'
+                  : `UPLOADING${uploadingFileNames.length > 1 ? ` ${uploadingFileNames.length} FILES` : ''}…`}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.875rem',
+                  fontWeight: 700,
+                  color: isDone ? '#4ade80' : '#ffffff',
+                  fontVariantNumeric: 'tabular-nums',
+                  transition: 'color 300ms ease',
+                }}
+              >
+                {uploadProgress}%
+              </span>
+            </div>
+
+            {/* Progress track */}
+            <div
+              style={{
+                width: '100%',
+                height: '6px',
+                background: '#1a1a1a',
+                borderRadius: '3px',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${uploadProgress}%`,
+                  borderRadius: '3px',
+                  transition: 'width 150ms ease-out, background 300ms ease',
+                  background: isDone
+                    ? '#4ade80'
+                    : 'linear-gradient(90deg, #ffffff 0%, #a1a1aa 50%, #ffffff 100%)',
+                  backgroundSize: '200% 100%',
+                  animation: isDone ? 'none' : 'clipShimmer 1.4s linear infinite',
+                }}
+              />
+            </div>
+
+            {/* File names */}
+            {displayNames.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {displayNames.map((name, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: '0.775rem',
+                      color: '#71717a',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {name}
+                  </span>
+                ))}
+                {extra > 0 && (
+                  <span style={{ fontSize: '0.775rem', color: '#52525b' }}>+{extra} more</span>
+                )}
+              </div>
+            )}
+
+            {isDone && (
+              <span style={{ fontSize: '0.775rem', color: '#4ade80', marginTop: '0.1rem' }}>
+                Syncing to all devices…
+              </span>
+            )}
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes clipShimmer {
+            0%   { background-position: 200% center; }
+            100% { background-position: -200% center; }
+          }
+        `}</style>
+      </div>
+    )
+  }
+
+  // ── Normal idle / file-selected state ────────────────────────────────────
   return (
     <div>
       <div
         className={`dropzone${dragging ? ' dropzone--over' : ''}`}
         style={{ height, minHeight: height }}
-        onDragEnter={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
-        onDragOver={(e) => {
-          e.preventDefault()
-          setDragging(true)
-        }}
+        onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
@@ -83,27 +188,19 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
       >
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          style={{ display: 'none' }}
-          onChange={onInput}
-        />
+        <input ref={inputRef} type="file" multiple style={{ display: 'none' }} onChange={onInput} />
 
         {selectedFiles.length > 0 ? (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '170px', overflowY: 'auto' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', paddingBottom: '0.4rem', borderBottom: '1px solid #262626' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600 }}>
-                  {selectedFiles.length} FILE{selectedFiles.length > 1 ? 'S' : ''} SELECTED ({formatBytes(selectedFiles.reduce((a, f) => a + f.size, 0))} / {formatBytes(maxBytes)})
+                  {selectedFiles.length} FILE{selectedFiles.length > 1 ? 'S' : ''} SELECTED (
+                  {formatBytes(selectedFiles.reduce((a, f) => a + f.size, 0))} / {formatBytes(maxBytes)})
                 </span>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    inputRef.current?.click()
-                  }}
+                  onClick={(e) => { e.stopPropagation(); inputRef.current?.click() }}
                   className="btn btn-ghost"
                   style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
                 >
@@ -121,7 +218,6 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
                 )
               })()}
             </div>
-
 
             {selectedFiles.map((file, idx) => (
               <div
@@ -190,19 +286,19 @@ export default function DropZone({ onFile, onFiles, maxBytes = MAX, height = '20
 
 function UploadIcon() {
   return (
-    <svg className="dropzone__icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{marginBottom:'0.25rem'}}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-      <polyline points="17 8 12 3 7 8"/>
-      <line x1="12" y1="3" x2="12" y2="15"/>
+    <svg className="dropzone__icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
     </svg>
   )
 }
 
 function FileIcon() {
   return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-      <polyline points="14 2 14 8 20 8"/>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
     </svg>
   )
 }

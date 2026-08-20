@@ -4,10 +4,15 @@ import { getEntry, getFileKV } from '../lib/kv'
 import { isEncrypted, decryptContent } from '../lib/crypto'
 import { zipSync, strToU8 } from 'fflate'
 
-// ── GET /zip/:slug ────────────────────────────────────────────────────────────
-// Returns a ZIP archive containing:
-//   - <slug>.txt   (text content, if present)
-//   - all attached files (by their original filenames)
+// ── ETag helper ───────────────────────────────────────────────────────────────
+function makeETag(slug: string, updatedAt: number, extra?: number): string {
+  return `"${slug}-${updatedAt}-${extra ?? 0}"`
+}
+function isNotModified(req: Request, etag: string): boolean {
+  const ifNoneMatch = req.headers.get('If-None-Match')
+  return ifNoneMatch === etag || ifNoneMatch === '*'
+}
+
 
 export async function handleReadZip(c: Context<{ Bindings: Env }>) {
   const raw  = c.req.param('slug') ?? ''
@@ -19,9 +24,18 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.text('Not found', 404)
   if (Date.now() > entry.expiresAt) return c.text('Expired', 410)
 
-  const zipFiles: Record<string, Uint8Array> = {}
+  // ── ETag / 304 — skip ZIP build if client already has this version ─────────
+  const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt, entry.fileSize ?? 0)
+  if (isNotModified(c.req.raw, etag)) {
+    return new Response(null, {
+      status: 304,
+      headers: { 'ETag': etag, 'Cache-Control': 'public, max-age=10, stale-while-revalidate=60' },
+    })
+  }
+
 
   // 1. Add text content as <slug>.txt
+  const zipFiles: Record<string, Uint8Array> = {}
   if (entry.content) {
     let contentToZip = entry.content
     if (isEncrypted(entry.content)) {
@@ -75,7 +89,8 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
       'Content-Type':        'application/zip',
       'Content-Disposition': `attachment; filename="${slug}.zip"`,
       'Content-Length':      String(zipped.byteLength),
-      'Cache-Control':       'no-store',
+      'ETag':                etag,
+      'Cache-Control':       'public, max-age=10, stale-while-revalidate=60',
     },
   })
 }

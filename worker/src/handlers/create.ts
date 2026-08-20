@@ -6,6 +6,7 @@ import { entryExists, putEntry, putFileKV } from '../lib/kv'
 import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { validateMime } from '../lib/mime'
 import { log } from '../lib/logger'
+import { notifyRoom } from '../lib/notify'
 import type { Entry, FileItem } from '../lib/types'
 
 
@@ -142,6 +143,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
       entry.content = content
       await putEntry(c.env.PASTE_KV, entry)
 
+      c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
       await log('entry.created', { slug, type: 'text' }, c.env)
       return c.json({ slug, expiresAt }, 201)
     }
@@ -191,6 +193,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
 
     await putEntry(c.env.PASTE_KV, entry)
 
+    c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
     await log('entry.created', { slug, type: 'file', fileCount: processedFiles.length }, c.env)
     return c.json({ slug, expiresAt }, 201)
 

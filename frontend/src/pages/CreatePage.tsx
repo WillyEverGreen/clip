@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FileText, Upload, Link as LinkIcon, ArrowRight, Info, Lock } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
-import { createEntry, type ApiError } from '../lib/api'
+import { createEntryWithProgress, type ApiError } from '../lib/api'
 import { encryptContent } from '../lib/crypto'
 
 type Mode = 'text' | 'file'
@@ -23,6 +23,7 @@ export default function CreatePage() {
   const [viewPassword,  setViewPassword]  = useState('')
   const [loading,       setLoading]       = useState(false)
   const [error,         setError]         = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const errorLabels: Record<string, string> = {
     slug_taken:          'That URL is already taken. Try another.',
@@ -70,13 +71,22 @@ export default function CreatePage() {
 
     setLoading(true)
     try {
-      const { slug: newSlug } = await createEntry(form)
+      const isFileMode = mode === 'file' && files.length > 0
+      const { slug: newSlug } = await createEntryWithProgress(form, (pct) => {
+        if (isFileMode) setUploadProgress(pct)
+      })
+      // Hold the 100% 'complete' state for 800ms so users see the green tick
+      if (isFileMode) {
+        setUploadProgress(100)
+        await new Promise((r) => setTimeout(r, 800))
+      }
       navigate(`/${newSlug}`)
     } catch (err) {
       const e = err as ApiError
       setError(e.error ?? 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
+      setUploadProgress(null)
     }
   }
 
@@ -149,7 +159,12 @@ export default function CreatePage() {
               <>
                 <label className="label">File <span style={{color:'var(--text-muted)'}}>*</span></label>
                 <div style={{ height: '250px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                  <DropZone onFiles={setFiles} height="202px" />
+                  <DropZone
+                    onFiles={setFiles}
+                    height="202px"
+                    uploadProgress={uploadProgress}
+                    uploadingFileNames={files.map(f => f.name)}
+                  />
                   <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
                     <Info size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                     <span>Uploaded files automatically delete after 2 days (or sooner based on selected expiration). Text and URL persist until expiration.</span>

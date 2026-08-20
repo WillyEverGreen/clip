@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
 import { isEncrypted, decryptContent } from '../lib/crypto'
-import Countdown         from '../components/Countdown'
-import MarkdownRenderer  from '../components/MarkdownRenderer'
-import Logo              from '../components/Logo'
+import { useEntrySSE } from '../lib/useEntrySSE'
+import Countdown from '../components/Countdown'
+import Logo      from '../components/Logo'
+
+// Heavy components lazy-loaded: their library chunks are only downloaded when needed
+const MarkdownRenderer = lazy(() => import('../components/MarkdownRenderer'))
+const QRCodeSVG = lazy(() =>
+  import('qrcode.react').then(m => ({ default: m.QRCodeSVG }))
+)
 
 
 export default function ViewPage() {
@@ -27,29 +32,67 @@ export default function ViewPage() {
   const [decryptedContent,  setDecryptedContent]  = useState<string | null>(null)
   const [decryptError,      setDecryptError]      = useState(false)
   const [decrypting,        setDecrypting]        = useState(false)
+  const [refreshing,        setRefreshing]        = useState(false)
+  const loadedRef      = useRef(false)       // tracks whether we've ever loaded data
+  const fetchEntryRef  = useRef<((isManual?: boolean) => Promise<void>) | null>(null)
 
-  useEffect(() => {
+  const fetchEntry = useCallback(async (isManual = false) => {
     if (!slug) return
-    getEntry(slug)
-      .then(async e => {
-        if (!e || Date.now() > e.expiresAt) {
-          navigate('/404')
-          return
-        }
-        setEntry(e)
-        if (e.content && isEncrypted(e.content)) {
-          const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug)
-          if (sessionPass) {
-            const result = await decryptContent(e.content, sessionPass)
-            if (result !== null) {
-              setDecryptedContent(result)
-            }
+    if (isManual) setRefreshing(true)
+    try {
+      // Only cache-bust on manual refresh; auto-polls pass isPoll flag
+      const isAutoPoll = !isManual && loadedRef.current
+      const e = await getEntry(slug, isManual ? `${Date.now()}` : undefined, isAutoPoll)
+      if (!e || Date.now() > e.expiresAt) {
+        if (!loadedRef.current) navigate('/404')
+        return
+      }
+      loadedRef.current = true
+      setEntry(e)
+      if (e.content && isEncrypted(e.content)) {
+        const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug)
+        if (sessionPass) {
+          const result = await decryptContent(e.content, sessionPass)
+          if (result !== null) {
+            setDecryptedContent(result)
           }
         }
-      })
-      .catch(() => navigate('/404'))
-      .finally(() => setLoading(false))
+      }
+    } catch {
+      // Only navigate away if we've never successfully loaded data
+      if (!loadedRef.current) navigate('/404')
+    } finally {
+      setLoading(false)
+      if (isManual) setRefreshing(false)
+    }
   }, [slug, navigate])
+
+  // Keep a ref to the latest fetchEntry so the interval always calls the current version
+  fetchEntryRef.current = fetchEntry
+
+  // Initial fetch
+  useEffect(() => {
+    loadedRef.current = false
+    fetchEntryRef.current?.()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug])
+
+  // SSE — real-time push from Cloudflare Durable Object.
+  // When any client mutates the entry, the worker notifies the DO which
+  // immediately pushes an "update" event to every connected EventSource.
+  useEntrySSE(slug, {
+    onUpdate: () => fetchEntryRef.current?.(),
+  })
+
+  // One-shot 5s poll after mount to cover Cloudflare KV propagation lag
+  // (the DO notify fires right after the write, but KV may take a few seconds
+  // to be readable at every edge node globally).
+  useEffect(() => {
+    if (!slug) return
+    const t = setTimeout(() => fetchEntryRef.current?.(), 5_000)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug])
 
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href)
@@ -165,6 +208,16 @@ export default function ViewPage() {
           </div>
 
           <div className="top-bar-actions">
+            <button
+              className="btn btn-ghost btn-compact-mobile"
+              onClick={() => fetchEntry(true)}
+              disabled={refreshing}
+              title="Refresh to see latest uploads"
+              style={{ gap: '0.4rem' }}
+            >
+              <RefreshCw size={14} style={{ animation: refreshing ? 'spin 0.7s linear infinite' : 'none' }} />
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
             <button className="btn btn-ghost btn-compact-mobile" onClick={() => setShowCliModal(true)} title="Terminal Commands">
               <Terminal size={14} color="#10b981" /> Terminal CLI
             </button>
@@ -374,15 +427,17 @@ export default function ViewPage() {
                 <button onClick={() => setShowQrModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}><X size={16} /></button>
               </div>
               <div style={{ background: '#ffffff', borderRadius: '12px', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', width: 'fit-content' }}>
-                <QRCodeSVG
-                  value={pageUrl}
-                  size={190}
-                  bgColor="#ffffff"
-                  fgColor="#000000"
-                  level="H"
-                  includeMargin={false}
-                  style={{ display: 'block' }}
-                />
+                <Suspense fallback={<div style={{ width: 190, height: 190, background: '#f4f4f5', borderRadius: 8 }} />}>
+                  <QRCodeSVG
+                    value={pageUrl}
+                    size={190}
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                    level="H"
+                    includeMargin={false}
+                    style={{ display: 'block' }}
+                  />
+                </Suspense>
               </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', wordBreak: 'break-all', lineHeight: 1.5, fontFamily: 'var(--font-mono)', margin: '0 0 1rem', textAlign: 'center', width: '100%' }}>{pageUrl}</p>
               <button
@@ -446,7 +501,9 @@ export default function ViewPage() {
                       {textCopied ? <><Check size={13} color="#10b981" /> Copied</> : <><Copy size={13} /> Copy Text</>}
                     </button>
                   </div>
-                  <MarkdownRenderer content={displayContent ?? ''} />
+                  <Suspense fallback={<pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: '0.875rem', lineHeight: 1.7 }}>{displayContent}</pre>}>
+                    <MarkdownRenderer content={displayContent ?? ''} />
+                  </Suspense>
                 </div>
               )}
 

@@ -121,9 +121,9 @@ export async function decryptContent(raw: string, password: string): Promise<str
 
 // ─── IP hashing (for privacy-safe logging) ────────────────────────────────────
 
-export async function hashIp(ip: string, pepper: string): Promise<string> {
+export async function hashIp(ip: string, pepper: string = 'clip_default_pepper'): Promise<string> {
   const enc = new TextEncoder()
-  const data = enc.encode(`ip:${ip}:${pepper}`)
+  const data = enc.encode(`ip:${ip}:${pepper || 'clip_default_pepper'}`)
   const hash = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(hash))
     .map(b => b.toString(16).padStart(2, '0'))

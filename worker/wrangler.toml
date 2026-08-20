@@ -11,3 +11,11 @@ binding = "PASTE_KV"
 id = "887b8699f2d842278081193bbc0a6645"
 preview_id = "887b8699f2d842278081193bbc0a6645"
 
+[[durable_objects.bindings]]
+name       = "CLIP_DO"
+class_name = "ClipRoom"
+
+[[migrations]]
+tag                 = "v1"
+new_sqlite_classes  = ["ClipRoom"]
+
