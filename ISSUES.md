@@ -1,100 +1,72 @@
-# Rentry Application - Comprehensive Issues Report
+# Clip — Issues & Bug Report
 
-**Generated:** August 20, 2026  
-**Analysis Type:** Complete Code Review + Architecture Analysis  
-**Scope:** Frontend, Backend, Real-time Sync, File Management, Expiration Logic
-
----
-
-## Executive Summary
-
-After thorough analysis of the Rentry application codebase, I've identified **15 critical issues** ranging from data loss risks to synchronization failures. The most severe issues are related to the dual expiration system causing premature deletions, race conditions in real-time updates, and file download problems.
+**Last Updated:** August 20, 2026  
+**Scope:** Frontend, Worker API, Real-time Sync, File Management, Expiration Logic
 
 ---
 
-## 🔴 CRITICAL ISSUES (Data Loss / Major Functionality Broken)
+## Summary
 
-### Issue #1: Premature Entry Deletion Due to Dual Expiration Logic
+This document lists **13 verified issues** discovered through a full code review of the Clip codebase. Each issue includes the root cause with exact file/line references, reproduction scenarios, and a recommended fix.
 
-**Severity:** 🔴 CRITICAL - Data Loss  
-**Location:** `worker/src/handlers/create.ts` (lines 81-101)  
-**Symptoms:** URLs getting deleted unexpectedly, files disappearing after 2 days
+| Severity | Count |
+|----------|-------|
+| 🔴 CRITICAL | 5 |
+| 🟠 HIGH | 3 |
+| 🟡 MEDIUM | 5 |
+
+---
+
+## 🔴 CRITICAL ISSUES
+
+---
+
+### Issue #1: Premature Entry Deletion — Dual Expiration Logic
+
+**Severity:** 🔴 CRITICAL — Data Loss  
+**File:** `worker/src/handlers/create.ts` (lines 91–117)
 
 **Root Cause:**  
-The application implements a **dual expiration system** that causes confusing behavior:
-
-1. **Text entries without files**: Permanent (100 years)
-2. **File-only entries**: Auto-delete after 48 hours (2 days)
-3. **Text + File entries**: Text is permanent, but files auto-delete after 48 hours
-
-**Problem Scenarios:**
+File-only entries (no text content) get a hardcoded 48-hour expiration. Text+file entries get permanent text but 48-hour files. When a user edits a permanent text paste to add files, the entry can inherit the shorter file TTL.
 
 ```typescript
-// File-only entries get 48-hour expiration
+// create.ts — lines 108-110
 if (isFile && !hasContent) {
-  expiresAt = now + (FILE_TTL_SECONDS * 1000)  // 48 hours
+  expiresAt = now + (FILE_TTL_SECONDS * 1000)  // 48 hours — entire entry dies
   fileExpiresAt = expiresAt
 }
 ```
 
-- **Scenario A:** User uploads a file-only paste → Entry expires in 48 hours unexpectedly
-- **Scenario B:** User adds files to existing text paste → File expiration overrides text expiration
-- **Scenario C:** User edits a permanent text paste by adding files → Entire entry becomes temporary
-
-**User Confusion:**
-- Users expect "permanent" URLs to stay forever
-- No clear UI indication that file uploads have different expiration
-- The 48-hour file TTL is hardcoded and not configurable
+**Problem Scenarios:**
+- User uploads a file-only paste → entire entry expires in 48 hours with no warning
+- User edits a permanent text paste by adding files → entry can become temporary
+- No UI indication that file uploads have different expiration rules
 
 **Recommended Fix:**
-```typescript
-// Option 1: Make file expiration independent of entry expiration
-if (isFile) {
-  fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
-  // Don't change expiresAt for text entries
-  if (!hasContent) {
-    expiresAt = fileExpiresAt  // Only set entry expiration for file-only
-  }
-}
-
-// Option 2: Show clear UI warnings about file expiration
-// Option 3: Make file TTL configurable (dropdown: 1 day, 7 days, 30 days, permanent)
-```
-
-**Impact:** HIGH - Users losing data without understanding why
+- Decouple file expiration from entry expiration — files expire independently, entry metadata persists
+- Add a visible UI banner warning users about the 48-hour file TTL
+- Consider making file TTL configurable via the expiration dropdown
 
 ---
 
-### Issue #2: Multi-File ZIP Download Only Downloads First File
+### Issue #2: ZIP Download Silently Skips Missing Files
 
-**Severity:** 🔴 CRITICAL - Core Functionality Broken  
-**Location:** `worker/src/handlers/zip.ts` (lines 47-66)  
-**Symptoms:** When downloading ZIP with multiple files, only one file is downloaded
+**Severity:** 🔴 CRITICAL — Core Functionality  
+**File:** `worker/src/handlers/zip.ts` (lines 58–79)
 
 **Root Cause:**  
-The ZIP handler has a logic error in file iteration. It stores files with unique IDs but the deduplication logic may skip files:
+When building a ZIP archive, `getFileKV()` returns `null` for files that have been evicted from KV (TTL expiry or propagation lag). These files are silently skipped with no error or log:
 
 ```typescript
-// Deduplicate filenames if multiple files share the same name
-let name = file.fileName
-if (zipFiles[name]) {
-  const parts = name.split('.')
-  const ext = parts.length > 1 ? `.${parts.pop()}` : ''
-  name = `${parts.join('.')}_${file.id}${ext}`
+for (const file of entry.files) {
+  const data = await getFileKV(c.env.PASTE_KV, slug, file.id)
+  if (data) {                    // ← null silently skipped
+    zipFiles[name] = new Uint8Array(data)
+  }
 }
-zipFiles[name] = new Uint8Array(data)
 ```
 
-**Problems:**
-1. If `getFileKV()` fails silently for some files, they won't be included
-2. No error handling if file data is missing from KV
-3. Filename deduplication may create confusing names like `document_f_2.docx`
-
-**Testing Evidence:**
-From the code analysis, the loop iterates through all files but:
-- `getFileKV()` returns `null` if file doesn't exist → silently skipped
-- No validation that all files were successfully retrieved
-- No logging when files are missing
+The user downloads a ZIP expecting 5 files but receives 3 with no indication that anything is missing.
 
 **Recommended Fix:**
 ```typescript
@@ -103,415 +75,220 @@ for (const file of entry.files) {
   const data = await getFileKV(c.env.PASTE_KV, slug, file.id)
   if (!data) {
     missingFiles.push(file.fileName)
-    console.error(`Missing file data: ${slug}:${file.id}`)
-    continue  // Skip but log
+    console.error(`ZIP: missing file blob for ${slug}:${file.id}`)
+    continue
   }
-  // ... rest of logic
+  // ... add to zip
 }
-
-// Return error if critical files are missing
-if (zipFiles.length === 0) {
-  return c.text(`Error: No files available for download. Missing: ${missingFiles.join(', ')}`, 404)
-}
+// Optionally include a MISSING_FILES.txt in the ZIP listing what was unavailable
 ```
-
-**Impact:** HIGH - Core feature broken, user data inaccessible
 
 ---
 
-### Issue #3: Real-Time Updates Not Propagating Across Devices
+### Issue #3: Real-Time Updates See Stale Data Due to KV Propagation Lag
 
-**Severity:** 🔴 CRITICAL - Synchronization Failure  
-**Location:** Multiple files (SSE + KV propagation lag)  
-**Symptoms:** URLs not getting updated properly on other devices or same device
-
-**Root Cause:**  
-The real-time update system has **three critical race conditions**:
-
-#### Race Condition 1: SSE Notification Fires Before KV Write Propagates
-
-```typescript
-// worker/src/handlers/update.ts
-await putEntry(c.env.PASTE_KV, updated)  // KV write
-c.executionCtx?.waitUntil(notifyRoom(c.env, slug))  // SSE notification
-```
-
-**Timeline:**
-1. Worker writes to KV at Edge Node A (e.g., US East)
-2. Worker sends SSE notification immediately
-3. Client receives SSE event and fetches data
-4. Client's request hits Edge Node B (e.g., EU West)
-5. **KV hasn't propagated yet** → Client gets stale data
-
-**Evidence in Code:**
-```typescript
-// frontend/src/pages/ViewPage.tsx - compensates with 5s poll
-useEffect(() => {
-  const t = setTimeout(() => fetchEntryRef.current?.(), 5_000)
-  return () => clearTimeout(t)
-}, [slug])
-```
-
-The 5-second poll is a workaround for KV propagation lag, but doesn't solve cross-device sync.
-
-#### Race Condition 2: Multiple Devices Editing Simultaneously
-
-```typescript
-// No optimistic locking or version checking
-const entry = await getEntry(c.env.PASTE_KV, slug)  // Device A reads
-// Device B updates the same entry
-const updated: Entry = { ...entry, updatedAt: Date.now() }  // Device A's changes overwrite B
-await putEntry(c.env.PASTE_KV, updated)
-```
-
-**Problem:** Last-write-wins without conflict detection → Data loss
-
-#### Race Condition 3: SSE Connection Not Established Before First Update
-
-```typescript
-// frontend/src/lib/useEntrySSE.ts
-es.addEventListener('update', () => {
-  onUpdateRef.current()  // Re-fetches data
-})
-```
-
-If the SSE connection drops and reconnects, updates during the gap are lost forever.
-
-**Recommended Fixes:**
-
-1. **Add version/timestamp to API responses:**
-```typescript
-// Return the updatedAt timestamp in API response
-return c.json({ ...toPublic(entry), version: entry.updatedAt }, 200)
-```
-
-2. **Add conflict detection in update handler:**
-```typescript
-const clientVersion = parseInt(c.req.header('X-Entry-Version') || '0')
-if (entry.updatedAt && clientVersion > 0 && entry.updatedAt > clientVersion) {
-  return c.json({ 
-    error: 'conflict', 
-    message: 'Entry was modified by another client',
-    currentVersion: entry.updatedAt 
-  }, 409)
-}
-```
-
-3. **Polling fallback with exponential backoff:**
-```typescript
-// Add to useEntrySSE - if update received, poll immediately, then back off
-const pollAfterUpdate = () => {
-  fetchEntry()
-  setTimeout(() => fetchEntry(), 500)  // Quick second poll
-  setTimeout(() => fetchEntry(), 2000) // Third poll for slow edges
-}
-```
-
-**Impact:** HIGH - Users see outdated data, lose work
-
----
-
-### Issue #4: File Expiration Self-Healing Breaks Entry Consistency
-
-**Severity:** 🟠 HIGH - Data Integrity  
-**Location:** `worker/src/handlers/read.ts` (lines 93-100, 139-146)  
-**Symptoms:** Files disappear but entry still shows "hasFile: true"
+**Severity:** 🔴 CRITICAL — Synchronization Failure  
+**Files:** `worker/src/handlers/update.ts`, `frontend/src/lib/useEntrySSE.ts`, `frontend/src/pages/ViewPage.tsx`
 
 **Root Cause:**  
-The self-healing logic runs on read but creates race conditions:
+Cloudflare KV is eventually consistent. When the worker writes to KV and immediately sends an SSE notification, clients that re-fetch the entry may hit a different edge node that hasn't received the KV update yet — returning stale data.
 
 ```typescript
-// Non-blocking self-heal
-if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
-  entry.hasFile = false
-  entry.fileName = undefined
-  // ... clear file metadata
-  c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
-}
+// update.ts — lines 191-193
+await putEntry(c.env.PASTE_KV, updated)           // Write to KV (edge A)
+c.executionCtx?.waitUntil(notifyRoom(c.env, slug)) // SSE broadcast
+// Client receives SSE → fetches from edge B → gets OLD data
 ```
 
-**Problems:**
-1. **Race Condition:** Two concurrent reads can both trigger self-heal → Double write
-2. **No SSE Notification:** Self-heal doesn't notify other clients → They still see hasFile: true
-3. **File Data Not Deleted:** Only metadata cleared, actual file blobs remain in KV until TTL
-
-**Evidence:**
-```typescript
-// The file data persists in KV with its own TTL
-await kv.put(k, data, { expirationTtl: ttlSeconds })
-```
+**Additional Race Conditions:**
+- **Concurrent edits:** No optimistic locking — last write wins silently, overwriting other devices' changes
+- **SSE reconnection gap:** Updates during the reconnection window (before exponential backoff reconnects) are lost forever
 
 **Recommended Fix:**
+1. Include `updatedAt` timestamp in SSE event payload so clients can detect stale re-fetches
+2. Add a short retry poll after receiving an SSE update (e.g., re-fetch after 500ms and 2s)
+3. Add an `X-Entry-Version` header for conflict detection on PATCH requests
+
+---
+
+### Issue #4: File Self-Healing Doesn't Notify SSE Clients
+
+**Severity:** 🔴 CRITICAL — Data Integrity  
+**File:** `worker/src/handlers/read.ts` (lines 89–99, 160–169)
+
+**Root Cause:**  
+When a read request detects expired files, it clears the file metadata and writes the update back to KV. But it never calls `notifyRoom()`, so other tabs/devices still show `hasFile: true` and offer download links that 404:
+
 ```typescript
-// Use atomic compare-and-swap for self-heal
-const existingEntry = await getEntry(kv, slug)
-if (existingEntry.fileExpiresAt && Date.now() > existingEntry.fileExpiresAt) {
-  // Delete file blobs first
-  if (existingEntry.files) {
-    for (const f of existingEntry.files) {
-      await deleteFileKV(kv, slug, f.id)
-    }
-  }
-  // Update entry with notification
-  const healed = { ...existingEntry, hasFile: false, files: undefined }
-  await putEntry(kv, healed)
-  await notifyRoom(env, slug)  // Notify all clients
+// read.ts — self-heal block
+if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
+  entry.hasFile = false
+  entry.files = undefined
+  // ... other fields cleared
+  c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+  // ❌ Missing: notifyRoom(c.env, slug)
 }
 ```
 
-**Impact:** MEDIUM - Users confused about file availability
+**Additional Problems:**
+- Two concurrent reads can both trigger the self-heal → double KV write
+- File blobs are not explicitly deleted — they remain in KV until their own TTL expires
+
+**Recommended Fix:**
+- Add `notifyRoom(c.env, slug)` call after self-heal write
+- Explicitly delete file blobs during self-heal to free KV storage immediately
+- Guard against double-write with a simple timestamp check
+
+---
+
+### Issue #5: ZIP Generation Can Crash Worker — Memory & CPU Limits
+
+**Severity:** 🔴 CRITICAL — Availability  
+**File:** `worker/src/handlers/zip.ts`
+
+**Root Cause:**  
+The ZIP handler loads **all** file blobs into memory simultaneously and compresses them synchronously:
+
+```typescript
+// Load every file into RAM
+for (const file of entry.files) {
+  const data = await getFileKV(c.env.PASTE_KV, slug, file.id)
+  zipFiles[name] = new Uint8Array(data)  // ← all held in memory at once
+}
+
+// Synchronous compression of entire payload
+const zipped = zipSync(zipFiles)  // ← CPU-bound, blocks event loop
+```
+
+A single entry can hold up to **50MB of aggregate files**. Loading 50MB of `Uint8Array` buffers plus generating the compressed output can easily exceed the **128MB Worker memory limit** and the **10ms CPU time limit** (free plan) or **30ms** (paid plan), causing the Worker to crash with no useful error message.
+
+**Recommended Fix:**
+- Enforce a lower maximum aggregate size for ZIP downloads (e.g., 25MB)
+- Return a `413 Payload Too Large` error for entries exceeding the ZIP limit
+- Consider streaming compression using `fflate`'s async API or `CompressionStream` where supported
 
 ---
 
 ## 🟠 HIGH PRIORITY ISSUES
 
-### Issue #5: No Password Validation When Re-encrypting Content
+---
 
-**Severity:** 🟠 HIGH - Security/Usability  
-**Location:** `frontend/src/pages/EditPage.tsx` (lines 107-118)  
-**Symptoms:** Users can accidentally lock themselves out by entering wrong password
+### Issue #6: No Password Validation When Re-encrypting Content on Edit
 
-**Root Cause:**
+**Severity:** 🟠 HIGH — Security / Usability  
+**File:** `frontend/src/pages/EditPage.tsx` (lines 122–125)
+
+**Root Cause:**  
+When saving an encrypted paste, the editor re-encrypts with whatever password is in state. If the user accidentally modifies the password state or the sessionStorage value is corrupted, the content gets re-encrypted with a different password — permanently locking the user out:
+
 ```typescript
-// EditPage re-encrypts with viewPassword but doesn't verify it matches original
 if (viewPassword) {
   finalContent = await encryptContent(content || '{"file_lock":true}', viewPassword)
 }
 ```
 
-**Problem Scenarios:**
-1. User creates encrypted paste with password "secret123"
-2. Later edits the paste and accidentally types "secret1234"
-3. Content is re-encrypted with different password → Original password no longer works
+There is no confirmation prompt or verification that the password matches the original decryption password.
 
 **Recommended Fix:**
-```typescript
-// Add password confirmation before re-encrypting
-if (viewPassword && viewPassword !== sessionStorage.getItem('clip_decrypt_' + slug)) {
-  const confirmPass = prompt('Confirm encryption password:')
-  if (confirmPass !== viewPassword) {
-    return alert('Passwords do not match. Changes not saved.')
-  }
-}
-```
+- Store the original decryption password hash in component state after successful unlock
+- Before re-encrypting, verify the current `viewPassword` matches the original
+- Show a confirmation dialog if the password has changed
 
 ---
 
-### Issue #6: Rate Limiting Can Block Legitimate Updates
+### Issue #7: Rate Limiting Blocks Legitimate Users Behind Shared IPs
 
-**Severity:** 🟠 HIGH - Availability  
-**Location:** `worker/src/lib/rateLimit.ts`  
-**Symptoms:** Users getting "rate limited" errors during normal use
+**Severity:** 🟠 HIGH — Availability  
+**File:** `worker/src/lib/rateLimit.ts`
 
 **Current Limits:**
-```typescript
-create: { max: 10, window: 120 },  // 10 creates / 2 min / IP
-patch:  { max: 30, window: 120 },  // 30 edits   / 2 min / IP
+```
+create: 10 requests / 2 min / IP
+patch:  30 requests / 2 min / IP
 ```
 
 **Problems:**
-1. **Shared IP Issues:** Users behind corporate NAT / VPN share same IP
-2. **No Per-Slug Limiting:** Power users editing same paste repeatedly get blocked
-3. **No Retry-After Header:** Users don't know when to retry
+- Users behind corporate NAT, VPNs, or university networks share a single IP — one heavy user blocks everyone
+- No per-slug rate limiting — a user quickly editing the same paste hits the global limit
+- The `retryAfter` value is computed but the response lacks the standard `Retry-After` HTTP header
 
 **Recommended Fix:**
-```typescript
-// Add per-slug rate limiting for edits
-const kvKey = `ratelimit:${endpoint}:${ip}:${slug}`
-// Return retry-after header
-return { limited: true, retryAfter: Math.ceil(remainingTime / 1000) }
-```
+- Add per-slug rate limiting for PATCH requests: `ratelimit:patch:{ip}:{slug}`
+- Set the `Retry-After` header in the 429 response
+- Consider increasing the PATCH window for authenticated (edit-code-verified) requests
 
 ---
 
-### Issue #7: Admin Dashboard Auto-Polling Creates Excessive Load
+### Issue #8: Admin Dashboard Polls Every 2.5 Seconds with Full KV Scan
 
-**Severity:** 🟠 HIGH - Performance  
-**Location:** `frontend/src/pages/AdminPage.tsx` (lines 75-82)  
-**Symptoms:** Backend overload, slow performance
+**Severity:** 🟠 HIGH — Performance  
+**File:** `frontend/src/pages/AdminPage.tsx`
 
-**Root Cause:**
+**Root Cause:**  
+The admin dashboard runs `setInterval` every 2.5 seconds, performing a full `KV.list()` scan on every tick — even when the browser tab is hidden:
+
 ```typescript
-// Ultra-fast auto-polling every 2.5 seconds
 const interval = setInterval(() => {
   const activeKey = localStorage.getItem(STORAGE_KEY)
   if (activeKey) {
-    silentRefreshDashboard(activeKey)  // Full KV scan every 2.5s
+    silentRefreshDashboard(activeKey)  // Full KV namespace scan
   }
 }, 2500)
 ```
 
-**Problems:**
-1. **Expensive KV Operations:** `list()` operations scan entire namespace
-2. **No Scaling:** Multiple admin users = exponential load
-3. **Wasted Resources:** Dashboard refreshes even when tab is hidden
-
 **Recommended Fix:**
-```typescript
-// 1. Increase poll interval to 10-15 seconds
-// 2. Use Page Visibility API to pause when tab hidden
-// 3. Add cursor-based pagination instead of full scan
-useEffect(() => {
-  const handleVisibility = () => {
-    if (document.hidden) clearInterval(interval)
-    else interval = setInterval(refresh, 10000)
-  }
-  document.addEventListener('visibilitychange', handleVisibility)
-}, [])
-```
-
----
-
-### Issue #8: ETag Caching Can Serve Stale Data
-
-**Severity:** 🟠 HIGH - Data Freshness  
-**Location:** `worker/src/handlers/read.ts`  
-**Symptoms:** Users see outdated content even after refresh
-
-**Root Cause:**
-```typescript
-const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt)
-if (isNotModified(c.req.raw, etag)) {
-  return new Response(null, { status: 304, headers: { 'ETag': etag, ... } })
-}
-```
-
-**Problem Scenarios:**
-1. Client A updates entry
-2. Client B has cached version with old ETag
-3. Client B's browser sends If-None-Match with old ETag
-4. Server returns 304 (Not Modified)
-5. **But Client B should have received the updated data**
-
-This happens because the ETag check happens BEFORE checking if data actually changed.
-
-**Recommended Fix:**
-```typescript
-// Only use 304 for polling requests, not user-initiated refreshes
-const isUserRefresh = !c.req.query('_t') && !c.req.query('poll')
-if (isNotModified(c.req.raw, etag) && !isUserRefresh) {
-  return new Response(null, { status: 304, ... })
-}
-```
+- Increase interval to 10–15 seconds
+- Use `document.visibilitychange` API to pause polling when the tab is hidden
+- Add cursor-based pagination for large entry lists
 
 ---
 
 ## 🟡 MEDIUM PRIORITY ISSUES
 
-### Issue #9: No File Size Validation on Client-Side
+---
 
-**Severity:** 🟡 MEDIUM - UX  
-**Location:** `frontend/src/pages/CreatePage.tsx`, `EditPage.tsx`  
-**Symptoms:** Users upload large files, wait, then get error
+### Issue #9: No Client-Side File Size Validation
 
-**Problem:**
-- Backend validates file size (25MB max per file, 50MB total)
-- Frontend doesn't validate before upload
-- Users waste time uploading only to get rejected
+**Severity:** 🟡 MEDIUM — UX  
+**Files:** `frontend/src/pages/CreatePage.tsx`, `frontend/src/pages/EditPage.tsx`
 
-**Recommended Fix:**
-```typescript
-const validateFiles = (files: File[]) => {
-  const maxSize = 25 * 1024 * 1024
-  for (const f of files) {
-    if (f.size > maxSize) {
-      return { valid: false, error: `${f.name} exceeds 25MB limit` }
-    }
-  }
-  return { valid: true }
-}
-```
+The backend enforces 25MB per file and 50MB aggregate, but the frontend has no pre-upload validation. Users wait for a full upload only to receive a rejection error.
+
+**Recommended Fix:**  
+Add `formatBytes`-based validation in the `DropZone` component before dispatching the upload.
 
 ---
 
-### Issue #10: Permanent Entries Never Expire But Still Checked
+### Issue #10: Permanent Entries Still Checked for Expiration
 
-**Severity:** 🟡 MEDIUM - Performance  
-**Location:** `worker/src/lib/kv.ts` (lines 52-61)  
-**Symptoms:** Unnecessary expiration checks for permanent entries
+**Severity:** 🟡 MEDIUM — Performance  
+**File:** `worker/src/lib/kv.ts` (lines 48–62)
 
-**Root Cause:**
-```typescript
-const isPermanent = ttl > 2_838_240_000 // approx 90 years in seconds
-if (isPermanent) {
-  await kv.put(key(entry.slug), JSON.stringify(entry), { metadata })
-} else {
-  await kv.put(key(entry.slug), JSON.stringify(entry), { 
-    expirationTtl: safeTtl,
-    metadata 
-  })
-}
-```
-
-**Problem:**
-- Permanent entries never get auto-deleted by KV
-- Every read still checks `Date.now() > entry.expiresAt`
-- Wastes CPU cycles and adds latency
-
-**Recommended Fix:**
-```typescript
-// Add isPermanent flag to Entry type
-if (entry.isPermanent) return entry  // Skip expiration check
-```
+Entries with ~100-year TTLs are effectively permanent, but every read request still evaluates `Date.now() > entry.expiresAt`. While the cost per check is negligible, adding an `isPermanent` flag would be a cleaner design and skip the comparison entirely.
 
 ---
 
-### Issue #11: No Graceful Degradation When Durable Object Unavailable
+### Issue #11: No Graceful Fallback When Durable Objects Are Unavailable
 
-**Severity:** 🟡 MEDIUM - Availability  
-**Location:** `worker/src/index.ts` (lines 55-58)  
-**Symptoms:** Real-time updates fail silently
+**Severity:** 🟡 MEDIUM — Availability  
+**File:** `worker/src/index.ts` (lines 51–64)
 
-**Root Cause:**
-```typescript
-app.get('/api/entry/:slug/events', async (c) => {
-  if (!c.env.CLIP_DO) return c.json({ error: 'sse_unavailable' }, 503)
-  // ... SSE logic
-})
-```
-
-**Problems:**
-1. Frontend doesn't handle 503 gracefully
-2. No fallback to polling when DO unavailable
-3. Users don't know real-time updates aren't working
-
-**Recommended Fix:**
-```typescript
-// Frontend: Auto-fallback to polling
-if (res.status === 503) {
-  console.warn('SSE unavailable, falling back to polling')
-  const pollInterval = setInterval(() => fetchEntry(), 5000)
-  return () => clearInterval(pollInterval)
-}
-```
+The SSE endpoint returns `503` if `CLIP_DO` is unavailable, but the frontend (`useEntrySSE.ts`) treats this as a generic error and enters exponential backoff. It should detect 503 specifically and fall back to interval-based polling.
 
 ---
 
-### Issue #12: File Deduplication Logic Creates Confusing Filenames
+### Issue #12: ZIP Filename Deduplication Exposes Internal File IDs
 
-**Severity:** 🟡 MEDIUM - UX  
-**Location:** `worker/src/handlers/zip.ts` (lines 56-61)  
-**Symptoms:** Downloaded files have unexpected names like "document_f_2.docx"
+**Severity:** 🟡 MEDIUM — UX  
+**File:** `worker/src/handlers/zip.ts` (lines 62–68)
 
-**Root Cause:**
-```typescript
-if (zipFiles[name]) {
-  const parts = name.split('.')
-  const ext = parts.length > 1 ? `.${parts.pop()}` : ''
-  name = `${parts.join('.')}_${file.id}${ext}`
-}
-```
-
-**Problems:**
-- Users expect "document (1).docx" or "document_copy.docx"
-- Internal file IDs (f_1, f_2) exposed to users
-- Confusing for non-technical users
+When multiple files share a name, the deduplication appends internal IDs like `document_f_2_1724155200000.docx`. Users expect human-readable suffixes like `document (2).docx`.
 
 **Recommended Fix:**
 ```typescript
 let counter = 1
-if (zipFiles[name]) {
-  const parts = name.split('.')
+while (zipFiles[name]) {
+  const parts = originalName.split('.')
   const ext = parts.length > 1 ? `.${parts.pop()}` : ''
   name = `${parts.join('.')} (${counter})${ext}`
   counter++
@@ -520,169 +297,43 @@ if (zipFiles[name]) {
 
 ---
 
-### Issue #13: View Counter Not Accurate Due to 304 Responses
+### Issue #13: No Encryption Warning for File-Only Pastes
 
-**Severity:** 🟡 MEDIUM - Analytics  
-**Location:** `worker/src/handlers/read.ts`  
-**Symptoms:** View counts lower than actual views
+**Severity:** 🟡 MEDIUM — Security / UX  
+**File:** `frontend/src/pages/CreatePage.tsx`
 
-**Root Cause:**
-```typescript
-if (isNotModified(c.req.raw, etag)) {
-  // Skip incrementing view count in background if it's a polling request
-  if (!isPolling) {
-    entry.views = (entry.views ?? 0) + 1
-    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
-  }
-  return new Response(null, { status: 304, ... })
-}
-```
+When a user enables the password lock on a file-only paste, only a dummy JSON placeholder is encrypted — the actual file binaries are stored unencrypted in KV. There is no UI warning informing the user that their files remain accessible without a password.
 
-**Problem:** 304 responses are still views, but not counted
-
-**Recommended Fix:**
-```typescript
-// Always increment view count, even for 304
-entry.views = (entry.views ?? 0) + 1
-c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
-```
+**Recommended Fix:**  
+Display a visible warning banner when files are attached and encryption is enabled, stating that file binaries are not encrypted.
 
 ---
 
-### Issue #14: No Encryption Warning for File-Only Pastes
+## 📋 Previously Reported Issues — Corrections
 
-**Severity:** 🟡 MEDIUM - Security  
-**Location:** `frontend/src/pages/CreatePage.tsx`  
-**Symptoms:** Users may not realize files aren't encrypted
+The following issues from the original report were found to be **technically inaccurate** after code review and have been removed:
 
-**Root Cause:**
-- File binaries are stored as-is in KV
-- Only text content can be encrypted
-- No UI warning that files remain unencrypted
-
-**Recommended Fix:**
-```typescript
-{files.length > 0 && !viewPassword && (
-  <div className="warning-banner">
-    <AlertTriangle size={14} />
-    Files are not encrypted. Only text content supports encryption.
-  </div>
-)}
-```
+| Original # | Title | Why It Was Wrong |
+|-------------|-------|------------------|
+| #8 | ETag caching serves stale data | **Incorrect.** The ETag is computed from `entry.updatedAt` which is read fresh from KV on every request. If the entry was updated, the ETag changes, the `If-None-Match` comparison fails, and a 200 with fresh data is returned. |
+| #13 | View counter not incremented on 304 | **Incorrect.** The code at `read.ts:185-188` explicitly increments `entry.views` on 304 responses when the request is not a polling request (`!isPolling`). |
+| #15 fix | Use `kv.put({ if_match: null })` for slug collision | **Incorrect.** Cloudflare KV does not support conditional writes. The `if_match` option does not exist. Slug uniqueness would require coordination via a Durable Object or Cloudflare D1. The TOCTOU race condition itself is real, but the proposed fix is not implementable. |
 
 ---
 
-### Issue #15: Slug Collision Detection Has Race Condition
+## 🎯 Prioritized Action Plan
 
-**Severity:** 🟡 MEDIUM - Data Integrity  
-**Location:** `worker/src/handlers/create.ts` (lines 54-56)  
-**Symptoms:** Two users can claim the same custom slug
+### Phase 1 — Critical (Fix Immediately)
+1. **Issue #1:** Decouple file expiration from entry expiration + add UI warning
+2. **Issue #2:** Add logging and error reporting for missing files in ZIP downloads
+3. **Issue #3:** Add retry-after-SSE polling and version conflict detection
+4. **Issue #4:** Call `notifyRoom()` in the self-heal path
+5. **Issue #5:** Enforce ZIP size limit and return 413 for oversized entries
 
-**Root Cause:**
-```typescript
-// Uniqueness check
-if (await entryExists(c.env.PASTE_KV, slug)) {
-  return c.json({ error: 'slug_taken' }, 409)
-}
-// Time gap here - another request could create the same slug
-const entry: Entry = { slug, ... }
-await putEntry(c.env.PASTE_KV, entry)
-```
+### Phase 2 — High Priority (Fix Within 1 Week)
+6. **Issue #6:** Add password confirmation before re-encryption on edit
+7. **Issue #7:** Per-slug rate limiting + `Retry-After` header
+8. **Issue #8:** Reduce admin polling frequency + Page Visibility API
 
-**Problem:** Time-of-check to time-of-use (TOCTOU) race condition
-
-**Recommended Fix:**
-```typescript
-// Use KV conditional writes (if-match: null)
-try {
-  await kv.put(key(slug), JSON.stringify(entry), { 
-    if_match: null  // Only write if key doesn't exist
-  })
-} catch (e) {
-  if (e.message.includes('conditional')) {
-    return c.json({ error: 'slug_taken' }, 409)
-  }
-  throw e
-}
-```
-
----
-
-## 📊 ISSUE SEVERITY BREAKDOWN
-
-| Severity | Count | Percentage |
-|----------|-------|------------|
-| 🔴 CRITICAL | 4 | 27% |
-| 🟠 HIGH | 4 | 27% |
-| 🟡 MEDIUM | 7 | 46% |
-| **TOTAL** | **15** | **100%** |
-
----
-
-## 🎯 IMMEDIATE ACTION ITEMS
-
-### Phase 1 (Critical - Fix Immediately)
-1. **Issue #1:** Clarify file expiration logic and add UI warnings
-2. **Issue #2:** Fix multi-file ZIP download with proper error handling
-3. **Issue #3:** Implement version checking and conflict detection for real-time sync
-
-### Phase 2 (High Priority - Fix Within 1 Week)
-4. **Issue #5:** Add password confirmation before re-encryption
-5. **Issue #6:** Improve rate limiting with per-slug limits and retry headers
-6. **Issue #7:** Reduce admin dashboard polling frequency
-7. **Issue #8:** Fix ETag caching to respect user refreshes
-
-### Phase 3 (Medium Priority - Fix Within 2 Weeks)
-8. **Issues #9-15:** UX improvements, performance optimizations, security enhancements
-
----
-
-## 🔬 TESTING METHODOLOGY
-
-### Tests Performed:
-1. **Code Review:** Analyzed all handler files, frontend components, and utilities
-2. **Architecture Analysis:** Examined data flow, state management, and synchronization
-3. **Race Condition Detection:** Identified timing issues in concurrent operations
-4. **Security Audit:** Reviewed encryption, authentication, and authorization
-5. **Performance Analysis:** Evaluated API call patterns, caching, and polling
-
-### Test Results:
-- ✅ Static code analysis completed
-- ⚠️ Dynamic testing requires local deployment
-- ⚠️ Cross-device testing requires multiple clients
-- ⚠️ Load testing requires production environment
-
----
-
-## 📝 RECOMMENDATIONS FOR FUTURE IMPROVEMENTS
-
-### Architecture Improvements:
-1. **Add Database Transactions:** Use Cloudflare D1 for ACID guarantees
-2. **Implement Optimistic Locking:** Add version field to prevent lost updates
-3. **Add Message Queue:** Use Cloudflare Queues for reliable notifications
-4. **Implement Cursor-Based Pagination:** For large entry lists in admin
-
-### Feature Enhancements:
-1. **File Encryption:** Extend AES-256-GCM encryption to file uploads
-2. **Audit Logging:** Track all create/update/delete operations
-3. **Webhook Notifications:** Notify external services on entry changes
-4. **Access Control:** Add read passwords in addition to edit codes
-5. **Collaborative Editing:** Real-time collaborative text editing with CRDT
-
-### Monitoring & Observability:
-1. **Add Logging:** Structured logging with correlation IDs
-2. **Metrics Dashboard:** Track API latency, error rates, KV operations
-3. **Alerting:** Notify on elevated error rates or latency
-4. **Sentry Integration:** Capture and track frontend errors
-
----
-
-## 📞 CONTACT
-
-For questions about this report or assistance implementing fixes, please reach out to the development team.
-
----
-
-**Document Version:** 1.0  
-**Last Updated:** August 20, 2026  
-**Next Review:** After Phase 1 fixes implemented
+### Phase 3 — Medium Priority (Fix Within 2 Weeks)
+9. **Issues #9–13:** UX polish, performance tweaks, and security labels
