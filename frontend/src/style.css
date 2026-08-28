@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
 /* ── Reset ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
@@ -48,8 +48,8 @@
   --radius-lg:     14px;
   --radius-xl:     16px;
 
-  --font:          'Inter', system-ui, sans-serif;
-  --font-mono:     'JetBrains Mono', 'Fira Code', monospace;
+  --font:          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:     'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 
   --transition:    180ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -115,6 +115,11 @@ textarea.input {
   min-height: 250px;
   font-size: 0.9375rem;
   line-height: 1.7;
+  font-family: var(--font-mono);
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* Custom URL Input Group focus handling */
@@ -347,59 +352,120 @@ textarea:-webkit-autofill {
 
 /* ── Code Blocks with Header ────────────────────────────────────────────── */
 .code-block-container {
-  margin: 1.25rem 0;
+  margin: 1.5rem 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #080808;
+  background: #09090b;
   overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 .code-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.35rem 0.85rem;
-  background: #141414;
+  padding: 0.5rem 1rem;
+  background: #121215;
   border-bottom: 1px solid var(--border);
 }
 .code-block-lang {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-family: var(--font-mono);
-  font-weight: 700;
+  font-weight: 600;
   color: #a1a1aa;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
+
+/* ── Code Copy Button ────────────────────────────────────────────────────── */
+.code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #a1a1aa;
+  font-size: 0.72rem;
+  font-family: var(--font);
+  font-weight: 500;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  user-select: none;
+  line-height: 1;
+}
+.code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+.code-copy-btn.copied {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+}
+.code-copy-icon,
+.code-copied-icon {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
 .markdown-body pre {
-  background: #080808;
+  background: #09090b;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 1rem 1.15rem;
+  padding: 1.25rem 1.5rem !important;
   overflow-x: auto;
-  margin: 1.25rem 0;
-  font-family: var(--font-mono);
+  margin: 1.5rem 0;
+  font-family: var(--font-mono) !important;
   font-size: 0.875rem;
-  line-height: 1.6;
+  line-height: 1.7;
+  letter-spacing: 0;
+  box-sizing: border-box;
   position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
-.code-block-container pre {
+.code-block-container pre,
+.markdown-body .code-block-container pre,
+.markdown-body pre[class*="language-"] {
   margin: 0 !important;
   border: none !important;
   border-radius: 0 !important;
   background: transparent !important;
+  padding: 1.25rem 1.5rem !important;
+  box-sizing: border-box;
+  overflow-x: auto;
+  font-family: var(--font-mono) !important;
 }
 .markdown-body code {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono) !important;
   font-size: 0.85em;
-  background: #1c1c1f;
-  padding: 0.15em 0.4em;
+  background: #18181b;
+  padding: 0.18em 0.45em;
   border-radius: 4px;
   color: #f4f4f5;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.markdown-body pre code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-  border: none;
+.markdown-body pre code,
+.markdown-body pre code[class*="language-"] {
+  background: none !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  color: #e4e4e7 !important;
+  border: none !important;
+  text-shadow: none !important;
+  display: block;
+  font-variant-ligatures: normal;
+  font-feature-settings: "liga" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-family: var(--font-mono) !important;
 }
 .markdown-body a { color: #ffffff; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.75rem 0; }
@@ -466,19 +532,76 @@ textarea:-webkit-autofill {
   border-radius: 2px;
 }
 
-/* ── Prism Token Colors (matches dark theme) ─────────────────────────────── */
-.token.comment,.token.prolog,.token.doctype,.token.cdata { color: #71717a; font-style: italic; }
-.token.punctuation                { color: #a1a1aa; }
-.token.property,.token.tag,.token.boolean,.token.number,.token.constant,.token.symbol { color: #f87171; }
-.token.selector,.token.attr-name,.token.string,.token.char,.token.builtin { color: #86efac; }
-.token.operator,.token.entity,.token.url { color: #93c5fd; }
-.token.atrule,.token.attr-value,.token.keyword { color: #c084fc; }
-.token.function,.token.class-name { color: #67e8f9; }
-.token.regex,.token.important,.token.variable { color: #fde68a; }
-.token.important,.token.bold { font-weight: bold; }
-.token.italic { font-style: italic; }
-.token.inserted { color: #86efac; }
-.token.deleted  { color: #f87171; }
+/* ── Prism Token Colors (Modern Vibrant Theme) ───────────────────────────── */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #71717a !important;
+  font-style: italic;
+  text-shadow: none !important;
+}
+.token.punctuation {
+  color: #a1a1aa !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol {
+  color: #f87171 !important;
+  text-shadow: none !important;
+}
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin {
+  color: #86efac !important;
+  text-shadow: none !important;
+}
+.token.operator,
+.token.entity,
+.token.url {
+  color: #93c5fd !important;
+  text-shadow: none !important;
+}
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #c084fc !important;
+  font-weight: 500;
+  text-shadow: none !important;
+}
+.token.function,
+.token.class-name {
+  color: #67e8f9 !important;
+  text-shadow: none !important;
+}
+.token.regex,
+.token.important,
+.token.variable {
+  color: #fde68a !important;
+  text-shadow: none !important;
+}
+.token.important,
+.token.bold {
+  font-weight: bold;
+}
+.token.italic {
+  font-style: italic;
+}
+.token.inserted {
+  color: #86efac !important;
+  text-shadow: none !important;
+}
+.token.deleted {
+  color: #f87171 !important;
+  text-shadow: none !important;
+}
 
 /* ── Theme Switcher Button ───────────────────────────────────────────────── */
 .theme-btn {

@@ -31,7 +31,8 @@
 - 🔒 **Zero-Knowledge Password Lock**: Secure your text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption. The server never sees your password or plaintext data.
 - 🔑 **Secret Edit Code**: Protect your links with a custom edit password to edit content or delete early.
 - 🔗 **Custom URLs**: Pick your own readable slug (`clip.foo.ng/my-notes`).
-- 📁 **File & Markdown Support**: Render rich formatted Markdown text and upload files alongside your snippets.
+- 📁 **Rich Markdown & KaTeX Math**: Full support for GitHub Flavored Markdown (GFM), task lists, tables, and KaTeX mathematical typesetting ($\LaTeX$, matrices, piecewise functions, integrals).
+- 🔤 **Developer Typography & Code Blocks**: Crisp syntax highlighting for 40+ languages with **JetBrains Mono** / **Fira Code** fonts and 1-click code block **Copy** buttons.
 - 🌐 **Timezone-Aware Metadata**: Automatically formats publication & edit dates in the viewer's local timezone (e.g. `GMT+5:30`).
 - ⚡ **Edge-Powered Speed**: Built on Cloudflare Workers + KV + Pages for near-instant global response times.
 
@@ -74,7 +75,7 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 
 | Component | Technology |
 | :--- | :--- |
-| **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Monochrome Dark UI), Lucide Icons |
+| **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Monochrome Dark UI), Lucide Icons, Marked, KaTeX, Prism.js |
 | **Backend** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
 | **Hosting** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
 
@@ -92,7 +93,8 @@ npm install
 npm run dev
 ```
 
-For a detailed breakdown of the codebase architecture, environment setup, and contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide.
+For a detailed breakdown of the codebase architecture, environment setup, and contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide.  
+For a full history of bug fixes and architectural updates, see [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
 
