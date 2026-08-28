@@ -17,7 +17,15 @@ export class ClipRoom {
     // ── POST /room/:slug/notify — broadcast update to all connected clients ──
     if (request.method === 'POST' && url.pathname.includes('/notify')) {
       const slug = url.pathname.split('/')[2] ?? ''
-      await this.broadcast(slug)
+      // Parse updatedAt from the request body if provided
+      let updatedAt: number | undefined
+      try {
+        const body = await request.json()
+        updatedAt = body.updatedAt
+      } catch {
+        // If no body or parse error, continue without updatedAt
+      }
+      await this.broadcast(slug, updatedAt)
       return new Response('ok', { status: 200 })
     }
 
@@ -61,8 +69,11 @@ export class ClipRoom {
   }
 
   // ── Broadcast update event to all clients ─────────────────────────────────
-  private async broadcast(slug: string) {
-    const msg = this.encode(`event: update\ndata: ${JSON.stringify({ slug })}\n\n`)
+  private async broadcast(slug: string, updatedAt?: number) {
+    const data: { slug: string; updatedAt?: number } = { slug }
+    if (updatedAt) data.updatedAt = updatedAt
+    
+    const msg = this.encode(`event: update\ndata: ${JSON.stringify(data)}\n\n`)
     const dead: string[] = []
 
     for (const [id, writer] of this.clients) {

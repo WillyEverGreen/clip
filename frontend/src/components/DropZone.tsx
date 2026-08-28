@@ -14,6 +14,7 @@ interface Props {
 }
 
 const MAX = 50 * 1024 * 1024 // 50 MB total limit
+const MAX_PER_FILE = 25 * 1024 * 1024 // 25 MB per file limit
 
 export default function DropZone({
   onFile,
@@ -31,6 +32,14 @@ export default function DropZone({
   const acceptFiles = useCallback(
     (newFiles: File[]) => {
       setError('')
+      
+      // Check per-file size limit
+      const oversizedFiles = newFiles.filter(f => f.size > MAX_PER_FILE)
+      if (oversizedFiles.length > 0) {
+        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit.`)
+        return
+      }
+      
       setSelectedFiles((prev) => {
         const deduped = newFiles.filter(
           (nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size),

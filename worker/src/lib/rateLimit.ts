@@ -1,5 +1,5 @@
 /**
- * KV-based per-IP, per-endpoint rate limiter.
+ * KV-based per-IP, per-endpoint rate limiter with per-slug support.
  * Keys auto-expire (TTL = 120s) — no manual cleanup needed.
  */
 
@@ -10,7 +10,9 @@ interface LimitConfig {
 
 const LIMITS: Record<string, LimitConfig> = {
   create: { max: 10, window: 120 }, // 10 creates / 2 min / IP
-  patch:  { max: 30, window: 120 }, // 30 edits   / 2 min / IP
+  patch:  { max: 30, window: 120 }, // 30 edits   / 2 min / IP (global)
+  'patch:slug': { max: 10, window: 120 }, // 10 edits / 2 min / IP / slug
+  delete: { max: 20, window: 120 }, // 20 deletes / 2 min / IP
 }
 
 export interface RateLimitResult {
@@ -22,12 +24,13 @@ export async function checkRateLimit(
   kv: KVNamespace,
   endpoint: keyof typeof LIMITS,
   ip: string,
+  slug?: string,
 ): Promise<RateLimitResult> {
   try {
     const config = LIMITS[endpoint]
     if (!config || !kv) return { limited: false }
 
-    const kvKey = `ratelimit:${endpoint}:${ip}`
+    const kvKey = slug ? `ratelimit:${endpoint}:${ip}:${slug}` : `ratelimit:${endpoint}:${ip}`
     const raw   = await kv.get(kvKey)
     const count = raw ? parseInt(raw, 10) : 0
 

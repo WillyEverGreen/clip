@@ -22,7 +22,9 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     const rl = await checkRateLimit(c.env.PASTE_KV, 'create', ip)
     if (rl.limited) {
       await log('rate.limited', { endpoint: 'create', ip }, c.env)
-      return c.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, 429)
+      return c.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, 429, {
+        'Retry-After': String(rl.retryAfter ?? 120)
+      })
     }
 
     // ── Parse multipart form ─────────────────────────────────────────────────
@@ -95,24 +97,28 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     let expiresAt: number
     let fileExpiresAt: number | undefined = undefined
 
+    const content = form.get('content') as string | null
+    const hasContent = content !== null && content.trim().length > 0
+
     if (ttlSeconds !== null) {
       expiresAt = now + (ttlSeconds * 1000)
       if (isFile) {
-        fileExpiresAt = Math.min(expiresAt, now + (FILE_TTL_SECONDS * 1000))
+        // Files always expire after 48 hours, independently of entry expiration
+        fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
       }
     } else {
-      // Default: permanent for text, 2 days for files
-      const content = form.get('content') as string | null
-      const hasContent = content !== null && content.trim().length > 0
-      
+      // Default behavior
       if (isFile && !hasContent) {
+        // File-only entries: entry expires when files expire (48 hours)
         expiresAt = now + (FILE_TTL_SECONDS * 1000)
         fileExpiresAt = expiresAt
-      } else {
+      } else if (hasContent && !isFile) {
+        // Text-only entries: permanent
         expiresAt = now + PERMANENT_MS
-        if (isFile) {
-          fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
-        }
+      } else {
+        // Text + files: text is permanent, files expire after 48 hours
+        expiresAt = now + PERMANENT_MS
+        fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
       }
     }
 

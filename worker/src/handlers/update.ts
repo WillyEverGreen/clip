@@ -18,16 +18,27 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
     const ip   = getClientIp(c.req.raw)
 
     // ── Rate limit ────────────────────────────────────────────────────────────
-    const rl = await checkRateLimit(c.env.PASTE_KV, 'patch', ip)
-    if (rl.limited) {
-      await log('rate.limited', { endpoint: 'patch', ip }, c.env)
-      return c.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, 429)
+    // Check both global and per-slug rate limits
+    const rlGlobal = await checkRateLimit(c.env.PASTE_KV, 'patch', ip)
+    if (rlGlobal.limited) {
+      await log('rate.limited', { endpoint: 'patch', ip, scope: 'global' }, c.env)
+      return c.json({ error: 'rate_limited', retryAfter: rlGlobal.retryAfter }, 429, {
+        'Retry-After': String(rlGlobal.retryAfter ?? 120)
+      })
+    }
+    
+    const rlSlug = await checkRateLimit(c.env.PASTE_KV, 'patch:slug', ip, slug)
+    if (rlSlug.limited) {
+      await log('rate.limited', { endpoint: 'patch', ip, slug, scope: 'per-slug' }, c.env)
+      return c.json({ error: 'rate_limited', retryAfter: rlSlug.retryAfter }, 429, {
+        'Retry-After': String(rlSlug.retryAfter ?? 120)
+      })
     }
 
     // ── Load existing entry ───────────────────────────────────────────────────
     const entry = await getEntry(c.env.PASTE_KV, slug)
     if (!entry) return c.json({ error: 'not_found' }, 404)
-    if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+    if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
     // ── Parse form ───────────────────────────────────────────────────────────
     let form: FormData
@@ -190,7 +201,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
 
     await putEntry(c.env.PASTE_KV, updated)
 
-    c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
+    c.executionCtx?.waitUntil(notifyRoom(c.env, slug, updated.updatedAt))
     await log('entry.updated', { slug }, c.env)
     return c.json({ slug })
   } catch (err: any) {

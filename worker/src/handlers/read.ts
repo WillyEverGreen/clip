@@ -1,7 +1,8 @@
 import type { Context } from 'hono'
 import type { Env } from '../lib/types'
-import { getEntry, putEntry, toPublic, getFileKV } from '../lib/kv'
+import { getEntry, putEntry, toPublic, getFileKV, deleteFileKV } from '../lib/kv'
 import { isEncrypted, decryptContent } from '../lib/crypto'
+import { notifyRoom } from '../lib/notify'
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_.\-]/g, '_').slice(0, 128)
@@ -35,7 +36,7 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
   const entry = await getEntry(c.env.PASTE_KV, slug)
 
   if (!entry || !entry.hasFile) return c.json({ error: 'not_found' }, 404)
-  if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+  if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt) return c.json({ error: 'expired' }, 404)
 
   let fileName = entry.fileName ?? 'download'
@@ -84,18 +85,36 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
 
   const entry = await getEntry(c.env.PASTE_KV, slug)
   if (!entry) return c.text('Not found', 404)
-  if (Date.now() > entry.expiresAt) return c.text('Expired', 404)
+  if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.text('Expired', 404)
 
-  // Self-heal: clear expired files (non-blocking — don't delay the response)
+  // Self-heal: clear expired files and notify other clients
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
+    const wasFile = entry.hasFile
     entry.hasFile = false
     entry.fileName = undefined
     entry.fileMime = undefined
     entry.fileSize = undefined
     entry.files = undefined
     entry.fileExpiresAt = undefined
-    // Non-blocking: self-heal write does not block response
-    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+    entry.updatedAt = Date.now()
+    
+    // Delete file blobs from KV to free storage immediately
+    if (wasFile) {
+      c.executionCtx?.waitUntil((async () => {
+        await deleteFileKV(c.env.PASTE_KV, slug)
+        if (entry.files) {
+          for (const f of entry.files) {
+            await deleteFileKV(c.env.PASTE_KV, slug, f.id)
+          }
+        }
+      })())
+    }
+    
+    // Non-blocking: self-heal write and SSE notification
+    c.executionCtx?.waitUntil((async () => {
+      await putEntry(c.env.PASTE_KV, entry)
+      await notifyRoom(c.env, slug, entry.updatedAt)
+    })())
   }
 
   // ── ETag / 304 for raw text ────────────────────────────────────────────────
@@ -153,19 +172,37 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
   const slug  = c.req.param('slug') ?? ''
   if (!slug) return c.json({ error: 'not_found' }, 404)
   const entry = await getEntry(c.env.PASTE_KV, slug)
-
   if (!entry) return c.json({ error: 'not_found' }, 404)
-  if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+  if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
-  // Self-heal: clear expired files (non-blocking — don't delay the response)
+  // Self-heal: clear expired files and notify other clients
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
+    const wasFile = entry.hasFile
     entry.hasFile = false
     entry.fileName = undefined
     entry.fileMime = undefined
     entry.fileSize = undefined
     entry.files = undefined
     entry.fileExpiresAt = undefined
-    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+    entry.updatedAt = Date.now()
+    
+    // Delete file blobs from KV to free storage immediately
+    if (wasFile) {
+      c.executionCtx?.waitUntil((async () => {
+        await deleteFileKV(c.env.PASTE_KV, slug)
+        if (entry.files) {
+          for (const f of entry.files) {
+            await deleteFileKV(c.env.PASTE_KV, slug, f.id)
+          }
+        }
+      })())
+    }
+    
+    // Non-blocking: self-heal write and SSE notification
+    c.executionCtx?.waitUntil((async () => {
+      await putEntry(c.env.PASTE_KV, entry)
+      await notifyRoom(c.env, slug, entry.updatedAt)
+    })())
   }
 
   const userAgent = c.req.header('user-agent')?.toLowerCase() || ''

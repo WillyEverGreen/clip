@@ -4,6 +4,7 @@ import markedKatex from 'marked-katex-extension'
 import DOMPurify from 'dompurify'
 import Prism from 'prismjs'
 import 'katex/dist/katex.min.css'
+import 'prismjs/themes/prism.css'
 
 // ── Load Prism language grammars ─────────────────────────────────────────────
 import 'prismjs/components/prism-clike'
@@ -45,13 +46,28 @@ import 'prismjs/components/prism-ini'
 function normalizeMathAndText(text: string): string {
   if (!text) return ''
 
-  // Convert standard LaTeX \[ ... \] to $$ ... $$
-  let res = text.replace(/\\\[([\s\S]*?)\\\]/g, (_, m) => `\n$$\n${m.trim()}\n$$\n`)
+  // STEP 1: Convert multi-line $$ ... $$ to single line (preserving \\ and spaces)
+  // This prevents breaks:true from inserting <br> tags inside math
+  // Replace newlines with spaces, preserving LaTeX commands like \\ for matrices
+  let res = text.replace(/\$\$\s*\n([\s\S]+?)\n\s*\$\$/g, (_, mathContent) => {
+    // Replace newlines with spaces, but keep everything else intact
+    // This preserves \\ for matrix line breaks
+    const singleLine = mathContent.replace(/\r?\n/g, ' ').trim()
+    // Add blank lines before and after to ensure block-level treatment
+    return `\n\n$$${singleLine}$$\n\n`
+  })
 
-  // Convert standard LaTeX \( ... \) to $ ... $
+  // STEP 2: Convert standard LaTeX \[ ... \] to $$ ... $$ (but NOT escaped \[ \])
+  // Only convert if NOT preceded by backslash escape
+  res = res.replace(/(?<!\\)\\\[([\s\S]*?)\\\]/g, (_, m) => `\n\n$$${m.trim()}$$\n\n`)
+
+  // STEP 3: Convert standard LaTeX \( ... \) to $ ... $
   res = res.replace(/\\\(([\s\S]*?)\\\)/g, (_, m) => `$${m.trim()}$`)
 
-  // Line-by-line bracket matcher for [ \n math \n ] (matrices, equations)
+  // STEP 4: Handle escaped \[ and \] - convert to literal brackets (fixes Issue #10)
+  res = res.replace(/\\\\\[/g, '[').replace(/\\\\\]/g, ']')
+
+  // STEP 5: Line-by-line bracket matcher for [ \n math \n ] (matrices, equations)
   const lines = res.split(/\r?\n/)
   const result: string[] = []
   let inBracketMath = false
@@ -61,13 +77,13 @@ function normalizeMathAndText(text: string): string {
     const line = lines[i]
     const trimmed = line.trim()
 
-    if (!inBracketMath && (trimmed === '[' || trimmed === '\\[')) {
+    if (!inBracketMath && trimmed === '[') {
       inBracketMath = true
       bracketBuffer = []
       continue
     }
 
-    if (inBracketMath && (trimmed === ']' || trimmed === '\\]')) {
+    if (inBracketMath && trimmed === ']') {
       inBracketMath = false
       const mathContent = bracketBuffer.join('\n').trim()
       // If it contains LaTeX commands or equation symbols, wrap in $$ ... $$
@@ -79,7 +95,7 @@ function normalizeMathAndText(text: string): string {
         mathContent.includes('*') ||
         mathContent.includes('^')
       ) {
-        result.push('\n$$\n' + mathContent + '\n$$\n')
+        result.push(`\n$$${mathContent}$$\n`)
       } else {
         result.push('[')
         result.push(...bracketBuffer)
@@ -134,7 +150,7 @@ marked.use(
   markedKatex({ throwOnError: false }),
   {
     renderer,
-    breaks: false, // Standard GFM: double newline creates paragraph; prevents math and code breaks
+    breaks: true, // Changed: allow single newlines, required for multi-line math blocks
     gfm: true,
   }
 )

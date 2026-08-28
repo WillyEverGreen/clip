@@ -34,9 +34,10 @@ export default function ViewPage() {
   const [decrypting,        setDecrypting]        = useState(false)
   const [refreshing,        setRefreshing]        = useState(false)
   const loadedRef      = useRef(false)       // tracks whether we've ever loaded data
-  const fetchEntryRef  = useRef<((isManual?: boolean) => Promise<void>) | null>(null)
+  const lastUpdatedAtRef = useRef<number | undefined>(undefined)  // tracks last known updatedAt
+  const fetchEntryRef  = useRef<((isManual?: boolean, expectedUpdatedAt?: number) => Promise<void>) | null>(null)
 
-  const fetchEntry = useCallback(async (isManual = false) => {
+  const fetchEntry = useCallback(async (isManual = false, expectedUpdatedAt?: number) => {
     if (!slug) return
     if (isManual) setRefreshing(true)
     try {
@@ -47,7 +48,18 @@ export default function ViewPage() {
         if (!loadedRef.current) navigate('/404')
         return
       }
+      
+      // Stale data detection: if we expected a newer updatedAt but got older data,
+      // it means we hit a KV edge that hasn't propagated yet — skip this update
+      const entryUpdatedAt = e.updatedAt ?? e.createdAt
+      if (expectedUpdatedAt && entryUpdatedAt < expectedUpdatedAt && lastUpdatedAtRef.current) {
+        console.warn(`Stale data detected: expected ${expectedUpdatedAt}, got ${entryUpdatedAt}`)
+        // Retry polls from SSE will fetch again shortly
+        return
+      }
+      
       loadedRef.current = true
+      lastUpdatedAtRef.current = entryUpdatedAt
       setEntry(e)
       if (e.content && isEncrypted(e.content)) {
         const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug)
@@ -80,8 +92,9 @@ export default function ViewPage() {
   // SSE — real-time push from Cloudflare Durable Object.
   // When any client mutates the entry, the worker notifies the DO which
   // immediately pushes an "update" event to every connected EventSource.
+  // The update includes updatedAt for stale data detection.
   useEntrySSE(slug, {
-    onUpdate: () => fetchEntryRef.current?.(),
+    onUpdate: (updatedAt) => fetchEntryRef.current?.(false, updatedAt),
   })
 
   // One-shot 5s poll after mount to cover Cloudflare KV propagation lag

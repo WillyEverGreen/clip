@@ -45,6 +45,7 @@ export interface Entry {
   expiresAt: number         // Expiration Unix ms
   fileExpiresAt?: number    // Expiration Unix ms for files
   views: number             // View counter
+  isPermanent?: boolean     // Flag to skip expiration checks (~100-year TTL)
 }
 
 // Entry shape returned to the client (sensitive fields stripped)

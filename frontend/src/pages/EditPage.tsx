@@ -35,6 +35,7 @@ export default function EditPage() {
 
   // Encryption states
   const [viewPassword,         setViewPassword]         = useState('')
+  const [originalPassword,     setOriginalPassword]     = useState('') // Store original password for validation
   const [isLocked,             setIsLocked]             = useState(false)
   const [decryptPasswordInput, setDecryptPasswordInput] = useState('')
   const [decryptError,         setDecryptError]         = useState(false)
@@ -62,6 +63,7 @@ export default function EditPage() {
                 if (decrypted !== null) {
                   setContent(decrypted === '{"file_lock":true}' ? '' : decrypted)
                   setViewPassword(sessionPass)
+                  setOriginalPassword(sessionPass) // Store original password
                 } else {
                   setIsLocked(true)
                 }
@@ -85,6 +87,7 @@ export default function EditPage() {
     if (decrypted !== null) {
       setContent(decrypted === '{"file_lock":true}' ? '' : decrypted)
       setViewPassword(decryptPasswordInput)
+      setOriginalPassword(decryptPasswordInput) // Store original password
       setIsLocked(false)
       sessionStorage.setItem('clip_decrypt_' + slug, decryptPasswordInput)
     } else {
@@ -116,6 +119,16 @@ export default function EditPage() {
     e.preventDefault()
     if (!slug) return
     setEditError(null)
+
+    // Validate password hasn't changed if content was originally encrypted
+    if (originalPassword && viewPassword && viewPassword !== originalPassword) {
+      const confirmed = confirm(
+        '⚠️ Warning: The password has changed.\n\n' +
+        'Re-encrypting with a different password will make the paste inaccessible with the old password.\n\n' +
+        'Are you sure you want to continue?'
+      )
+      if (!confirmed) return
+    }
 
     setSaving(true)
     try {
@@ -383,6 +396,14 @@ export default function EditPage() {
                         uploadProgress={uploadProgress}
                         uploadingFileNames={newFiles.map(f => f.name)}
                       />
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                          <span style={{ color: '#fbbf24', fontWeight: 500 }}>⚠️ Files auto-delete after 48 hours</span>
+                        </p>
+                        <p style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.75rem' }}>
+                          Entry metadata and text content persist until expiration time.
+                        </p>
+                      </div>
                     </div>
 
 

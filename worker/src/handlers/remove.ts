@@ -11,6 +11,15 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
   if (!slug) return c.json({ error: 'not_found' }, 404)
   const ip   = getClientIp(c.req.raw)
 
+  // ── Rate limit ────────────────────────────────────────────────────────────
+  const rl = await checkRateLimit(c.env.PASTE_KV, 'delete', ip)
+  if (rl.limited) {
+    await log('rate.limited', { endpoint: 'delete', ip }, c.env)
+    return c.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, 429, {
+      'Retry-After': String(rl.retryAfter ?? 120)
+    })
+  }
+
   let body: { editCode?: string }
   try {
     body = await c.req.json()
@@ -23,7 +32,7 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
 
   const entry = await getEntry(c.env.PASTE_KV, slug)
   if (!entry) return c.json({ error: 'not_found' }, 404)
-  if (Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+  if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
   const pepper = c.env.APP_PEPPER || 'clip_default_pepper'
   const valid  = await verifyCode(

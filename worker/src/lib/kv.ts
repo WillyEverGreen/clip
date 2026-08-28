@@ -47,6 +47,7 @@ export async function putEntry(
 ): Promise<void> {
   const ttl = Math.floor((entry.expiresAt - Date.now()) / 1000)
   const isPermanent = ttl > 2_838_240_000 // approx 90 years in seconds
+  entry.isPermanent = isPermanent  // Set flag on entry
   const metadata: PublicEntry = toPublicMetadata(entry)
   
   if (isPermanent) {

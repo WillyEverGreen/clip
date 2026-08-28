@@ -5,7 +5,7 @@
  * Strategy:
  *  - Random 16-byte salt per entry (stored in KV)
  *  - App-wide pepper from Worker secret (never stored)
- *  - PBKDF2(code + ":" + pepper, salt, 200_000 iterations, SHA-256)
+ *  - PBKDF2(code + ":" + pepper, salt, 100_000 iterations, SHA-256)
  *  - Constant-time comparison to prevent timing attacks
  */
 

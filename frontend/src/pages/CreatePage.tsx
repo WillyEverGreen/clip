@@ -165,10 +165,15 @@ export default function CreatePage() {
                     uploadProgress={uploadProgress}
                     uploadingFileNames={files.map(f => f.name)}
                   />
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                    <Info size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                    <span>Uploaded files automatically delete after 2 days (or sooner based on selected expiration). Text and URL persist until expiration.</span>
-                  </p>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                      <Info size={14} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                      <span style={{ color: '#fbbf24', fontWeight: 500 }}>⚠️ Files auto-delete after 48 hours, regardless of expiration setting</span>
+                    </p>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, paddingLeft: '1.25rem' }}>
+                      <span>Entry metadata and text content persist until the selected expiration time.</span>
+                    </p>
+                  </div>
                 </div>
               </>
             )}
@@ -290,6 +295,25 @@ export default function CreatePage() {
                       />
                     )}
                   </label>
+                  
+                  {/* Warning for file-only pastes with encryption */}
+                  {lockContent && mode === 'file' && files.length > 0 && (
+                    <div style={{ 
+                      fontSize: '0.7rem', 
+                      color: '#fbbf24', 
+                      padding: '0.5rem 0.6rem',
+                      background: '#18181b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.4rem',
+                      marginTop: '0.25rem'
+                    }}>
+                      <Info size={12} style={{ flexShrink: 0, marginTop: '1px' }} />
+                      <span>⚠️ Only text is encrypted. File binaries remain unencrypted in storage.</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

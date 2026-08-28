@@ -22,7 +22,7 @@ export async function handleVerify(c: Context<{ Bindings: Env }>) {
 
   const entry = await getEntry(c.env.PASTE_KV, slug)
   if (!entry)  return c.json({ valid: false }, 200)
-  if (Date.now() > entry.expiresAt) return c.json({ valid: false }, 200)
+  if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ valid: false }, 200)
 
   const pepper = c.env.APP_PEPPER || 'clip_default_pepper'
   const valid  = await verifyCode(
