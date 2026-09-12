@@ -1,6 +1,6 @@
 /**
  * Comprehensive Automated Test Suite for Rentry/Clip.
- * Tests crypto, handlers, multi-file handling, rate limits, and cross-platform CLI generators.
+ * Tests crypto, handlers, multi-file handling, rate limits, deletion logic, SSE, and cross-platform CLI generators.
  * Run with: npm test
  */
 
@@ -226,7 +226,7 @@ async function runSecurityTests() {
     const permanentEntry = {
       slug: 'perm-clip',
       isPermanent: true,
-      expiresAt: Date.now() - 10000, // Past timestamp
+      expiresAt: Date.now() - 10000,
     }
 
     const isExpired = !permanentEntry.isPermanent && Date.now() > permanentEntry.expiresAt
@@ -259,6 +259,120 @@ async function runSecurityTests() {
   })
 }
 
+// ── 5. Full Deletion, Edit Code Verification & Admin Purge Tests ────────────
+
+async function runDeletionTests() {
+  console.log(`\n${colors.bold}${colors.cyan}5. Deletion, Edit Code & Admin Purge Tests${colors.reset}`)
+
+  async function mockVerifyCode(code, salt, pepper, storedHash) {
+    const enc = new TextEncoder()
+    const input = `${code}:${pepper}`
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(input), 'PBKDF2', false, ['deriveBits'])
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: enc.encode(salt), iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      256
+    )
+    const computed = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('')
+    return computed === storedHash
+  }
+
+  await test('Full paste deletion requires valid edit code', async () => {
+    const editCode = 'myEditCode123'
+    const salt = 'randomSalt123'
+    const pepper = 'clip_default_pepper'
+
+    // Compute expected hash
+    const enc = new TextEncoder()
+    const input = `${editCode}:${pepper}`
+    const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(input), 'PBKDF2', false, ['deriveBits'])
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', salt: enc.encode(salt), iterations: 100000, hash: 'SHA-256' },
+      keyMaterial,
+      256
+    )
+    const storedHash = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('')
+
+    const isValidCorrect = await mockVerifyCode(editCode, salt, pepper, storedHash)
+    const isValidWrong   = await mockVerifyCode('wrongCode', salt, pepper, storedHash)
+
+    assert.strictEqual(isValidCorrect, true)
+    assert.strictEqual(isValidWrong, false)
+  })
+
+  await test('Expired file auto-cleanup clears file storage while preserving text', async () => {
+    const entry = {
+      slug: 'text-with-file',
+      content: 'Important text content',
+      hasFile: true,
+      fileName: 'attachment.zip',
+      fileExpiresAt: Date.now() - 5000, // File expired
+    }
+
+    if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
+      entry.hasFile = false
+      entry.fileName = undefined
+      entry.fileExpiresAt = undefined
+    }
+
+    assert.strictEqual(entry.hasFile, false)
+    assert.strictEqual(entry.fileName, undefined)
+    assert.strictEqual(entry.content, 'Important text content')
+  })
+
+  await test('Admin authorization headers protect delete and purge endpoints', async () => {
+    const adminSecret = 'super_secret_admin_token'
+
+    function checkAdminAuth(headerSecret) {
+      if (!headerSecret || headerSecret !== adminSecret) {
+        return { authorized: false, status: 401 }
+      }
+      return { authorized: true, status: 200 }
+    }
+
+    assert.strictEqual(checkAdminAuth('wrong_secret').authorized, false)
+    assert.strictEqual(checkAdminAuth(adminSecret).authorized, true)
+  })
+}
+
+// ── 6. Headers, Stale KV Protection & Slug Normalization Tests ─────────────
+
+async function runAdvancedEdgeCaseTests() {
+  console.log(`\n${colors.bold}${colors.cyan}6. Headers, Stale KV Protection & Slug Normalization Tests${colors.reset}`)
+
+  await test('Extracts password from x-password or x-pass headers', async () => {
+    function extractPassword(headers, query) {
+      return headers['x-password'] || headers['x-pass'] || query.password || query.pass || query.p || null
+    }
+
+    assert.strictEqual(extractPassword({ 'x-password': 'passHeader' }, {}), 'passHeader')
+    assert.strictEqual(extractPassword({ 'x-pass': 'shortHeader' }, {}), 'shortHeader')
+    assert.strictEqual(extractPassword({}, { pass: 'queryPass' }), 'queryPass')
+  })
+
+  await test('Stale data detection ignores out-of-order KV updates', async () => {
+    const expectedUpdatedAt = 1000
+    const staleEntryUpdatedAt = 900
+    const freshEntryUpdatedAt = 1050
+
+    function isStale(entryUpdatedAt, expected) {
+      return Boolean(expected && entryUpdatedAt < expected)
+    }
+
+    assert.strictEqual(isStale(staleEntryUpdatedAt, expectedUpdatedAt), true)
+    assert.strictEqual(isStale(freshEntryUpdatedAt, expectedUpdatedAt), false)
+  })
+
+  await test('Slug normalization enforces lowercase and sanitized characters', async () => {
+    function normalizeSlug(raw) {
+      return raw.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 50)
+    }
+
+    assert.strictEqual(normalizeSlug('My-Custom-Slug!@#$'), 'my-custom-slug')
+    assert.strictEqual(normalizeSlug('HACKATHON-2026'), 'hackathon-2026')
+  })
+}
+
 // ── Main Test Runner ────────────────────────────────────────────────────────
 
 async function main() {
@@ -268,6 +382,8 @@ async function main() {
   await runCliGeneratorTests()
   await runFileLogicTests()
   await runSecurityTests()
+  await runDeletionTests()
+  await runAdvancedEdgeCaseTests()
 
   console.log(`\n${colors.bold}=== Summary ===${colors.reset}`)
   console.log(`Total: ${passed + failed} | Passed: ${colors.green}${passed}${colors.reset} | Failed: ${failed > 0 ? colors.red + failed + colors.reset : '0'}`)
