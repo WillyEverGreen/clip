@@ -146,6 +146,9 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
     if (password) {
       const decrypted = await decryptContent(textContent, password)
       if (decrypted !== null) {
+        if (decrypted === '{"file_lock":true}' || (entry.hasFile && decrypted === '')) {
+          return handleReadFile(c)
+        }
         return new Response(decrypted, {
           headers: {
             'Content-Type': 'text/plain; charset=utf-8',

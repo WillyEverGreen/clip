@@ -114,7 +114,8 @@ export async function decryptContent(raw: string, password: string): Promise<str
 
     const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipher)
     return new TextDecoder().decode(plainBuf)
-  } catch {
+  } catch (err) {
+    console.error('decryptContent error:', err)
     return null
   }
 }

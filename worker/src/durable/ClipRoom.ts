@@ -4,12 +4,17 @@
  * One instance per slug. Holds all open SSE connections in memory.
  * The worker notifies it after every KV write; it fans out to all clients.
  */
-export class ClipRoom {
+import { DurableObject } from 'cloudflare:workers'
+import type { Env } from '../lib/types'
+
+export class ClipRoom extends DurableObject<Env> {
   private clients: Map<string, WritableStreamDefaultWriter<Uint8Array>> = new Map()
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private encoder = new TextEncoder()
 
-  constructor(private state: DurableObjectState) {}
+  constructor(state: DurableObjectState, env: Env) {
+    super(state, env)
+  }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
@@ -20,8 +25,8 @@ export class ClipRoom {
       // Parse updatedAt from the request body if provided
       let updatedAt: number | undefined
       try {
-        const body = await request.json()
-        updatedAt = body.updatedAt
+        const body = await request.json() as { updatedAt?: number }
+        updatedAt = body?.updatedAt
       } catch {
         // If no body or parse error, continue without updatedAt
       }

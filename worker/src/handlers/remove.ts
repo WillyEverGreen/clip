@@ -3,7 +3,7 @@ import type { Env } from '../lib/types'
 import { getEntry, deleteEntry } from '../lib/kv'
 import { verifyCode } from '../lib/crypto'
 import { log } from '../lib/logger'
-import { getClientIp } from '../lib/rateLimit'
+import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { notifyRoom } from '../lib/notify'
 
 export async function handleRemove(c: Context<{ Bindings: Env }>) {

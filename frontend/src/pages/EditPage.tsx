@@ -211,6 +211,7 @@ export default function EditPage() {
                   autoFocus
                   placeholder="Your secret edit code"
                   value={code}
+                  maxLength={128}
                   onChange={e => { setCode(e.target.value); setCodeError(false) }}
                   style={{ borderColor: codeError ? '#ffffff' : undefined }}
                 />
