@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Upload, Link as LinkIcon, ArrowRight, Info, Lock } from 'lucide-react'
+import { FileText, Upload, Link as LinkIcon, ArrowRight, Info, Lock, Zap, AlertTriangle } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
 import { createEntryWithProgress, type ApiError } from '../lib/api'
 import { encryptContent } from '../lib/crypto'
+import { useSeo } from '../lib/useSeo'
 
 type Mode = 'text' | 'file'
 
@@ -12,6 +13,12 @@ const HOST = window.location.origin + '/'
 
 export default function CreatePage() {
   const navigate = useNavigate()
+
+  useSeo({
+    title: 'Clip — Free File Sharing & Text Sharing | Encrypted Pastebin',
+    description: 'Share text, code, markdown, and files instantly with custom links. Zero account required, client-side encryption, and real-time live pad collaboration.',
+    canonicalUrl: 'https://clip.fyi/',
+  })
 
   const [mode,          setMode]          = useState<Mode>('text')
   const [content,       setContent]       = useState('')
@@ -91,28 +98,31 @@ export default function CreatePage() {
   }
 
   return (
-    <div className="page-wrapper">
-      <div className="content-box animate-fade-up">
+    <div className="page-wrapper" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden', padding: '1rem 1.5rem', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <main className="content-box animate-fade-up" style={{ height: '100%', maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div style={{ textAlign:'center', marginBottom:'2.5rem' }}>
-          <p style={{ color:'var(--text-muted)', fontSize:'0.9375rem' }}>
-            Share text and files conveniently with custom links.
+        {/* ── Header & Main SEO Heading ─────────────────────────────────────── */}
+        <header style={{ textAlign: 'center', marginBottom: '0.65rem', flexShrink: 0 }}>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.2rem 0', color: '#ffffff', letterSpacing: '-0.02em' }}>
+            Instant File &amp; Text Sharing
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', margin: 0 }}>
+            Share markdown, code, notes, and files with custom links. No account required.
           </p>
-        </div>
+        </header>
 
 
 
         {/* ── Card ───────────────────────────────────────────────────────── */}
-        <form onSubmit={handleSubmit} className="card card-glow card-content">
+        <form onSubmit={handleSubmit} className="card card-glow card-content" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: '1.25rem 1.75rem', overflow: 'hidden' }}>
 
           {/* Toggle */}
-          <div style={{ display:'flex', gap:'0.5rem', marginBottom:'2rem', padding:'0.3rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)' }}>
+          <div style={{ display:'flex', gap:'0.5rem', marginBottom:'0.85rem', padding:'0.25rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)', flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => setMode('text')}
               style={{
-                flex:1, padding:'0.7rem', borderRadius:'8px', cursor:'pointer',
+                flex:1, padding:'0.55rem', borderRadius:'8px', cursor:'pointer',
                 fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
                 transition:'all 150ms ease',
@@ -127,7 +137,7 @@ export default function CreatePage() {
               type="button"
               onClick={() => setMode('file')}
               style={{
-                flex:1, padding:'0.7rem', borderRadius:'8px', cursor:'pointer',
+                flex:1, padding:'0.55rem', borderRadius:'8px', cursor:'pointer',
                 fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
                 transition:'all 150ms ease',
@@ -138,37 +148,63 @@ export default function CreatePage() {
             >
               <Upload size={16} /> File
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                const randomSlug = Math.random().toString(36).slice(2, 8)
+                navigate(`/live/${randomSlug}`)
+              }}
+              style={{
+                flex:1, padding:'0.55rem', borderRadius:'8px', cursor:'pointer',
+                fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
+                transition:'all 150ms ease',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                border: '1px solid transparent',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.color = '#ffffff'
+                e.currentTarget.style.background = '#18181b'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.color = 'var(--text-muted)'
+                e.currentTarget.style.background = 'transparent'
+              }}
+            >
+              <Zap size={16} /> Live Pad
+            </button>
           </div>
 
           {/* Main Content input */}
-          <div className="field">
+          <div className="field" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, margin: 0 }}>
             {mode === 'text' ? (
               <>
-                <label className="label">Content <span style={{color:'var(--text-muted)'}}>*</span></label>
-                <div style={{ height: '250px', display: 'flex', flexDirection: 'column' }}>
+                <label className="label" style={{ marginBottom: '0.35rem', flexShrink: 0 }}>Content <span style={{color:'var(--text-muted)'}}>*</span></label>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                   <textarea
                     className="input"
                     placeholder="Paste your text here… Markdown is supported"
                     value={content}
                     onChange={e => setContent(e.target.value)}
-                    style={{ flex: 1, minHeight: '250px', resize: 'none' }}
+                    style={{ flex: 1, height: '100%', minHeight: 0, resize: 'none' }}
                   />
                 </div>
               </>
             ) : (
               <>
-                <label className="label">File <span style={{color:'var(--text-muted)'}}>*</span></label>
-                <div style={{ height: '250px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <label className="label" style={{ marginBottom: '0.35rem', flexShrink: 0 }}>File <span style={{color:'var(--text-muted)'}}>*</span></label>
+                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                   <DropZone
                     onFiles={setFiles}
-                    height="202px"
+                    height="100%"
                     uploadProgress={uploadProgress}
                     uploadingFileNames={files.map(f => f.name)}
                   />
-                  <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                      <Info size={14} style={{ color: '#fbbf24', flexShrink: 0 }} />
-                      <span style={{ color: '#fbbf24', fontWeight: 500 }}>⚠️ Files auto-delete after 48 hours, regardless of expiration setting</span>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <p style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
+                      <AlertTriangle size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Files auto-delete after 48 hours, regardless of expiration setting</span>
                     </p>
                     <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, paddingLeft: '1.25rem' }}>
                       <span>Entry metadata and text content persist until the selected expiration time.</span>
@@ -182,7 +218,7 @@ export default function CreatePage() {
 
 
           {/* Bottom Controls Row */}
-          <div style={{ display:'flex', alignItems:'flex-end', gap:'1rem', marginTop:'1.75rem', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', alignItems:'flex-end', gap:'0.85rem', marginTop:'0.9rem', flexWrap:'wrap', flexShrink: 0 }}>
             {/* Custom URL input */}
             <div className="field" style={{ flex:'2 1 240px', marginTop: 0 }}>
               <label className="label">Custom URL <span style={{color:'var(--text-dim)'}}>(optional)</span></label>
@@ -299,19 +335,19 @@ export default function CreatePage() {
                   {/* Warning for file-only pastes with encryption */}
                   {lockContent && mode === 'file' && files.length > 0 && (
                     <div style={{ 
-                      fontSize: '0.7rem', 
-                      color: '#fbbf24', 
-                      padding: '0.5rem 0.6rem',
-                      background: '#18181b',
-                      border: '1px solid #3f3f46',
-                      borderRadius: '6px',
+                      fontSize: '0.75rem', 
+                      color: 'var(--text-muted)', 
+                      padding: '0.5rem 0.65rem',
+                      background: '#141414',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
                       display: 'flex',
                       alignItems: 'flex-start',
-                      gap: '0.4rem',
-                      marginTop: '0.25rem'
+                      gap: '0.45rem',
+                      marginTop: '0.35rem'
                     }}>
-                      <Info size={12} style={{ flexShrink: 0, marginTop: '1px' }} />
-                      <span>⚠️ Only text is encrypted. File binaries remain unencrypted in storage.</span>
+                      <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '2px', color: '#ffffff' }} />
+                      <span>Only text is encrypted. File binaries remain unencrypted in storage.</span>
                     </div>
                   )}
                 </div>
@@ -334,12 +370,41 @@ export default function CreatePage() {
 
           {/* Error Message */}
           {error && (
-            <div style={{ marginTop:'1.25rem', padding:'0.75rem 1rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.875rem', color:'#ffffff' }}>
+            <div style={{ marginTop:'0.65rem', padding:'0.5rem 0.85rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.85rem', color:'#ffffff', flexShrink: 0 }}>
               {errorLabels[error] ?? error}
             </div>
           )}
         </form>
-      </div>
+
+        {/* ── Semantic SEO Feature Highlights (Crawlable) ──────────────────── */}
+        <aside
+          aria-label="Features and capabilities"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '1.5rem',
+            marginTop: '0.65rem',
+            fontSize: '0.75rem',
+            color: 'var(--text-dim)',
+            flexShrink: 0,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Zap size={13} style={{ color: 'var(--text-muted)' }} /> Real-Time Live Sync
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Lock size={13} style={{ color: 'var(--text-muted)' }} /> AES-256 Client-Side Encryption
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <Upload size={13} style={{ color: 'var(--text-muted)' }} /> Up to 25 MB File Uploads
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <LinkIcon size={13} style={{ color: 'var(--text-muted)' }} /> Custom Slugs &amp; CLI Access
+          </span>
+        </aside>
+      </main>
     </div>
   )
 }

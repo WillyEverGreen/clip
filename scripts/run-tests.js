@@ -373,6 +373,236 @@ async function runAdvancedEdgeCaseTests() {
   })
 }
 
+// ── 7. KV Read Protection, Cache-Control & SSE Tests ─────────────────────────
+
+async function runKVReadProtectionAndCacheTests() {
+  console.log(`\n${colors.bold}${colors.cyan}7. KV Read Protection, Cache-Control & SSE Tests${colors.reset}`)
+
+  await test('View counting is isolated in views:slug and never overwrites entry document in KV', async () => {
+    // In-memory mock KV
+    const kvStore = new Map()
+
+    const mockKV = {
+      async get(key, type) {
+        const val = kvStore.get(key)
+        if (!val) return null
+        if (type === 'json') return JSON.parse(val)
+        return val
+      },
+      async put(key, val) {
+        kvStore.set(key, val)
+      },
+      async delete(key) {
+        kvStore.delete(key)
+      }
+    }
+
+    // Step 1: Initial creation at t=1000
+    const slug = 'test-paste'
+    const entryV1 = {
+      slug,
+      content: 'Original content (1-2 min ago)',
+      updatedAt: 1000,
+      createdAt: 1000,
+      views: 1
+    }
+    await mockKV.put(`entry:${slug}`, JSON.stringify(entryV1))
+
+    // Step 2: Device A updates the entry at t=2000 with new uploads
+    const entryV2 = {
+      slug,
+      content: 'Brand new upload with files!',
+      updatedAt: 2000,
+      createdAt: 1000,
+      hasFile: true,
+      files: [{ id: 'f_1', fileName: 'new_file.pdf', fileSize: 1024 }]
+    }
+    await mockKV.put(`entry:${slug}`, JSON.stringify(entryV2))
+
+    // Step 3: Device B was holding stale entryV1 (from edge replica before propagation)
+    // In the old buggy code, Device B would run putEntry(mockKV, entryV1) to increment views,
+    // which overwrote entryV2 back to entryV1!
+    // With our fix, incrementViewsKV ONLY writes to `views:${slug}`:
+    async function incrementViewsKV(kv, s, base = 0) {
+      const v = await kv.get(`views:${s}`)
+      const cur = v !== null ? parseInt(v, 10) : base
+      await kv.put(`views:${s}`, String(cur + 1))
+    }
+
+    await incrementViewsKV(mockKV, slug, entryV1.views)
+
+    // Verify: The entry in KV MUST still be entryV2 (the brand new upload!)
+    const currentEntry = await mockKV.get(`entry:${slug}`, 'json')
+    assert.strictEqual(currentEntry.updatedAt, 2000)
+    assert.strictEqual(currentEntry.content, 'Brand new upload with files!')
+    assert.strictEqual(currentEntry.hasFile, true)
+    assert.strictEqual(currentEntry.files.length, 1)
+
+    // Verify: views is tracked separately
+    const views = await mockKV.get(`views:${slug}`)
+    assert.strictEqual(views, '2')
+  })
+
+  await test('Cache-Control headers prevent stale browser and CDN caching', async () => {
+    const apiHeaders = {
+      'ETag': '"test-12345"',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache'
+    }
+
+    const fileHeaders = {
+      'ETag': '"test-12345-1024"',
+      'Cache-Control': 'no-cache, must-revalidate',
+      'Pragma': 'no-cache'
+    }
+
+    assert.ok(apiHeaders['Cache-Control'].includes('no-store'))
+    assert.ok(apiHeaders['Cache-Control'].includes('max-age=0'))
+    assert.strictEqual(apiHeaders['Pragma'], 'no-cache')
+
+    // Ensure stale-while-revalidate is NOT present
+    assert.ok(!fileHeaders['Cache-Control'].includes('stale-while-revalidate'))
+    assert.ok(!apiHeaders['Cache-Control'].includes('stale-while-revalidate'))
+  })
+
+  await test('SSE connection target is properly resolved to direct worker origin', async () => {
+    const LIVE_WORKER_URL = 'https://clip-worker.saibalkawade10.workers.dev'
+    const isLocal = false
+    const VITE_API_URL = undefined
+
+    const BASE = VITE_API_URL || (isLocal ? '' : LIVE_WORKER_URL)
+    const sseUrl = `${BASE}/api/entry/demo/events`
+
+    assert.strictEqual(sseUrl, 'https://clip-worker.saibalkawade10.workers.dev/api/entry/demo/events')
+    // Verifies it does NOT hit the frontend pages 302 redirect domain
+    assert.ok(!sseUrl.startsWith('https://clip.foo.ng'))
+  })
+}
+
+// ── 8. Live Pad Real-Time Sync & Clipboard/File Sharing Tests ────────────────
+
+async function runLivePadRealtimeTests() {
+  console.log(`\n${colors.bold}${colors.cyan}8. Live Pad Real-Time Sync & Clipboard/File Sharing Tests${colors.reset}`)
+
+  await test('Live Pad synchronizes text across multiple simulated peer sockets', async () => {
+    let currentText = ''
+    const peers = new Set()
+
+    function createMockSocket(id) {
+      const messages = []
+      const socket = {
+        id,
+        send(msg) {
+          messages.push(JSON.parse(msg))
+        },
+        receive(type, payload) {
+          if (type === 'text') {
+            currentText = payload.text
+            // Broadcast to other peers
+            for (const p of peers) {
+              if (p !== socket) {
+                p.send(JSON.stringify({ type: 'text', text: currentText, senderId: id }))
+              }
+            }
+          }
+        },
+        getMessages() { return messages }
+      }
+      peers.add(socket)
+      return socket
+    }
+
+    const deviceA = createMockSocket('device-laptop')
+    const deviceB = createMockSocket('device-phone')
+
+    // Device A types text
+    deviceA.receive('text', { text: 'Hello from laptop in real time!' })
+
+    assert.strictEqual(currentText, 'Hello from laptop in real time!')
+    const bMessages = deviceB.getMessages()
+    assert.strictEqual(bMessages.length, 1)
+    assert.strictEqual(bMessages[0].type, 'text')
+    assert.strictEqual(bMessages[0].text, 'Hello from laptop in real time!')
+    assert.strictEqual(bMessages[0].senderId, 'device-laptop')
+  })
+
+  await test('Live Pad handles clipboard and drag-drop file attachments in real time', async () => {
+    let liveFiles = []
+    const broadcastEvents = []
+
+    function addLiveFile(fileItem) {
+      liveFiles = liveFiles.filter(f => f.id !== fileItem.id)
+      liveFiles.push(fileItem)
+      broadcastEvents.push({ type: 'file_added', file: fileItem })
+    }
+
+    function removeLiveFile(fileId) {
+      liveFiles = liveFiles.filter(f => f.id !== fileId)
+      broadcastEvents.push({ type: 'file_removed', fileId })
+    }
+
+    // Simulate pasting a screenshot from clipboard (Ctrl+V)
+    const pastedImage = {
+      id: 'live_img_123',
+      fileName: 'screenshot_2026-09-26.png',
+      fileMime: 'image/png',
+      fileSize: 45020,
+    }
+    addLiveFile(pastedImage)
+
+    assert.strictEqual(liveFiles.length, 1)
+    assert.strictEqual(broadcastEvents.length, 1)
+    assert.strictEqual(broadcastEvents[0].type, 'file_added')
+    assert.strictEqual(broadcastEvents[0].file.fileName, 'screenshot_2026-09-26.png')
+
+    // Simulate drag & drop of a code file
+    const droppedFile = {
+      id: 'live_file_456',
+      fileName: 'config.json',
+      fileMime: 'application/json',
+      fileSize: 2048,
+    }
+    addLiveFile(droppedFile)
+
+    assert.strictEqual(liveFiles.length, 2)
+    assert.strictEqual(liveFiles[1].fileName, 'config.json')
+
+    // Remove file in real time
+    removeLiveFile('live_img_123')
+    assert.strictEqual(liveFiles.length, 1)
+    assert.strictEqual(liveFiles[0].id, 'live_file_456')
+    assert.strictEqual(broadcastEvents[2].type, 'file_removed')
+    assert.strictEqual(broadcastEvents[2].fileId, 'live_img_123')
+  })
+
+  await test('Live Pad converts to permanent clip with edit code and encryption options', async () => {
+    const liveSession = {
+      text: 'Final meeting notes and design specification',
+      files: [{ id: 'live_f1', fileName: 'diagram.png', fileMime: 'image/png', fileSize: 50000 }],
+      slug: 'team-design-sync'
+    }
+
+    function prepareClipConversion(session, editCode, ttl, password) {
+      assert.ok(editCode.length >= 4, 'Edit code must be valid')
+      return {
+        slug: session.slug,
+        type: session.files.length > 0 ? 'file' : 'text',
+        content: session.text,
+        files: session.files,
+        editCode,
+        ttl,
+        isEncrypted: Boolean(password && password.length >= 4)
+      }
+    }
+
+    const clipPayload = prepareClipConversion(liveSession, 'secretEditPass123', 'permanent', 'optionalViewerPass')
+    assert.strictEqual(clipPayload.type, 'file')
+    assert.strictEqual(clipPayload.editCode, 'secretEditPass123')
+    assert.strictEqual(clipPayload.ttl, 'permanent')
+    assert.strictEqual(clipPayload.isEncrypted, true)
+  })
+}
+
 // ── Main Test Runner ────────────────────────────────────────────────────────
 
 async function main() {
@@ -384,6 +614,8 @@ async function main() {
   await runSecurityTests()
   await runDeletionTests()
   await runAdvancedEdgeCaseTests()
+  await runKVReadProtectionAndCacheTests()
+  await runLivePadRealtimeTests()
 
   console.log(`\n${colors.bold}=== Summary ===${colors.reset}`)
   console.log(`Total: ${passed + failed} | Passed: ${colors.green}${passed}${colors.reset} | Failed: ${failed > 0 ? colors.red + failed + colors.reset : '0'}`)

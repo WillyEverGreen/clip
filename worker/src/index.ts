@@ -10,6 +10,7 @@ import { handleRemove } from './handlers/remove'
 
 import { handleAdminList, handleAdminDelete, handleAdminPurgeAll } from './handlers/admin'
 import { handleReadZip } from './handlers/zip'
+import { putFileKV, getFileKV, deleteFileKV } from './lib/kv'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
@@ -55,12 +56,24 @@ app.get('/api/entry/:slug/events', async (c) => {
   const id  = c.env.CLIP_DO.idFromName(slug)
   const obj = c.env.CLIP_DO.get(id)
   // Forward the raw request; the DO manages the stream lifetime
-  return obj.fetch(
+  const res = await obj.fetch(
     new Request(`https://clip-do/room/${slug}/events`, {
       method:  'GET',
       headers: c.req.raw.headers,
     }),
   )
+  const headers = new Headers(res.headers)
+  const reqOrigin = c.req.header('Origin') || ''
+  const allowedOrigin = (reqOrigin.includes('localhost') || reqOrigin.endsWith('.pages.dev') || reqOrigin.endsWith('.foo.ng'))
+    ? reqOrigin
+    : (c.env.FRONTEND_ORIGIN || '*')
+  headers.set('Access-Control-Allow-Origin', allowedOrigin)
+  headers.set('Cache-Control', 'no-cache, no-transform')
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  })
 })
 
 // Verify edit code
@@ -76,6 +89,120 @@ app.delete('/api/entry/:slug',        handleRemove)
 app.get('/api/admin/entries',         handleAdminList)
 app.delete('/api/admin/entry/:slug',  handleAdminDelete)
 app.delete('/api/admin/purge',        handleAdminPurgeAll)
+
+// ── Live Pad Real-Time Routes ──────────────────────────────────────────────────
+
+// WebSocket upgrade connection for real-time live typing & file events
+app.get('/api/live/:slug/ws', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  return obj.fetch(c.req.raw)
+})
+
+// Fetch initial state for Live Pad
+app.get('/api/live/:slug', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  const res = await obj.fetch(`https://clip-do/room/${slug}/live-state`)
+  const data = await res.json()
+  return c.json(data, 200, {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  })
+})
+
+// Upload a live file/image
+app.post('/api/live/:slug/upload', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+
+  let form: FormData
+  try {
+    form = await c.req.formData()
+  } catch {
+    return c.json({ error: 'invalid_form' }, 400)
+  }
+
+  const rawFile = form.get('file') as File | null
+  if (!rawFile || typeof rawFile.arrayBuffer !== 'function' || rawFile.size === 0) {
+    return c.json({ error: 'missing_file' }, 400)
+  }
+
+  if (rawFile.size > 25 * 1024 * 1024) {
+    return c.json({ error: 'file_too_large' }, 400)
+  }
+
+  const fileId = `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const fileBuffer = await rawFile.arrayBuffer()
+  const TTL_24H = 86_400
+
+  await putFileKV(c.env.PASTE_KV, slug, fileBuffer, TTL_24H, fileId)
+
+  const fileItem = {
+    id: fileId,
+    fileName: rawFile.name || 'file',
+    fileMime: rawFile.type || 'application/octet-stream',
+    fileSize: rawFile.size,
+  }
+
+  const id = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  await obj.fetch(`https://clip-do/room/${slug}/live-file`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ file: fileItem }),
+  })
+
+  return c.json({ ok: true, file: fileItem }, 200, {
+    'Cache-Control': 'no-store',
+  })
+})
+
+// Delete a live file
+app.delete('/api/live/:slug/file/:fileId', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug   = c.req.param('slug') ?? ''
+  const fileId = c.req.param('fileId') ?? ''
+  if (!slug || !fileId) return c.json({ error: 'not_found' }, 404)
+
+  await deleteFileKV(c.env.PASTE_KV, slug, fileId)
+
+  const id = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  await obj.fetch(`https://clip-do/room/${slug}/live-file/${fileId}`, {
+    method: 'DELETE',
+  })
+
+  return c.json({ ok: true })
+})
+
+// Stream/View live file binary
+app.get('/api/live/:slug/file/:fileId', async (c) => {
+  const slug   = c.req.param('slug') ?? ''
+  const fileId = c.req.param('fileId') ?? ''
+  if (!slug || !fileId) return c.json({ error: 'not_found' }, 404)
+
+  const fileData = await getFileKV(c.env.PASTE_KV, slug, fileId)
+  if (!fileData) return c.json({ error: 'not_found' }, 404)
+
+  const requestedName = c.req.query('name') || fileId
+  const sanitizedName = requestedName.replace(/["\r\n]/g, '_')
+
+  return new Response(fileData, {
+    headers: {
+      'Content-Type':        c.req.query('mime') || 'application/octet-stream',
+      'Content-Disposition': `inline; filename="${sanitizedName}"; filename*=UTF-8''${encodeURIComponent(requestedName)}`,
+      'Cache-Control':       'no-cache, must-revalidate',
+      'Pragma':              'no-cache',
+    },
+  })
+})
 
 // Health check
 app.get('/api/health', (c) => c.json({ ok: true }))

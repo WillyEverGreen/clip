@@ -4,10 +4,10 @@
     <img src="frontend/public/clip-header.png" height="50" alt="clip" />
   </a>
 
-  <p><b>Share text snippets &amp; files instantly - no accounts, no logging in on public PCs.</b></p>
+  <p><b>Instant free file sharing, text sharing, and real-time collaborative Live Pad. Zero accounts, zero tracking, end-to-end encrypted.</b></p>
 
   <p>
-    <a href="https://clip.foo.ng"><b>🌐 Live Demo: clip.foo.ng</b></a>
+    <a href="https://clip.foo.ng"><b>🌐 Live Demo: clip.foo.ng</b></a> • <a href="https://clip.foo.ng/live"><b>⚡ Live Pad: clip.foo.ng/live</b></a>
   </p>
 
 </div>
@@ -16,7 +16,7 @@
 
 ### 💡 Why Clip was built
 
-> *"I created Clip because I was tired of having to log into WhatsApp Web on college library and lab PCs every single time I needed to quickly transfer a code snippet, link, or document to myself or a classmate."*
+> *"I created Clip because I was tired of having to log into WhatsApp Web or cloud drives on college library and lab PCs every single time I needed to quickly transfer a code snippet, link, or document to myself or a classmate."*
 
 **Clip** solves this exact problem: a friction-free, lightweight web utility to create temporary, shareable links for text, markdown, and files in seconds - without leaving personal accounts signed in on public computers.
 
@@ -24,17 +24,22 @@
 
 ### ✨ Features
 
-- 🚀 **Zero Friction & No Sign-up**: Open the site, paste your text or drag-and-drop a file, get your link. Done.
-- 💻 **Terminal / CLI Downloads**: Download pastes and files straight from Linux or Windows terminals using simple `curl` commands.
+- 🚀 **Zero Friction & No Sign-up**: Open the site, paste your text or drop your files, get your link instantly. No account, email, or credentials required.
+- ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file sharing room with instant WebSocket synchronization powered by Cloudflare Durable Objects (SQLite). Everything synchronizes live across devices as you type.
+- 📱 **Phone Pair via QR Code**: Connect your phone to any Live Pad room in one second by scanning a QR code with your camera.
+- 📋 **Direct Clipboard & Drag-and-Drop Sharing**: Paste images or screenshots directly from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop any file up to 25 MB.
+- 🖥️ **Zero-Scroll Viewport Layout**: Desktop workspace dynamically adapts to 100% viewport height with no vertical page scroll. Seamlessly collapses into dedicated mobile tabs on narrow screens.
+- 🎨 **Pure Monochrome (Black & White) Aesthetics**: Clean, distraction-free solid black (`#000000`) and pure white theme with Lucide iconography and zero emojis.
+- 💻 **Terminal / CLI Downloads**: Fetch pastes and files straight from Linux, macOS, or Windows terminals using simple `curl` commands.
 - 🗜️ **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive.
-- 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, or `30 Days`.
-- 🔒 **Zero-Knowledge Password Lock**: Secure your text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption. The server never sees your password or plaintext data.
-- 🔑 **Secret Edit Code**: Protect your links with a custom edit password to edit content or delete early.
-- 🔗 **Custom URLs**: Pick your own readable slug (`clip.foo.ng/my-notes`).
+- 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` (text only).
+- 🔒 **Zero-Knowledge Client-Side Encryption**: Secure text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption. The server never sees your password or plaintext data.
+- 🔑 **Secret Edit Code**: Protect your links with a custom edit password to modify content, add/remove files, or delete early.
+- 🔗 **Custom & Retained Slugs**: Pick your own readable URL slug (`clip.foo.ng/my-notes`) or convert live rooms into permanent clips while preserving the same slug.
 - 📁 **Rich Markdown & KaTeX Math**: Full support for GitHub Flavored Markdown (GFM), task lists, tables, and KaTeX mathematical typesetting ($\LaTeX$, matrices, piecewise functions, integrals).
 - 🔤 **Developer Typography & Code Blocks**: Crisp syntax highlighting for 40+ languages with **JetBrains Mono** / **Fira Code** fonts and 1-click code block **Copy** buttons.
-- 🌐 **Timezone-Aware Metadata**: Automatically formats publication & edit dates in the viewer's local timezone (e.g. `GMT+5:30`).
-- ⚡ **Edge-Powered Speed**: Built on Cloudflare Workers + KV + Pages for near-instant global response times.
+- 🌐 **Comprehensive SEO & Rich Snippets**: Schema.org `WebApplication` & `FAQPage` rich snippets, dynamic OpenGraph/Twitter social cards, `robots.txt`, and `sitemap.xml`.
+- ⚡ **Edge-Powered Speed**: Built on Cloudflare Workers + KV + Durable Objects + Pages for near-instant global response times.
 
 ---
 
@@ -75,9 +80,11 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 
 | Component | Technology |
 | :--- | :--- |
-| **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Monochrome Dark UI), Lucide Icons, Marked, KaTeX, Prism.js |
-| **Backend** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
-| **Hosting** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
+| **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Pure Monochrome), Lucide Icons, Marked, KaTeX, Prism.js |
+| **Backend API** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
+| **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed WebSocket state synchronization) |
+| **Hosting & CDN** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
+| **Search & SEO** | Schema.org JSON-LD (WebApplication & FAQPage), XML Sitemap, Robots.txt, OpenGraph |
 
 ---
 
@@ -98,6 +105,16 @@ For a full history of bug fixes and architectural updates, see [docs/CHANGELOG.m
 
 ---
 
+### 🧪 Automated Testing
+
+Clip includes an end-to-end automated test suite covering crypto, file uploads, expiration, CLI curl generation, and real-time live sync:
+
+```bash
+npm test
+```
+
+---
+
 ### 📡 1-Command Deployment
 
 Deploy both the Cloudflare Worker API and Frontend Pages build in a single step from the root directory:
@@ -105,6 +122,9 @@ Deploy both the Cloudflare Worker API and Frontend Pages build in a single step 
 ```bash
 npm run deploy
 ```
+
+* Deploy worker only: `npm run deploy:worker`
+* Deploy frontend only: `npm run deploy:frontend`
 
 ---
 

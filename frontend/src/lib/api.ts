@@ -1,6 +1,6 @@
 const LIVE_WORKER_URL = 'https://clip-worker.saibalkawade10.workers.dev'
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-const BASE = import.meta.env.VITE_API_URL || (isLocal ? '' : LIVE_WORKER_URL)
+export const BASE = import.meta.env.VITE_API_URL || (isLocal ? '' : LIVE_WORKER_URL)
 
 // Public-facing origin used for CLI commands shown to users.
 // Uses the browser's current domain (clip.foo.ng in prod, localhost in dev)
@@ -108,6 +108,10 @@ export async function getEntry(slug: string, cacheBust?: string, isPoll?: boolea
   const res = await fetch(url, {
     // Bypass browser HTTP cache to always get the freshest data
     cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+    },
   })
   if (res.status === 404) return null
   // 304 Not Modified — no body to parse; caller should keep existing data
@@ -129,6 +133,69 @@ export function rawUrl(slug: string): string {
 
 export function zipUrl(slug: string): string {
   return `${PUBLIC_ORIGIN}/z/${slug}.zip`
+}
+
+// ── Live Pad API Helpers ───────────────────────────────────────────────────────
+export function liveFileDownloadUrl(slug: string, fileId: string, mime?: string, name?: string): string {
+  const q = new URLSearchParams()
+  if (mime) q.set('mime', mime)
+  if (name) q.set('name', name)
+  const query = q.toString() ? `?${q.toString()}` : ''
+  return `${BASE}/api/live/${slug}/file/${fileId}${query}`
+}
+
+export async function uploadLiveFile(
+  slug: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<FileItem> {
+  const form = new FormData()
+  form.append('file', file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${BASE}/api/live/${slug}/upload`)
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+
+    xhr.onload = () => {
+      if (onProgress) onProgress(100)
+      let json: any
+      try { json = JSON.parse(xhr.responseText) } catch { json = {} }
+      if (xhr.status >= 200 && xhr.status < 300 && json.file) {
+        resolve(json.file as FileItem)
+      } else {
+        reject(json as ApiError)
+      }
+    }
+
+    xhr.onerror = () => reject({ error: 'network_error' } as ApiError)
+    xhr.ontimeout = () => reject({ error: 'timeout' } as ApiError)
+
+    xhr.send(form)
+  })
+}
+
+export async function deleteLiveFile(slug: string, fileId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/live/${slug}/file/${fileId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}))
+    throw json
+  }
+}
+
+export async function getLiveState(slug: string): Promise<{ text: string; files: FileItem[]; peers: number }> {
+  const res = await fetch(`${BASE}/api/live/${slug}?_t=${Date.now()}`, {
+    cache: 'no-store',
+  })
+  if (!res.ok) throw await res.json()
+  return res.json()
 }
 
 

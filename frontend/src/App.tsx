@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 const CreatePage  = lazy(() => import('./pages/CreatePage'))
 const ViewPage    = lazy(() => import('./pages/ViewPage'))
 const EditPage    = lazy(() => import('./pages/EditPage'))
+const LivePage    = lazy(() => import('./pages/LivePage'))
 const ExpiredPage = lazy(() => import('./pages/ExpiredPage'))
 
 const AdminPage = lazy(() =>
@@ -20,6 +21,8 @@ export default function App() {
       <Suspense fallback={null}>
         <Routes>
           <Route path="/"            element={<CreatePage />} />
+          <Route path="/live"        element={<LivePage />} />
+          <Route path="/live/:slug"  element={<LivePage />} />
           <Route path="/admin"       element={<AdminPage />} />
           <Route path="/:slug"       element={<ViewPage />} />
           <Route path="/:slug/edit"  element={<EditPage />} />

@@ -1,6 +1,6 @@
 import type { Context } from 'hono'
 import type { Env } from '../lib/types'
-import { getEntry, putEntry, toPublic, getFileKV, deleteFileKV } from '../lib/kv'
+import { getEntry, putEntry, toPublic, getFileKV, deleteFileKV, getViews, incrementViewsKV } from '../lib/kv'
 import { isEncrypted, decryptContent } from '../lib/crypto'
 import { notifyRoom } from '../lib/notify'
 
@@ -57,7 +57,7 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
   if (isNotModified(c.req.raw, etag)) {
     return new Response(null, {
       status: 304,
-      headers: { 'ETag': etag, 'Cache-Control': 'public, max-age=10, stale-while-revalidate=60' },
+      headers: { 'ETag': etag, 'Cache-Control': 'no-cache, must-revalidate', 'Pragma': 'no-cache' },
     })
   }
 
@@ -72,7 +72,8 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
       'Content-Disposition': `attachment; filename="${safeName}"`,
       'Content-Length':      String(fileSize || fileData.byteLength),
       'ETag':                etag,
-      'Cache-Control':       'public, max-age=10, stale-while-revalidate=60',
+      'Cache-Control':       'no-cache, must-revalidate',
+      'Pragma':              'no-cache',
     },
   })
 }
@@ -120,19 +121,20 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
   // ── ETag / 304 for raw text ────────────────────────────────────────────────
   const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt)
   if (isNotModified(c.req.raw, etag)) {
-    // Still increment view count in background even on 304
-    entry.views = (entry.views ?? 0) + 1
-    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+    // Still increment separate view count in background even on 304
+    c.executionCtx?.waitUntil(incrementViewsKV(c.env.PASTE_KV, slug, entry.views ?? 0))
     return new Response(null, {
       status: 304,
-      headers: { 'ETag': etag, 'Cache-Control': 'no-cache' },
+      headers: {
+        'ETag': etag,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+      },
     })
   }
 
-  // ── Increment view count non-blocking ──────────────────────────────────────
-  // Response is returned immediately; KV write happens in background.
-  entry.views = (entry.views ?? 0) + 1
-  c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+  // ── Increment view count non-blocking without overwriting entry document ──
+  c.executionCtx?.waitUntil(incrementViewsKV(c.env.PASTE_KV, slug, entry.views ?? 0))
 
   if (entry.type === 'file' || (!entry.content && entry.hasFile)) {
     return handleReadFile(c)
@@ -152,7 +154,8 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
         return new Response(decrypted, {
           headers: {
             'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'no-store',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
           },
         })
       }
@@ -162,9 +165,10 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
 
   return new Response(textContent, {
     headers: {
-      'Content-Type': 'text/plain; charset=utf-8',
-      'ETag':         etag,
-      'Cache-Control': 'no-cache',
+      'Content-Type':  'text/plain; charset=utf-8',
+      'ETag':          etag,
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma':        'no-cache',
     },
   })
 }
@@ -174,7 +178,10 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
 export async function handleRead(c: Context<{ Bindings: Env }>) {
   const slug  = c.req.param('slug') ?? ''
   if (!slug) return c.json({ error: 'not_found' }, 404)
-  const entry = await getEntry(c.env.PASTE_KV, slug)
+  const [entry, extraViews] = await Promise.all([
+    getEntry(c.env.PASTE_KV, slug),
+    getViews(c.env.PASTE_KV, slug),
+  ])
   if (!entry) return c.json({ error: 'not_found' }, 404)
   if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
@@ -217,29 +224,36 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
   }
 
   const isPolling = !!c.req.query('_t') || c.req.query('poll') === 'true'
+  const currentViews = extraViews !== null ? Math.max(entry.views ?? 0, extraViews) : (entry.views ?? 0)
 
   // ── ETag / 304 for JSON API ────────────────────────────────────────────────
   const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt)
   if (isNotModified(c.req.raw, etag)) {
     // Skip incrementing view count in background if it's a polling/refresh request
     if (!isPolling) {
-      entry.views = (entry.views ?? 0) + 1
-      c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+      c.executionCtx?.waitUntil(incrementViewsKV(c.env.PASTE_KV, slug, currentViews))
     }
     return new Response(null, {
       status: 304,
-      headers: { 'ETag': etag, 'Cache-Control': 'no-cache' },
+      headers: {
+        'ETag': etag,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+      },
     })
   }
 
-  // ── Increment view count non-blocking ──────────────────────────────────────
+  // ── Increment view count non-blocking without overwriting entry document ──
   if (!isPolling) {
-    entry.views = (entry.views ?? 0) + 1
-    c.executionCtx?.waitUntil(putEntry(c.env.PASTE_KV, entry))
+    c.executionCtx?.waitUntil(incrementViewsKV(c.env.PASTE_KV, slug, currentViews))
   }
 
-  return c.json(toPublic(entry), 200, {
+  const pub = toPublic(entry)
+  pub.views = currentViews + (isPolling ? 0 : 1)
+
+  return c.json(pub, 200, {
     'ETag':          etag,
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    'Pragma':        'no-cache',
   })
 }

@@ -1,0 +1,11 @@
+# robots.txt for Clip File Sharing & Text Sharing
+User-agent: *
+Allow: /
+Allow: /live
+Disallow: /api/
+Disallow: /admin
+Disallow: /r/
+Disallow: /z/
+Disallow: /f/
+
+Sitemap: https://clip.fyi/sitemap.xml

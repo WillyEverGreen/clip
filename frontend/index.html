@@ -3,12 +3,111 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Share text or files with a custom link. Auto-expires in 6 hours. No account required." />
+    
+    <!-- Primary SEO Title & Description -->
+    <title>Clip — Free File Sharing &amp; Text Sharing | Encrypted Pastebin</title>
+    <meta name="description" content="Clip is the fastest free file sharing and text sharing platform. Share code, markdown, notes, and files with zero account requirement, client-side encryption, custom URLs, and real-time live pad collaboration." />
+    <meta name="keywords" content="file sharing, text sharing, anonymous file sharing, free file sharing, pastebin, temporary file upload, encrypted pastebin, rentry alternative, pastebin alternative, real-time notepad, live pad, markdown share, secure text share" />
+    <meta name="author" content="Clip" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <link rel="canonical" href="https://clip.fyi/" />
+
+    <!-- Favicons & App Identity -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/C.png" />
+    <link rel="apple-touch-icon" href="/C.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- Open Graph / Facebook / LinkedIn / Discord -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Clip" />
+    <meta property="og:url" content="https://clip.fyi/" />
+    <meta property="og:title" content="Clip — Free File Sharing &amp; Text Sharing | Encrypted Pastebin" />
+    <meta property="og:description" content="Fast, free, zero-account file and text sharing. Real-time collaborative live pad, multi-file uploads, custom links, and zero-knowledge client-side encryption." />
+    <meta property="og:image" content="https://clip.fyi/clip-header.png" />
+    <meta property="og:image:alt" content="Clip - Free File &amp; Text Sharing" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://clip.fyi/" />
+    <meta name="twitter:title" content="Clip — Free File Sharing &amp; Text Sharing | Encrypted Pastebin" />
+    <meta name="twitter:description" content="Fast, free, zero-account file and text sharing with client-side encryption and real-time live sync." />
+    <meta name="twitter:image" content="https://clip.fyi/clip-header.png" />
+
+    <!-- Performance & Preconnects -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
-    <title>Clip - Share text &amp; files instantly</title>
+
+    <!-- JSON-LD Structured Data: WebApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Clip",
+      "url": "https://clip.fyi",
+      "description": "Instant, secure, zero-account file and text sharing platform with end-to-end client-side encryption and real-time live collaboration.",
+      "applicationCategory": "UtilitiesApplication, ProductivityApplication",
+      "operatingSystem": "All",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Instant anonymous text sharing and markdown publishing",
+        "Multi-file sharing up to 25MB per file with automatic 48h cleanup",
+        "Real-time collaborative Live Pad with instant WebSocket sync",
+        "Zero-knowledge AES-256 client-side encryption",
+        "Custom URL slugs and secret edit codes",
+        "CLI integration with curl commands for Linux, macOS, and Windows"
+      ]
+    }
+    </script>
+
+    <!-- JSON-LD Structured Data: FAQPage for Rich Search Results -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How does free file sharing and text sharing work on Clip?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Simply paste your text or drop your files into Clip. You can optionally set a custom URL slug, secret edit code, expiration timer, or zero-knowledge encryption password. Click 'Create Link' to instantly receive a shareable link with no account required."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Clip safe, anonymous, and encrypted?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Clip requires no login, email, or personal details. If you choose password protection, all text and file payloads are encrypted directly in your browser using AES-GCM 256-bit encryption before transmission. The server never receives your password or decryption keys."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the Live Pad real-time sync feature?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Live Pad allows multiple devices to type and drop files into the same room URL in real time without manually saving each change. It includes a Phone Pair QR code to instantly sync between desktop and mobile devices."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How long do shared files and texts remain online?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Text entries can be set to expire in 1 hour, 6 hours, 1 day, 7 days, 30 days, or permanently. File uploads are retained for up to 48 hours for temporary sharing. Live Pad files are retained for 24 hours."
+          }
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>

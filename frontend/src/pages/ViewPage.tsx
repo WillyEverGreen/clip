@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
 import { isEncrypted, decryptContent } from '../lib/crypto'
 import { useEntrySSE } from '../lib/useEntrySSE'
 import Countdown from '../components/Countdown'
 import Logo      from '../components/Logo'
+import { useSeo } from '../lib/useSeo'
 
 // Heavy components lazy-loaded: their library chunks are only downloaded when needed
 const MarkdownRenderer = lazy(() => import('../components/MarkdownRenderer'))
@@ -37,24 +38,49 @@ export default function ViewPage() {
   const lastUpdatedAtRef = useRef<number | undefined>(undefined)  // tracks last known updatedAt
   const fetchEntryRef  = useRef<((isManual?: boolean, expectedUpdatedAt?: number) => Promise<void>) | null>(null)
 
+  // Dynamic SEO Title & Description
+  const rawText = decryptedContent || entry?.content || ''
+  const firstLine = rawText.trim().split('\n')[0]?.replace(/[#*`_~]/g, '').trim()
+  const snippet = firstLine ? firstLine.slice(0, 60) : ''
+  const pageTitle = entry
+    ? entry.type === 'file'
+      ? `${entry.fileName || (entry.files && entry.files.length > 0 ? `${entry.files.length} Shared Files` : 'Shared Files')} — Clip`
+      : snippet
+        ? `${snippet} — Clip /${slug}`
+        : `Clip /${slug} — Shared Text`
+    : `Clip /${slug} — Shared Link`
+
+  const pageDescription = entry
+    ? entry.type === 'file'
+      ? `View and download ${entry.fileName || 'shared files'} securely on Clip. Zero accounts, instant transfer.`
+      : rawText.slice(0, 160).replace(/\n/g, ' ') || 'View shared markdown, code, and text on Clip.'
+    : 'View shared text and files securely on Clip.'
+
+  useSeo({
+    title: pageTitle,
+    description: pageDescription,
+    canonicalUrl: `https://clip.fyi/${slug}`,
+  })
+
   const fetchEntry = useCallback(async (isManual = false, expectedUpdatedAt?: number) => {
     if (!slug) return
     if (isManual) setRefreshing(true)
     try {
-      // Only cache-bust on manual refresh; auto-polls pass isPoll flag
+      // Cache-bust on manual refresh, initial load, and browser reload (skip only for background auto-polls)
       const isAutoPoll = !isManual && loadedRef.current
-      const e = await getEntry(slug, isManual ? `${Date.now()}` : undefined, isAutoPoll)
+      const cacheBust = !isAutoPoll ? `${Date.now()}` : undefined
+      const e = await getEntry(slug, cacheBust, isAutoPoll)
       if (!e || Date.now() > e.expiresAt) {
         if (!loadedRef.current) navigate('/404')
         return
       }
       
       // Stale data detection: if we expected a newer updatedAt but got older data,
-      // it means we hit a KV edge that hasn't propagated yet — skip this update
+      // it means we hit a KV edge that hasn't propagated yet — skip this update and retry
       const entryUpdatedAt = e.updatedAt ?? e.createdAt
       if (expectedUpdatedAt && entryUpdatedAt < expectedUpdatedAt && lastUpdatedAtRef.current) {
         console.warn(`Stale data detected: expected ${expectedUpdatedAt}, got ${entryUpdatedAt}`)
-        // Retry polls from SSE will fetch again shortly
+        setTimeout(() => fetchEntryRef.current?.(false, expectedUpdatedAt), 1500)
         return
       }
       
@@ -495,7 +521,10 @@ export default function ViewPage() {
                 </button>
               </div>
               {decryptError && (
-                <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'#f87171' }}>❌ Wrong password — please try again.</p>
+                <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'var(--text-muted)', display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                  <AlertCircle size={14} style={{ color: '#ffffff' }} />
+                  <span>Wrong password - please try again.</span>
+                </p>
               )}
             </div>
           ) : (

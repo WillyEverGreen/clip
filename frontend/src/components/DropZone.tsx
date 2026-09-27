@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { formatBytes } from '../lib/api'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, Check } from 'lucide-react'
 
 interface Props {
   onFile?: (file: File | null) => void
@@ -90,24 +90,29 @@ export default function DropZone({
     const extra = uploadingFileNames.length - 2
 
     return (
-      <div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         <div
           className="dropzone"
-          style={{ height, minHeight: height, cursor: 'default', pointerEvents: 'none' }}
+          style={{ flex: 1, height, minHeight: height, cursor: 'default', pointerEvents: 'none', boxSizing: 'border-box' }}
         >
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {/* Header row */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600, letterSpacing: '0.04em' }}>
-                {isDone
-                  ? '✓ UPLOAD COMPLETE'
-                  : `UPLOADING${uploadingFileNames.length > 1 ? ` ${uploadingFileNames.length} FILES` : ''}…`}
+              <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                {isDone ? (
+                  <>
+                    <Check size={14} style={{ color: '#ffffff' }} />
+                    <span>UPLOAD COMPLETE</span>
+                  </>
+                ) : (
+                  `UPLOADING${uploadingFileNames.length > 1 ? ` ${uploadingFileNames.length} FILES` : ''}…`
+                )}
               </span>
               <span
                 style={{
                   fontSize: '0.875rem',
                   fontWeight: 700,
-                  color: isDone ? '#4ade80' : '#ffffff',
+                  color: '#ffffff',
                   fontVariantNumeric: 'tabular-nums',
                   transition: 'color 300ms ease',
                 }}
@@ -133,7 +138,7 @@ export default function DropZone({
                   borderRadius: '3px',
                   transition: 'width 150ms ease-out, background 300ms ease',
                   background: isDone
-                    ? '#4ade80'
+                    ? '#ffffff'
                     : 'linear-gradient(90deg, #ffffff 0%, #a1a1aa 50%, #ffffff 100%)',
                   backgroundSize: '200% 100%',
                   animation: isDone ? 'none' : 'clipShimmer 1.4s linear infinite',
@@ -165,7 +170,7 @@ export default function DropZone({
             )}
 
             {isDone && (
-              <span style={{ fontSize: '0.775rem', color: '#4ade80', marginTop: '0.1rem' }}>
+              <span style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
                 Syncing to all devices…
               </span>
             )}
@@ -184,10 +189,10 @@ export default function DropZone({
 
   // ── Normal idle / file-selected state ────────────────────────────────────
   return (
-    <div>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div
         className={`dropzone${dragging ? ' dropzone--over' : ''}`}
-        style={{ height, minHeight: height }}
+        style={{ flex: 1, height, minHeight: height, boxSizing: 'border-box' }}
         onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
@@ -222,7 +227,7 @@ export default function DropZone({
                 const pct = Math.min(100, (used / maxBytes) * 100)
                 return (
                   <div style={{ width: '100%', height: '4px', background: '#18181b', borderRadius: '2px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: pct > 90 ? '#ef4444' : '#3b82f6', borderRadius: '2px', transition: 'width 200ms ease' }} />
+                    <div style={{ height: '100%', width: `${pct}%`, background: '#ffffff', borderRadius: '2px', transition: 'width 200ms ease' }} />
                   </div>
                 )
               })()}
@@ -287,7 +292,8 @@ export default function DropZone({
         .dropzone__info { flex: 1; min-width: 0; }
         .dropzone__name { display: block; font-size: 0.85rem; font-weight: 500; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .dropzone__size { font-size: 0.75rem; color: #a1a1aa; }
-        .dropzone__clear { padding: 0.25rem 0.5rem; font-size: 0.75rem; flex-shrink: 0; color: #f87171; }
+        .dropzone__clear { padding: 0.25rem 0.5rem; font-size: 0.75rem; flex-shrink: 0; color: #a1a1aa; }
+        .dropzone__clear:hover { color: #ffffff; }
       `}</style>
     </div>
   )

@@ -77,11 +77,40 @@ export async function deleteEntry(
   
   await kv.delete(key(slug))
   await kv.delete(fileKey(slug))
+  await kv.delete(`views:${slug}`)
   
   if (activeEntry && activeEntry.files) {
     for (const f of activeEntry.files) {
       await kv.delete(`file:${slug}:${f.id}`)
     }
+  }
+}
+
+// ─── Separate View Counter (Avoids overwriting Entry on reads) ───────────────
+
+export async function getViews(kv: KVNamespace, slug: string): Promise<number | null> {
+  try {
+    const val = await kv.get(`views:${slug}`)
+    return val !== null ? parseInt(val, 10) : null
+  } catch {
+    return null
+  }
+}
+
+export async function incrementViewsKV(
+  kv: KVNamespace,
+  slug: string,
+  baseViews = 0,
+): Promise<void> {
+  try {
+    const vKey = `views:${slug}`
+    const val = await kv.get(vKey)
+    const current = val !== null ? parseInt(val, 10) : baseViews
+    await kv.put(vKey, String(current + 1), {
+      expirationTtl: 2_592_000, // 30 days
+    })
+  } catch {
+    // Non-critical background task; ignore failure
   }
 }
 

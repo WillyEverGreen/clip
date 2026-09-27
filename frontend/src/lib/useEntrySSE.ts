@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
+import { BASE } from './api'
 
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+const BASE_URL = BASE
 
 interface Options {
   /** Called whenever an "update" SSE event arrives for this slug */
@@ -14,7 +15,7 @@ interface Options {
  *  - Opens EventSource to /api/entry/:slug/events
  *  - On "update" event → calls onUpdate() so ViewPage re-fetches entry data
  *  - Includes updatedAt timestamp in update event for stale data detection
- *  - Implements retry-after-SSE polling (500ms, 2s) to handle KV propagation lag
+ *  - Implements retry-after-SSE polling (500ms, 1.5s, 3s, 6s) to handle KV propagation lag
  *  - Reconnects automatically with exponential backoff (1s → 2s → 4s → max 30s)
  *  - Falls back to a 5s polling interval if EventSource is not supported
  *  - Cleans up on unmount or when slug changes
@@ -60,14 +61,16 @@ export function useEntrySSE(slug: string | undefined, { onUpdate }: Options) {
         // Immediate fetch
         onUpdateRef.current(updatedAt)
         
-        // Schedule retry polls to handle KV propagation lag
+        // Schedule retry polls to handle KV propagation lag across edge POPs
         // Clear any existing retry polls first
         retryPolls.forEach(t => clearTimeout(t))
         retryPolls = []
         
-        // Retry after 500ms and 2s to catch propagated updates
+        // Retry at staggered intervals to smoothly catch propagated updates
         retryPolls.push(setTimeout(() => onUpdateRef.current(updatedAt), 500))
-        retryPolls.push(setTimeout(() => onUpdateRef.current(updatedAt), 2000))
+        retryPolls.push(setTimeout(() => onUpdateRef.current(updatedAt), 1500))
+        retryPolls.push(setTimeout(() => onUpdateRef.current(updatedAt), 3000))
+        retryPolls.push(setTimeout(() => onUpdateRef.current(updatedAt), 6000))
       })
 
       es.addEventListener('connected', () => {

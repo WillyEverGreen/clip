@@ -29,7 +29,7 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
   if (isNotModified(c.req.raw, etag)) {
     return new Response(null, {
       status: 304,
-      headers: { 'ETag': etag, 'Cache-Control': 'public, max-age=10, stale-while-revalidate=60' },
+      headers: { 'ETag': etag, 'Cache-Control': 'no-cache, must-revalidate', 'Pragma': 'no-cache' },
     })
   }
 
@@ -153,7 +153,8 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
       'Content-Disposition': `attachment; filename="${slug}.zip"`,
       'Content-Length':      String(zipped.byteLength),
       'ETag':                etag,
-      'Cache-Control':       'public, max-age=10, stale-while-revalidate=60',
+      'Cache-Control':       'no-cache, must-revalidate',
+      'Pragma':              'no-cache',
     },
   })
 }

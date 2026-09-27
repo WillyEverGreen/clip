@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock } from 'lucide-react'
+import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock, AlertTriangle, AlertCircle } from 'lucide-react'
 import { verifyEditCode, getEntry, updateEntryWithProgress, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
 import { isEncrypted, decryptContent, encryptContent } from '../lib/crypto'
 import DropZone from '../components/DropZone'
+import { useSeo } from '../lib/useSeo'
 
 type Step = 'verify' | 'edit'
 type Mode  = 'text' | 'file'
@@ -11,6 +12,12 @@ type Mode  = 'text' | 'file'
 export default function EditPage() {
   const { slug }   = useParams<{ slug: string }>()
   const navigate   = useNavigate()
+
+  useSeo({
+    title: slug ? `Edit Clip /${slug} | Clip` : 'Edit Clip | Clip',
+    description: 'Edit or manage your shared paste and files using your secret edit code.',
+    canonicalUrl: slug ? `https://clip.fyi/${slug}/edit` : undefined,
+  })
 
   // Existing Entry Data
   const [existing,   setExisting]   = useState<PublicEntry | null>(null)
@@ -43,7 +50,7 @@ export default function EditPage() {
   // Fetch existing document on mount
   useEffect(() => {
     if (!slug) return
-    getEntry(slug)
+    getEntry(slug, `${Date.now()}`)
       .then(async data => {
         if (data) {
           setExisting(data)
@@ -123,7 +130,7 @@ export default function EditPage() {
     // Validate password hasn't changed if content was originally encrypted
     if (originalPassword && viewPassword && viewPassword !== originalPassword) {
       const confirmed = confirm(
-        '⚠️ Warning: The password has changed.\n\n' +
+        'Warning: The password has changed.\n\n' +
         'Re-encrypting with a different password will make the paste inaccessible with the old password.\n\n' +
         'Are you sure you want to continue?'
       )
@@ -286,7 +293,10 @@ export default function EditPage() {
                 </button>
               </div>
               {decryptError && (
-                <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'#f87171' }}>❌ Wrong password — please try again.</p>
+                <p style={{ marginTop:'0.75rem', fontSize:'0.8125rem', color:'var(--text-muted)', display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                  <AlertCircle size={14} style={{ color: '#ffffff' }} />
+                  <span>Wrong password - please try again.</span>
+                </p>
               )}
             </div>
           ) : (
@@ -321,7 +331,7 @@ export default function EditPage() {
                     border: mode === 'file' ? '1px solid #71717a' : '1px solid transparent',
                   }}
                 >
-                  <Upload size={16} /> File {hasExistingFile && '✓'}
+                  <Upload size={16} /> File {hasExistingFile && <Check size={14} style={{ marginLeft: '0.2rem' }} />}
                 </button>
               </div>
 
@@ -332,7 +342,7 @@ export default function EditPage() {
                     <label className="label">Text Content</label>
                     <textarea
                       className="input"
-                      style={{ minHeight:'250px' }}
+                      style={{ minHeight:'440px', resize:'vertical' }}
                       value={content}
                       onChange={e => setContent(e.target.value)}
                       placeholder="Paste or edit your text here… Markdown supported"
@@ -393,13 +403,14 @@ export default function EditPage() {
                       )}
                       <DropZone
                         onFiles={fs => setNewFiles(fs)}
-                        height="202px"
+                        height="320px"
                         uploadProgress={uploadProgress}
                         uploadingFileNames={newFiles.map(f => f.name)}
                       />
                       <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
-                          <span style={{ color: '#fbbf24', fontWeight: 500 }}>⚠️ Files auto-delete after 48 hours</span>
+                        <p style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
+                          <AlertTriangle size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Files auto-delete after 48 hours</span>
                         </p>
                         <p style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.75rem' }}>
                           Entry metadata and text content persist until expiration time.
