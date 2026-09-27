@@ -16,7 +16,7 @@ export default function EditPage() {
   useSeo({
     title: slug ? `Edit Clip /${slug} | Clip` : 'Edit Clip | Clip',
     description: 'Edit or manage your shared paste and files using your secret edit code.',
-    canonicalUrl: slug ? `https://clip.fyi/${slug}/edit` : undefined,
+    canonicalUrl: slug ? `https://clip.foo.ng/${slug}/edit` : undefined,
   })
 
   // Existing Entry Data

@@ -59,7 +59,7 @@ export default function ViewPage() {
   useSeo({
     title: pageTitle,
     description: pageDescription,
-    canonicalUrl: `https://clip.fyi/${slug}`,
+    canonicalUrl: `https://clip.foo.ng/${slug}`,
   })
 
   const fetchEntry = useCallback(async (isManual = false, expectedUpdatedAt?: number) => {

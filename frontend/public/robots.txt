@@ -8,4 +8,4 @@ Disallow: /r/
 Disallow: /z/
 Disallow: /f/
 
-Sitemap: https://clip.fyi/sitemap.xml
+Sitemap: https://clip.foo.ng/sitemap.xml

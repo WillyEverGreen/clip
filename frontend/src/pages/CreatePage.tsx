@@ -17,7 +17,7 @@ export default function CreatePage() {
   useSeo({
     title: 'Clip — Free File Sharing & Text Sharing | Encrypted Pastebin',
     description: 'Share text, code, markdown, and files instantly with custom links. Zero account required, client-side encryption, and real-time live pad collaboration.',
-    canonicalUrl: 'https://clip.fyi/',
+    canonicalUrl: 'https://clip.foo.ng/',
   })
 
   const [mode,          setMode]          = useState<Mode>('text')
