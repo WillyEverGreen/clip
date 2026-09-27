@@ -25,7 +25,7 @@ export default function ViewPage() {
   const [textCopied,        setTextCopied]        = useState(false)
   const [showCliModal,      setShowCliModal]      = useState(false)
   const [showQrModal,       setShowQrModal]       = useState(false)
-  const [cliOs,             setCliOs]             = useState<'linux' | 'windows'>('linux')
+  const [cliOs,             setCliOs]             = useState<'linux' | 'windows'>('windows')
   const [cliTab,            setCliTab]            = useState<'download' | 'upload'>('download')
   const [cliCmdCopied,      setCliCmdCopied]      = useState<string | null>(null)
   // Encryption state
@@ -181,39 +181,37 @@ export default function ViewPage() {
   const displayContent     = contentIsEncrypted ? decryptedContent : entry.content
   const hasActualText      = entry.content && displayContent !== '{"file_lock":true}'
 
-  const activePass = contentIsEncrypted
-    ? (decryptPassword || (slug ? sessionStorage.getItem('clip_decrypt_' + slug) : null) || 'yourpassword')
-    : null
+  // Generate CLI commands with password placeholder for encrypted content
+  const passPlaceholder = contentIsEncrypted ? '{your-password-here}' : null
+  const rawUrlWithPass = passPlaceholder ? `${rawEndpoint}?pass=${passPlaceholder}` : rawEndpoint
+  const zipUrlWithPass = passPlaceholder ? `${zipEndpoint}?pass=${passPlaceholder}` : zipEndpoint
+  const fileUrlWithPass = passPlaceholder ? `${fileEndpoint}?pass=${passPlaceholder}` : fileEndpoint
 
-  const rawUrlWithPass = activePass ? `${rawEndpoint}?pass=${activePass}` : rawEndpoint
-  const zipUrlWithPass = activePass ? `${zipEndpoint}?pass=${activePass}` : zipEndpoint
-  const fileUrlWithPass = activePass ? `${fileEndpoint}?pass=${activePass}` : fileEndpoint
+  const textCurlCmd = cliOs === 'windows' ? `curl.exe -sL "${rawUrlWithPass}"` : `curl -sL "${rawUrlWithPass}"`
+  const fileCurlCmd = cliOs === 'windows' ? `curl.exe -fLJO "${fileUrlWithPass}"` : `curl -fLJO "${fileUrlWithPass}"`
+  const zipCurlCmd  = cliOs === 'windows' ? `curl.exe -fLO "${zipUrlWithPass}"` : `curl -fLO "${zipUrlWithPass}"`
 
-  const textCurlCmd = cliOs === 'linux' ? `curl -sL "${rawUrlWithPass}"` : `curl.exe -sL "${rawUrlWithPass}"`
-  const fileCurlCmd = cliOs === 'linux' ? `curl -fLJO "${fileUrlWithPass}"` : `curl.exe -fLJO "${fileUrlWithPass}"`
-  const zipCurlCmd  = cliOs === 'linux' ? `curl -fLO "${zipUrlWithPass}"` : `curl.exe -fLO "${zipUrlWithPass}"`
-
-  // CLI Upload commands
-  const uploadCurlText = cliOs === 'linux'
-    ? `curl -X POST ${uploadOrigin}/api/entry \\
-  -F "type=text" \\
-  -F "content=@yourfile.txt" \\
-  -F "editCode=YourSecret" \\
-  -F "ttl=86400"`
-    : `curl.exe -X POST ${uploadOrigin}/api/entry ^
+  // CLI Upload commands (Windows first, then Linux/macOS)
+  const uploadCurlText = cliOs === 'windows'
+    ? `curl.exe -X POST ${uploadOrigin}/api/entry ^
   -F "type=text" ^
   -F "content=@yourfile.txt" ^
   -F "editCode=YourSecret" ^
   -F "ttl=86400"`
+    : `curl -X POST ${uploadOrigin}/api/entry \\
+  -F "type=text" \\
+  -F "content=@yourfile.txt" \\
+  -F "editCode=YourSecret" \\
+  -F "ttl=86400"`
 
-  const uploadCurlFile = cliOs === 'linux'
-    ? `curl -X POST ${uploadOrigin}/api/entry \\
-  -F "type=file" \\
-  -F "files=@photo.jpg" \\
-  -F "editCode=YourSecret"`
-    : `curl.exe -X POST ${uploadOrigin}/api/entry ^
+  const uploadCurlFile = cliOs === 'windows'
+    ? `curl.exe -X POST ${uploadOrigin}/api/entry ^
   -F "type=file" ^
   -F "files=@photo.jpg" ^
+  -F "editCode=YourSecret"`
+    : `curl -X POST ${uploadOrigin}/api/entry \\
+  -F "type=file" \\
+  -F "files=@photo.jpg" \\
   -F "editCode=YourSecret"`
 
   return (
@@ -305,13 +303,13 @@ export default function ViewPage() {
                     <Upload size={14} /> Upload
                   </button>
                 </div>
-                {/* OS Selector */}
+                {/* OS Selector - Windows first since user is on Windows */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem', background: '#000000', padding: '0.25rem', borderRadius: '8px', border: '1px solid #27272a' }}>
-                  <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
-                    <Terminal size={14} /> Linux / macOS
-                  </button>
                   <button onClick={() => setCliOs('windows')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'windows' ? '#27272a' : 'transparent', color: cliOs === 'windows' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
                     <Monitor size={14} /> Windows (PowerShell)
+                  </button>
+                  <button onClick={() => setCliOs('linux')} style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, border: 'none', transition: 'all 150ms ease', background: cliOs === 'linux' ? '#27272a' : 'transparent', color: cliOs === 'linux' ? '#ffffff' : '#a1a1aa', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem' }}>
+                    <Terminal size={14} /> Linux / macOS
                   </button>
                 </div>
 
@@ -364,8 +362,8 @@ export default function ViewPage() {
                     {entry.files && entry.files.length > 1 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: '250px', overflowY: 'auto', paddingRight: '4px' }}>
                         {entry.files.map((f) => {
-                          const singleFileUrl = activePass ? `${fileUrl(entry.slug, f.id)}?pass=${activePass}` : fileUrl(entry.slug, f.id)
-                          const fCmd = cliOs === 'linux' ? `curl -LO "${singleFileUrl}"` : `curl.exe -LO "${singleFileUrl}"`
+                          const singleFileUrl = passPlaceholder ? `${fileUrl(entry.slug, f.id)}?pass=${passPlaceholder}` : fileUrl(entry.slug, f.id)
+                          const fCmd = cliOs === 'windows' ? `curl.exe -LO "${singleFileUrl}"` : `curl -LO "${singleFileUrl}"`
                           const fId = `file_${f.id}`
                           return (
                             <div key={f.id} className="modal-inner-card" style={{ padding:'0.65rem 0.85rem' }}>
