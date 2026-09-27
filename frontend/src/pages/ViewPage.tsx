@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
 import { isEncrypted, decryptContent } from '../lib/crypto'
 import { useEntrySSE } from '../lib/useEntrySSE'
@@ -70,7 +70,7 @@ export default function ViewPage() {
       const isAutoPoll = !isManual && loadedRef.current
       const cacheBust = !isAutoPoll ? `${Date.now()}` : undefined
       const e = await getEntry(slug, cacheBust, isAutoPoll)
-      if (!e || Date.now() > e.expiresAt) {
+      if (!e || (!e.isPermanent && Date.now() > e.expiresAt)) {
         if (!loadedRef.current) navigate('/404')
         return
       }
@@ -553,6 +553,17 @@ export default function ViewPage() {
               {(entry.hasFile || entry.fileName) && (
                 <div style={{ marginTop: hasActualText ? '2rem' : 0, paddingTop: hasActualText ? '2rem' : 0, borderTop: hasActualText ? '1px solid var(--border)' : 'none' }}>
                   <FileCard entry={entry} slug={slug!} />
+                </div>
+              )}
+
+              {/* Expired file notice if temporary file retention period passed */}
+              {!hasActualText && !entry.hasFile && !entry.fileName && (
+                <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
+                  <Clock size={32} style={{ color: 'var(--text-dim)', marginBottom: '0.85rem' }} />
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.4rem' }}>Attached File Expired</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto', lineHeight: 1.6 }}>
+                    Files uploaded to temporary clips are retained for 48 hours to preserve storage. The file attachment for this clip has expired and been cleaned up.
+                  </p>
                 </div>
               )}
             </>

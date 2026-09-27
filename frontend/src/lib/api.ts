@@ -28,6 +28,7 @@ export interface PublicEntry {
   expiresAt: number
   fileExpiresAt?: number
   views?: number
+  isPermanent?: boolean
 }
 
 export interface CreateResponse { slug: string; expiresAt: number }
@@ -108,10 +109,6 @@ export async function getEntry(slug: string, cacheBust?: string, isPoll?: boolea
   const res = await fetch(url, {
     // Bypass browser HTTP cache to always get the freshest data
     cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-    },
   })
   if (res.status === 404) return null
   // 304 Not Modified — no body to parse; caller should keep existing data
