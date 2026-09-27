@@ -14,8 +14,11 @@
 
     <!-- Favicons & App Identity -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" href="/C.png" />
-    <link rel="apple-touch-icon" href="/C.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icon-48.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icon-96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#000000" />
     <meta name="color-scheme" content="dark" />
@@ -40,6 +43,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+
+    <!-- JSON-LD Structured Data: Official Google Search WebSite (Site Name) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Clip",
+      "alternateName": [
+        "Clip App",
+        "Clip File Sharing",
+        "Clip Text Sharing",
+        "clip.foo.ng"
+      ],
+      "url": "https://clip.foo.ng/"
+    }
+    </script>
 
     <!-- JSON-LD Structured Data: WebApplication -->
     <script type="application/ld+json">
