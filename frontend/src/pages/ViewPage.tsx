@@ -79,7 +79,9 @@ export default function ViewPage() {
       // it means we hit a KV edge that hasn't propagated yet — skip this update and retry
       const entryUpdatedAt = e.updatedAt ?? e.createdAt
       if (expectedUpdatedAt && entryUpdatedAt < expectedUpdatedAt && lastUpdatedAtRef.current) {
-        console.warn(`Stale data detected: expected ${expectedUpdatedAt}, got ${entryUpdatedAt}`)
+        if (import.meta.env.DEV) {
+          console.warn(`Stale data detected: expected ${expectedUpdatedAt}, got ${entryUpdatedAt}`)
+        }
         setTimeout(() => fetchEntryRef.current?.(false, expectedUpdatedAt), 1500)
         return
       }

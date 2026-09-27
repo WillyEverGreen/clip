@@ -307,7 +307,9 @@ export default function LivePage() {
             form.append('file', fileObj)
           }
         } catch (e) {
-          console.warn('Failed to attach file for clip conversion:', e)
+          if (import.meta.env.DEV) {
+            console.warn('Failed to attach file for clip conversion:', e)
+          }
         }
       }
 

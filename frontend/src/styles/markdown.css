@@ -1,0 +1,276 @@
+/* ── Markdown render area ────────────────────────────────────────────────── */
+.markdown-body {
+  line-height: 1.75;
+  color: #ffffff;
+  font-size: 0.9375rem;
+}
+.markdown-body h1 { font-size: 1.6rem; font-weight: 700; margin: 1.75rem 0 0.85rem; color: #ffffff; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+.markdown-body h2 { font-size: 1.35rem; font-weight: 700; margin: 1.5rem 0 0.75rem; color: #ffffff; }
+.markdown-body h3 { font-size: 1.15rem; font-weight: 600; margin: 1.25rem 0 0.6rem; color: #ffffff; }
+.markdown-body h4 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.5rem; color: #ffffff; }
+.markdown-body p  { margin: 0.85rem 0; color: #e4e4e7; line-height: 1.75; }
+.markdown-body ul, .markdown-body ol { margin: 0.85rem 0; padding-left: 1.6rem; }
+.markdown-body li { margin: 0.35rem 0; color: #e4e4e7; line-height: 1.65; }
+.markdown-body blockquote {
+  border-left: 3px solid #71717a;
+  padding: 0.6rem 1.1rem;
+  margin: 1.25rem 0;
+  color: #a1a1aa;
+  background: #101010;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-style: normal;
+}
+.markdown-body blockquote p { margin: 0.3rem 0; }
+
+/* ── Code Blocks with Header ────────────────────────────────────────────── */
+.code-block-container {
+  margin: 1.5rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #09090b;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background: #121215;
+  border-bottom: 1px solid var(--border);
+}
+.code-block-lang {
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: #a1a1aa;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── Code Copy Button ────────────────────────────────────────────────────── */
+.code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #a1a1aa;
+  font-size: 0.72rem;
+  font-family: var(--font);
+  font-weight: 500;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  user-select: none;
+  line-height: 1;
+}
+.code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+.code-copy-btn.copied {
+  background: rgba(74, 222, 128, 0.12);
+  border-color: rgba(74, 222, 128, 0.3);
+  color: #4ade80;
+}
+.code-copy-icon,
+.code-copied-icon {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.markdown-body pre {
+  background: #09090b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem !important;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  font-family: var(--font-mono) !important;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  letter-spacing: 0;
+  box-sizing: border-box;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+.code-block-container pre,
+.markdown-body .code-block-container pre,
+.markdown-body pre[class*="language-"] {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 1.25rem 1.5rem !important;
+  box-sizing: border-box;
+  overflow-x: auto;
+  font-family: var(--font-mono) !important;
+}
+.markdown-body code {
+  font-family: var(--font-mono) !important;
+  font-size: 0.85em;
+  background: #18181b;
+  padding: 0.18em 0.45em;
+  border-radius: 4px;
+  color: #f4f4f5;
+  border: 1px solid rgba(255,255,255,0.08);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.markdown-body pre code,
+.markdown-body pre code[class*="language-"] {
+  background: none !important;
+  padding: 0 !important;
+  font-size: inherit !important;
+  color: #e4e4e7 !important;
+  border: none !important;
+  text-shadow: none !important;
+  display: block;
+  font-variant-ligatures: normal;
+  font-feature-settings: "liga" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-family: var(--font-mono) !important;
+}
+.markdown-body a { color: #ffffff; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+.markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.75rem 0; }
+
+/* ── KaTeX Math Display ─────────────────────────────────────────────────── */
+.markdown-body .katex-display {
+  margin: 1.25rem 0;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #09090b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.markdown-body .katex {
+  font-size: 1.08em;
+  color: #ffffff;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid var(--border);
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.markdown-body th {
+  background: #141414;
+  font-weight: 600;
+  color: #ffffff;
+}
+.markdown-body tr:nth-child(even) td {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ── Checkboxes / Task lists ────────────────────────────────────────────── */
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.5rem;
+  accent-color: #ffffff;
+  vertical-align: middle;
+}
+.markdown-body kbd {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  padding: 0.1em 0.4em;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.5);
+  color: #ffffff;
+}
+.markdown-body mark {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 0.1em 0.3em;
+  border-radius: 2px;
+}
+
+/* ── Prism Token Colors (Modern Vibrant Theme) ───────────────────────────── */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #71717a !important;
+  font-style: italic;
+  text-shadow: none !important;
+}
+.token.punctuation {
+  color: #a1a1aa !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+.token.property,
+.token.tag,
+.token.boolean,
+.token.number,
+.token.constant,
+.token.symbol {
+  color: #f87171 !important;
+  text-shadow: none !important;
+}
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin {
+  color: #86efac !important;
+  text-shadow: none !important;
+}
+.token.operator,
+.token.entity,
+.token.url {
+  color: #93c5fd !important;
+  text-shadow: none !important;
+}
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #c084fc !important;
+  font-weight: 500;
+  text-shadow: none !important;
+}
+.token.function,
+.token.class-name {
+  color: #67e8f9 !important;
+  text-shadow: none !important;
+}
+.token.regex,
+.token.important,
+.token.variable {
+  color: #fde68a !important;
+  text-shadow: none !important;
+}
+.token.important,
+.token.bold {
+  font-weight: bold;
+}
+.token.italic {
+  font-style: italic;
+}
+.token.inserted {
+  color: #86efac !important;
+  text-shadow: none !important;
+}
+.token.deleted {
+  color: #f87171 !important;
+  text-shadow: none !important;
+}

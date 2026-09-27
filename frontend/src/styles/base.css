@@ -1,0 +1,93 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 #09090b;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090b;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+  transition: background 150ms ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
+/* ── Root variables — Pure Monochrome (Solid Black & Pure White) ────────── */
+:root {
+  --bg:            #000000;
+  --surface:       #0a0a0a;
+  --surface-hover: #141414;
+  --border:        #262626;
+  --border-active: #52525b;
+
+  --accent:        #ffffff;
+  --accent-glow:   rgba(255,255,255,0.08);
+  --text:          #ffffff;
+  --text-muted:    #a1a1aa;
+  --text-dim:      #52525b;
+
+  --radius-sm:     6px;
+  --radius:        10px;
+  --radius-lg:     14px;
+  --radius-xl:     16px;
+
+  --font:          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:     'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+
+  --transition:    180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
+/* ── Background — Solid Black ────────────────────────────────────────────── */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background-color: #000000;
+  background-image: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100%;
+  height: 100%;
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+h1 { font-size: 2rem;   font-weight: 700; letter-spacing: -0.025em; color: #ffffff; }
+h2 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; color: #ffffff; }
+h3 { font-size: 1.1rem; font-weight: 600; color: #ffffff; }
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0px 1000px #000000 inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #000000; }
+::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #52525b; }

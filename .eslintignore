@@ -1,0 +1,19 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+build
+.wrangler
+**/.wrangler
+
+# Config files
+*.config.js
+*.config.ts
+vite.config.ts
+wrangler.toml
+
+# Generated
+*.min.js
+worker-configuration.d.ts

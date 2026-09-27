@@ -1,0 +1,15 @@
+# Development environment variables (keep example)
+.dev.vars
+!.dev.vars.example
+
+# Wrangler dev files
+.wrangler/
+
+# Build outputs
+dist/
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log

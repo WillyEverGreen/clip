@@ -93,7 +93,7 @@ export function useEntrySSE(slug: string | undefined, { onUpdate }: Options) {
           
           // If we've hit max delay multiple times, it might be a persistent DO failure
           // Fall back to interval polling
-          if (retryDelay >= MAX_DELAY) {
+          if (retryDelay >= MAX_DELAY && import.meta.env.DEV) {
             console.warn('SSE connection repeatedly failing, falling back to interval polling')
             // Note: The component will continue retrying SSE in background
             // but the 5s initial poll in ViewPage will keep data updated

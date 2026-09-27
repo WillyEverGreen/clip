@@ -10,18 +10,40 @@ build/
 # Cloudflare Wrangler logs and dev files
 .wrangler/
 .dev.vars
+!.dev.vars.example
 wrangler.log
+
+# Environment files (keep examples)
+.env
+.env.local
+.env.*.local
+!.env.example
 
 # IDE & OS
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+*.sublime-project
+*.sublime-workspace
 
-# Environment files
-.env
-.env.local
-.env.*.local
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
 
 # Admin Panel (Local / Private - Do not push to GitHub)
 worker/src/handlers/admin.ts
@@ -29,4 +51,3 @@ worker/src/handlers/admin/
 frontend/src/pages/AdminPage.tsx
 frontend/src/components/Admin/
 ADMIN_GUIDE.md
-

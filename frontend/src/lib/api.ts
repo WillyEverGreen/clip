@@ -34,6 +34,20 @@ export interface PublicEntry {
 export interface CreateResponse { slug: string; expiresAt: number }
 export interface ApiError       { error: string; retryAfter?: number }
 
+// XHR Response types for better type safety
+interface XHRSuccessResponse<T> {
+  success: true
+  data: T
+}
+
+interface XHRErrorResponse {
+  success: false
+  error: string
+  retryAfter?: number
+}
+
+type XHRResponse<T> = T | ApiError
+
 // ── Create ────────────────────────────────────────────────────────────────────
 export async function createEntry(data: FormData): Promise<CreateResponse> {
   const res = await fetch(`${BASE}/api/entry`, { method: 'POST', body: data })
@@ -78,8 +92,12 @@ function xhrUpload<T>(url: string, method: string, data: FormData, onProgress: (
 
     xhr.onload = () => {
       onProgress(100)
-      let json: any
-      try { json = JSON.parse(xhr.responseText) } catch { json = {} }
+      let json: XHRResponse<T>
+      try { 
+        json = JSON.parse(xhr.responseText) as XHRResponse<T>
+      } catch { 
+        json = { error: 'parse_error' } as ApiError
+      }
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(json as T)
       } else {
@@ -161,10 +179,18 @@ export async function uploadLiveFile(
 
     xhr.onload = () => {
       if (onProgress) onProgress(100)
-      let json: any
-      try { json = JSON.parse(xhr.responseText) } catch { json = {} }
-      if (xhr.status >= 200 && xhr.status < 300 && json.file) {
-        resolve(json.file as FileItem)
+      interface UploadResponse {
+        ok: boolean
+        file: FileItem
+      }
+      let json: UploadResponse | ApiError
+      try { 
+        json = JSON.parse(xhr.responseText) as UploadResponse | ApiError
+      } catch { 
+        json = { error: 'parse_error' } as ApiError
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && 'file' in json) {
+        resolve(json.file)
       } else {
         reject(json as ApiError)
       }

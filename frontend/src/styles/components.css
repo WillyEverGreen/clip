@@ -1,0 +1,316 @@
+/* ── Cards & Containers ─────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.card-glow {
+  box-shadow: 0 0 0 1px #1a1a1a, 0 12px 32px rgba(0,0,0,0.8);
+}
+
+.card-content {
+  padding: 2.5rem;
+}
+
+
+/* ── Inputs & Microinteractions ──────────────────────────────────────────── */
+.input {
+  width: 100%;
+  background: #000000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: #ffffff;
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  padding: 0.75rem 1rem;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+
+.input::placeholder { color: var(--text-dim); }
+
+.input:focus {
+  border-color: #52525b;
+  box-shadow: 0 0 0 1px #52525b, 0 0 12px rgba(82, 82, 91, 0.2);
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 440px;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  font-family: var(--font-mono);
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Custom URL Input Group focus handling */
+.url-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.url-group:focus-within .url-prefix {
+  border-color: #52525b !important;
+  color: var(--text-muted) !important;
+}
+
+/* ── Buttons & Microinteractions ─────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  padding: 0.75rem 1.5rem;
+  transition: transform var(--transition), background-color var(--transition), border-color var(--transition), box-shadow var(--transition);
+  white-space: nowrap;
+  text-decoration: none;
+  user-select: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.btn-primary {
+  background: #52525b;
+  color: #ffffff;
+  border: 1px solid #71717a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #71717a;
+  border-color: #a1a1aa;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  background: #3f3f46;
+  transform: translateY(0) scale(0.985);
+}
+
+.btn-ghost {
+  background: #000000;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: #141414;
+  color: #ffffff;
+  border-color: #52525b;
+  transform: translateY(-1px);
+}
+
+.btn-danger {
+  background: #000000;
+  color: #ffffff;
+  border: 1px solid #3f3f46;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #18181b;
+  border-color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-full { width: 100%; }
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: #ffffff;
+  border-color: var(--border-active);
+}
+
+/* ── Toggle Pills Microinteraction ───────────────────────────────────────── */
+.toggle-pill {
+  position: relative;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.3rem;
+  background: #000000;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 0.7rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 180ms ease;
+  user-select: none;
+}
+
+.toggle-btn:active {
+  transform: scale(0.98);
+}
+
+/* ── Labels ──────────────────────────────────────────────────────────────── */
+.label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.field { display: flex; flex-direction: column; gap: 0.375rem; }
+.field + .field { margin-top: 1.25rem; }
+
+/* ── Error messages ──────────────────────────────────────────────────────── */
+.error-msg {
+  font-size: 0.8125rem;
+  color: #ffffff;
+  margin-top: 0.375rem;
+}
+
+/* ── Spinner ─────────────────────────────────────────────────────────────── */
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* ── Badge ───────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+/* ── Theme Switcher Button ───────────────────────────────────────────────── */
+.theme-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+  flex-shrink: 0;
+}
+.theme-btn:hover { border-color: var(--accent); transform: scale(1.1); box-shadow: 0 0 12px var(--accent-glow); }
+
+/* ── Lock icon badge on encrypted pastes ────────────────────────────────── */
+.lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #e4e4e7;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Modal Dialogs ───────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  z-index: 99999;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 640px;
+  max-height: 88vh;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid #27272a;
+  background: #0e0e10;
+  flex-shrink: 0;
+}
+
+.modal-body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-card-qr {
+  width: 100%;
+  max-width: 380px;
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  padding: 1.75rem;
+  border-radius: 16px;
+  position: relative;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85);
+}
+
+.modal-inner-card {
+  background: #000000;
+  border-radius: 10px;
+  border: 1px solid #27272a;
+  padding: 0.75rem 1rem;
+}
