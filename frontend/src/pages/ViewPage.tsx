@@ -44,11 +44,11 @@ export default function ViewPage() {
   const snippet = firstLine ? firstLine.slice(0, 60) : ''
   const pageTitle = entry
     ? entry.type === 'file'
-      ? `${entry.fileName || (entry.files && entry.files.length > 0 ? `${entry.files.length} Shared Files` : 'Shared Files')} — Clip`
+      ? `${entry.fileName || (entry.files && entry.files.length > 0 ? `${entry.files.length} Shared Files` : 'Shared Files')} - Clip`
       : snippet
-        ? `${snippet} — Clip /${slug}`
-        : `Clip /${slug} — Shared Text`
-    : `Clip /${slug} — Shared Link`
+        ? `${snippet} - Clip /${slug}`
+        : `Clip /${slug} - Shared Text`
+    : `Clip /${slug} - Shared Link`
 
   const pageDescription = entry
     ? entry.type === 'file'

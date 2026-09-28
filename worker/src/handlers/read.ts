@@ -5,7 +5,7 @@ import { isEncrypted, decryptContent } from '../lib/crypto'
 import { notifyRoom } from '../lib/notify'
 
 function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_.\-]/g, '_').slice(0, 128)
+  return name.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 128)
 }
 
 // ── ETag helpers ──────────────────────────────────────────────────────────────

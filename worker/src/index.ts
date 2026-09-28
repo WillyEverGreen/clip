@@ -7,10 +7,13 @@ import { handleRead, handleReadFile, handleReadRaw } from './handlers/read'
 import { handleVerify } from './handlers/verify'
 import { handleUpdate } from './handlers/update'
 import { handleRemove } from './handlers/remove'
+import { generateLiveSlug, isReserved } from './lib/slug'
+import { entryExists } from './lib/kv'
 
 import { handleAdminList, handleAdminDelete, handleAdminPurgeAll } from './handlers/admin'
 import { handleReadZip } from './handlers/zip'
 import { putFileKV, getFileKV, deleteFileKV } from './lib/kv'
+import { getMimeType } from './lib/mime'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
@@ -92,6 +95,36 @@ app.delete('/api/admin/purge',        handleAdminPurgeAll)
 
 // ── Live Pad Real-Time Routes ──────────────────────────────────────────────────
 
+// Generate a guaranteed-unique, cryptographically secure slug for a new Live Pad room.
+// The slug is atomically reserved in KV so it can never be handed out twice.
+app.get('/api/live/new-slug', async (c) => {
+  const KV_TTL_30D = 86_400 * 30 // 30 days — covers any reasonable session lifetime
+  const MAX_ATTEMPTS = 8
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const candidate = generateLiveSlug()
+
+    // 1. Never collide with reserved route segments
+    if (isReserved(candidate)) continue
+
+    // 2. Never collide with an existing paste in KV
+    if (await entryExists(c.env.PASTE_KV, candidate)) continue
+
+    // 3. Never collide with a previously claimed Live Pad room
+    const liveKey = `live:reserved:${candidate}`
+    const existing = await c.env.PASTE_KV.get(liveKey)
+    if (existing !== null) continue
+
+    // 4. Atomically claim the slug — subsequent random generation will skip it
+    await c.env.PASTE_KV.put(liveKey, '1', { expirationTtl: KV_TTL_30D })
+
+    return c.json({ slug: candidate }, 200, { 'Cache-Control': 'no-store' })
+  }
+
+  // Astronomically unlikely (10^15 combinations) — only reachable if KV is saturated
+  return c.json({ error: 'slug_exhausted' }, 503)
+})
+
 // WebSocket upgrade connection for real-time live typing & file events
 app.get('/api/live/:slug/ws', async (c) => {
   if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
@@ -130,7 +163,7 @@ app.post('/api/live/:slug/upload', async (c) => {
   }
 
   const rawFile = form.get('file') as File | null
-  if (!rawFile || typeof rawFile.arrayBuffer !== 'function' || rawFile.size === 0) {
+  if (!rawFile || typeof rawFile.arrayBuffer !== 'function') {
     return c.json({ error: 'missing_file' }, 400)
   }
 
@@ -138,16 +171,20 @@ app.post('/api/live/:slug/upload', async (c) => {
     return c.json({ error: 'file_too_large' }, 400)
   }
 
-  const fileId = `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const fileId = `live_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
   const fileBuffer = await rawFile.arrayBuffer()
   const TTL_24H = 86_400
 
   await putFileKV(c.env.PASTE_KV, slug, fileBuffer, TTL_24H, fileId)
 
+  const inferredMime = (!rawFile.type || rawFile.type === 'application/octet-stream')
+    ? getMimeType(rawFile.name)
+    : rawFile.type
+
   const fileItem = {
     id: fileId,
     fileName: rawFile.name || 'file',
-    fileMime: rawFile.type || 'application/octet-stream',
+    fileMime: inferredMime || 'application/octet-stream',
     fileSize: rawFile.size,
   }
 
@@ -192,12 +229,15 @@ app.get('/api/live/:slug/file/:fileId', async (c) => {
   if (!fileData) return c.json({ error: 'not_found' }, 404)
 
   const requestedName = c.req.query('name') || fileId
-  const sanitizedName = requestedName.replace(/["\r\n]/g, '_')
+  // Isolate basename to prevent Windows filename errors when relative paths are present
+  const baseName = requestedName.split(/[/\\]/).pop() || requestedName
+  const sanitizedBase = baseName.replace(/["\r\n]/g, '_')
+  const requestedMime = c.req.query('mime') || getMimeType(requestedName) || 'application/octet-stream'
 
   return new Response(fileData, {
     headers: {
-      'Content-Type':        c.req.query('mime') || 'application/octet-stream',
-      'Content-Disposition': `inline; filename="${sanitizedName}"; filename*=UTF-8''${encodeURIComponent(requestedName)}`,
+      'Content-Type':        requestedMime,
+      'Content-Disposition': `inline; filename="${sanitizedBase}"; filename*=UTF-8''${encodeURIComponent(requestedName)}`,
       'Cache-Control':       'no-cache, must-revalidate',
       'Pragma':              'no-cache',
     },

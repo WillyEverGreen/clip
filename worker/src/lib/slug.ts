@@ -8,15 +8,22 @@ const RESERVED = new Set([
   'static', '_next', '_headers', '_redirects',
   'favicon.ico', 'robots.txt', 'sitemap.xml',
   'raw', 'zip', 'r', 'z', 'f',
+  'live', 'livepad', 'room', 'ws', 'new-slug',
 ])
 
-// ─── Auto-generator ───────────────────────────────────────────────────────────
+// ─── Auto-generators ──────────────────────────────────────────────────────────
 
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 8)
+const liveNanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10)
 
 export function generateSlug(): string {
   return nanoid()
 }
+
+export function generateLiveSlug(): string {
+  return liveNanoid()
+}
+
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 

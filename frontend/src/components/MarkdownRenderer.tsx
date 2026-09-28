@@ -229,6 +229,16 @@ function fallbackCopy(text: string, cb: () => void) {
   }
 }
 
+function handleMarkdownClick(e: React.MouseEvent<HTMLDivElement>) {
+  const target = e.target as HTMLElement
+  const btn = target.closest<HTMLButtonElement>('.code-copy-btn')
+  if (btn) {
+    e.preventDefault()
+    e.stopPropagation()
+    copyCodeToClipboard(btn)
+  }
+}
+
 interface Props {
   content: string
 }
@@ -244,20 +254,10 @@ export default function MarkdownRenderer({ content }: Props) {
     }
   }, [content])
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement
-    const btn = target.closest<HTMLButtonElement>('.code-copy-btn')
-    if (btn) {
-      e.preventDefault()
-      e.stopPropagation()
-      copyCodeToClipboard(btn)
-    }
-  }
-
   return (
     <div
       className="markdown-body"
-      onClick={handleClick}
+      onClick={handleMarkdownClick}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )

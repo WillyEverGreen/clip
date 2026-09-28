@@ -1,43 +1,7 @@
 /**
- * Magic byte (file signature) validation.
- * Cross-checks the browser-supplied Content-Type against actual file bytes.
- *
- * For unknown/unlisted types, we allow the upload (don't block).
- * For known types, the signatures must match.
+ * Comprehensive MIME type mapping and file classification utilities for LivePad and Clip.
+ * Supports every common file type across code, markup, data, documents, media, archives, and binaries.
  */
-
-type Signature = number[]
-
-const MAGIC: Record<string, Signature[]> = {
-  'application/pdf':       [[0x25, 0x50, 0x44, 0x46]],          // %PDF
-  'image/png':             [[0x89, 0x50, 0x4E, 0x47]],          // \x89PNG
-  'image/jpeg':            [[0xFF, 0xD8, 0xFF]],
-  'image/gif':             [[0x47, 0x49, 0x46, 0x38]],          // GIF8
-  'image/webp':            [[0x52, 0x49, 0x46, 0x46]],          // RIFF
-  'application/zip':       [[0x50, 0x4B, 0x03, 0x04]],
-  'application/x-zip-compressed': [[0x50, 0x4B, 0x03, 0x04]],
-  'video/mp4':             [[0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70],
-                            [0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]],
-}
-
-export async function validateMime(file: File): Promise<boolean> {
-  // If file is 0 bytes (e.g. empty file, .gitkeep), allow it
-  if (file.size === 0) return true
-
-  const signatures = MAGIC[file.type]
-
-  // Type not in our known list — allow it
-  if (!signatures) return true
-
-  try {
-    const buf = await file.arrayBuffer()
-    if (buf.byteLength < 4) return true // Too small for signature check
-    const bytes = new Uint8Array(buf.slice(0, 8))
-    return signatures.some(sig => sig.every((b, i) => bytes[i] === b))
-  } catch {
-    return true // Allow upload safely if buffer slicing throws error
-  }
-}
 
 export const EXTENSION_MIME_MAP: Record<string, string> = {
   // Web & Code
@@ -221,22 +185,126 @@ export const EXTENSION_MIME_MAP: Record<string, string> = {
   db: 'application/x-sqlite3',
 }
 
+/**
+ * Extracts the file extension (in lowercase) from a filename or path.
+ */
+export function getExtension(filename: string): string {
+  if (!filename) return ''
+  // Strip query string if any
+  const clean = filename.split('?')[0].split('#')[0]
+  // Extract base filename if path contains slashes
+  const base = clean.split(/[/\\]/).pop() || ''
+  // Special handling for hidden files like .env, .gitignore, .dockerignore
+  if (base.startsWith('.') && !base.slice(1).includes('.')) {
+    return base.slice(1).toLowerCase()
+  }
+  const parts = base.split('.')
+  if (parts.length <= 1) return ''
+  return parts.pop()?.toLowerCase() || ''
+}
+
+/**
+ * Infer the best MIME type for a file from its name and supplied MIME.
+ */
 export function getMimeType(filename: string, fallbackMime?: string): string {
   if (fallbackMime && fallbackMime !== 'application/octet-stream' && fallbackMime !== '') {
     return fallbackMime
   }
-  if (!filename) return fallbackMime || 'application/octet-stream'
-  const clean = filename.split('?')[0].split('#')[0]
-  const base = clean.split(/[/\\]/).pop() || ''
-  if (base.startsWith('.') && !base.slice(1).includes('.')) {
-    const ext = base.slice(1).toLowerCase()
-    if (EXTENSION_MIME_MAP[ext]) return EXTENSION_MIME_MAP[ext]
-  }
-  const parts = base.split('.')
-  if (parts.length > 1) {
-    const ext = parts.pop()?.toLowerCase() || ''
-    if (EXTENSION_MIME_MAP[ext]) return EXTENSION_MIME_MAP[ext]
+  const ext = getExtension(filename)
+  if (ext && EXTENSION_MIME_MAP[ext]) {
+    return EXTENSION_MIME_MAP[ext]
   }
   return fallbackMime || 'application/octet-stream'
 }
 
+/**
+ * Determine if a file is an image by MIME type or extension.
+ */
+export function isImageFile(mime: string, filename: string): boolean {
+  if (mime && mime.startsWith('image/')) return true
+  const ext = getExtension(filename)
+  return ['png', 'jpg', 'jpeg', 'jpe', 'gif', 'webp', 'svg', 'ico', 'bmp', 'tiff', 'tif', 'avif', 'heic', 'heif'].includes(ext)
+}
+
+/**
+ * Determine if a file is a video by MIME type or extension.
+ */
+export function isVideoFile(mime: string, filename: string): boolean {
+  if (mime && mime.startsWith('video/')) return true
+  const ext = getExtension(filename)
+  return ['mp4', 'webm', 'mkv', 'mov', 'avi', 'wmv', 'flv', 'm4v', 'ogv', '3gp'].includes(ext)
+}
+
+/**
+ * Determine if a file is an audio file by MIME type or extension.
+ */
+export function isAudioFile(mime: string, filename: string): boolean {
+  if (mime && mime.startsWith('audio/')) return true
+  const ext = getExtension(filename)
+  return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'opus', 'weba', 'mid', 'midi'].includes(ext)
+}
+
+/**
+ * Determine if a file is a PDF by MIME type or extension.
+ */
+export function isPdfFile(mime: string, filename: string): boolean {
+  return mime === 'application/pdf' || getExtension(filename) === 'pdf'
+}
+
+/**
+ * Determine if a file is text / code / readable in a text editor.
+ */
+export function isTextOrCodeFile(mime: string, filename: string): boolean {
+  if (mime) {
+    if (mime.startsWith('text/')) return true
+    if (mime.includes('json') || mime.includes('javascript') || mime.includes('typescript') || mime.includes('xml') || mime.includes('yaml') || mime.includes('sql') || mime.includes('graphql')) {
+      return true
+    }
+  }
+  const ext = getExtension(filename)
+  const textExtensions = [
+    'txt', 'log', 'md', 'markdown', 'mdx', 'csv', 'tsv', 'json', 'json5', 'jsonc',
+    'js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'py', 'pyw', 'rs', 'go', 'c', 'cpp',
+    'h', 'hpp', 'cs', 'java', 'kt', 'kts', 'swift', 'rb', 'php', 'lua', 'dart',
+    'sh', 'bash', 'zsh', 'fish', 'bat', 'cmd', 'ps1', 'sql', 'yaml', 'yml',
+    'toml', 'xml', 'html', 'htm', 'css', 'scss', 'sass', 'less', 'ini', 'conf',
+    'cfg', 'env', 'gitignore', 'dockerfile', 'diff', 'patch', 'prisma', 'graphql', 'gql'
+  ]
+  const base = filename.split(/[/\\]/).pop()?.toLowerCase() || ''
+  if (['dockerfile', 'makefile', 'procfile', 'license', 'cname', 'authors', 'readme'].includes(base)) {
+    return true
+  }
+  return textExtensions.includes(ext)
+}
+
+/**
+ * Determine if a file is an archive / compressed file.
+ */
+export function isArchiveFile(mime: string, filename: string): boolean {
+  if (mime) {
+    if (mime.includes('zip') || mime.includes('tar') || mime.includes('rar') || mime.includes('gzip') || mime.includes('compressed')) {
+      return true
+    }
+  }
+  const ext = getExtension(filename)
+  return ['zip', 'tar', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar', 'iso', 'dmg'].includes(ext)
+}
+
+/**
+ * Get an upper-case badge label for any file (e.g. "PNG", "TSX", "PDF", "ZIP", "PY").
+ */
+export function getFileTypeBadge(filename: string, mime?: string): string {
+  const ext = getExtension(filename)
+  if (ext) {
+    return ext.toUpperCase().slice(0, 5)
+  }
+  const base = filename.split(/[/\\]/).pop() || ''
+  if (base.startsWith('.')) return base.slice(1).toUpperCase().slice(0, 5)
+  if (base.toLowerCase() === 'dockerfile') return 'DOCKER'
+  if (base.toLowerCase() === 'makefile') return 'MAKE'
+  if (mime) {
+    const sub = mime.split('/')[1]
+    if (sub) return sub.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 4)
+  }
+  return 'FILE'
+}

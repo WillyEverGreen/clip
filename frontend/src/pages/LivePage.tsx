@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   Zap, ArrowLeft, ArrowRight, Copy, Check, QrCode, Upload, Download, Trash2,
   File as FileIcon, FileText, Image as ImageIcon, Film, Music, FileArchive,
-  ExternalLink, Eye, X, Lock, CheckCircle2, AlertCircle, Share2, Folder
+  Eye, X, Lock, AlertCircle, Folder,
+  FolderPlus, Code, Play
 } from 'lucide-react'
 import { useLiveSocket } from '../lib/useLiveSocket'
 import {
@@ -11,9 +12,20 @@ import {
   uploadLiveFile,
   deleteLiveFile,
   createEntryWithProgress,
+  getUniqueLiveSlug,
   formatBytes,
-  type FileItem
 } from '../lib/api'
+import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
+import {
+  isImageFile,
+  isVideoFile,
+  isAudioFile,
+  isPdfFile,
+  isTextOrCodeFile,
+  isArchiveFile,
+  getFileTypeBadge,
+  getMimeType
+} from '../lib/fileTypes'
 import { encryptContent } from '../lib/crypto'
 import Logo from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
@@ -26,17 +38,18 @@ export default function LivePage() {
   const { slug: rawSlug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
 
-  // Generate a random slug if visiting /live directly
+  // Redirect /live to a unique server-reserved room slug
   const slug = rawSlug || ''
   useEffect(() => {
     if (!rawSlug) {
-      const generated = Math.random().toString(36).slice(2, 8)
-      navigate(`/live/${generated}`, { replace: true })
+      getUniqueLiveSlug().then(unique => {
+        navigate(`/live/${unique}`, { replace: true })
+      })
     }
   }, [rawSlug, navigate])
 
   useSeo({
-    title: slug ? `Live Pad /${slug} — Real-Time Text & File Sync | Clip` : 'Live Pad — Real-Time Collaborative Sync | Clip',
+    title: slug ? `Live Pad /${slug} - Real-Time Text & File Sync | Clip` : 'Live Pad - Real-Time Collaborative Sync | Clip',
     description: 'Instant collaborative notepad and live file sharing room. Type and drop files with real-time WebSocket synchronization across devices.',
     canonicalUrl: slug ? `https://clip.foo.ng/live/${slug}` : 'https://clip.foo.ng/live',
   })
@@ -56,9 +69,35 @@ export default function LivePage() {
   const [showQrModal, setShowQrModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
-  const [lightboxName, setLightboxName] = useState<string>('')
+  const [lightboxName, _setLightboxName] = useState<string>('')
+  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; mime: string; size: number } | null>(null)
+  const [previewTextContent, setPreviewTextContent] = useState<string | null>(null)
+  const [previewLoadingText, setPreviewLoadingText] = useState(false)
+  const [previewCopied, setPreviewCopied] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState<{ id: string; name: string; pct: number }[]>([])
+
+  // Fetch text content when previewing code or text files
+  useEffect(() => {
+    if (!previewFile) {
+      setPreviewTextContent(null)
+      setPreviewLoadingText(false)
+      setPreviewCopied(false)
+      return
+    }
+
+    if (isTextOrCodeFile(previewFile.mime, previewFile.name)) {
+      setPreviewLoadingText(true)
+      fetch(previewFile.url)
+        .then(async (res) => {
+          if (!res.ok) throw new Error('Fetch failed')
+          return res.text()
+        })
+        .then((text) => setPreviewTextContent(text))
+        .catch(() => setPreviewTextContent('(Unable to display text preview)'))
+        .finally(() => setPreviewLoadingText(false))
+    }
+  }, [previewFile])
 
   const [showFilesPanel, setShowFilesPanel] = useState(true)
   const [mobileTab, setMobileTab] = useState<'editor' | 'files'>('editor')
@@ -84,7 +123,11 @@ export default function LivePage() {
   }, [])
 
   // "Save as Clip" form states
-  const [saveEditCode, setSaveEditCode] = useState(() => Math.random().toString(36).slice(2, 8))
+  const [saveEditCode, setSaveEditCode] = useState(() => {
+    // Cryptographically secure random edit code — never Math.random
+    const bytes = crypto.getRandomValues(new Uint8Array(6))
+    return Array.from(bytes).map(b => b.toString(36)).join('').slice(0, 8)
+  })
   const [saveTtl, setSaveTtl] = useState('21600')
   const [savePassword, setSavePassword] = useState('')
   const [saveSlugChoice, setSaveSlugChoice] = useState<'room' | 'custom' | 'random'>('room')
@@ -130,34 +173,73 @@ export default function LivePage() {
     setTimeout(() => setCopiedLink(false), 2000)
   }
 
-  // Handle uploading a file to this Live Pad
+  // Handle uploading files to this Live Pad (with concurrency and folder path support)
   const handleUpload = useCallback(async (fileList: FileList | File[]) => {
     if (!slug) return
-    const queue = Array.from(fileList)
+    const queue = normalizeFileInputFiles(fileList)
+    if (queue.length === 0) return
 
+    const validFiles: File[] = []
     for (const f of queue) {
       if (f.size > 25 * 1024 * 1024) {
         showToast(`"${f.name}" exceeds the 25 MB limit.`, 'error')
-        continue
+      } else {
+        validFiles.push(f)
       }
+    }
 
-      const tempId = `temp_${Date.now()}_${Math.random()}`
-      setUploadingFiles(prev => [...prev, { id: tempId, name: f.name, pct: 0 }])
+    if (validFiles.length === 0) return
 
-      try {
-        const uploaded = await uploadLiveFile(slug, f, (pct) => {
-          setUploadingFiles(prev =>
-            prev.map(item => item.id === tempId ? { ...item, pct } : item)
-          )
-        })
-        addLocalFile(uploaded)
-        showToast(`Uploaded ${f.name}`, 'success')
-      } catch (err) {
-        console.error('Upload failed:', err)
-        showToast(`Failed to upload ${f.name}. Please try again.`, 'error')
-      } finally {
-        setUploadingFiles(prev => prev.filter(item => item.id !== tempId))
+    if (validFiles.length > 1) {
+      showToast(`Uploading ${validFiles.length} files...`, 'info')
+    }
+
+    // Upload with concurrency pool (up to 3 files concurrently)
+    const CONCURRENCY = 3
+    let index = 0
+    let successCount = 0
+    const failedNames: string[] = []
+
+    const uploadWorker = async () => {
+      while (index < validFiles.length) {
+        const i = index++
+        const f = validFiles[i]
+        const tempId = `temp_${Date.now()}_${Math.random()}`
+        setUploadingFiles(prev => [...prev, { id: tempId, name: f.name, pct: 0 }])
+
+        try {
+          const uploaded = await uploadLiveFile(slug, f, (pct) => {
+            setUploadingFiles(prev =>
+              prev.map(item => item.id === tempId ? { ...item, pct } : item)
+            )
+          })
+          addLocalFile(uploaded)
+          successCount++
+          if (validFiles.length === 1) {
+            showToast(`Uploaded ${f.name}`, 'success')
+          }
+        } catch (err) {
+          console.error('Upload failed:', err)
+          failedNames.push(f.name)
+        } finally {
+          setUploadingFiles(prev => prev.filter(item => item.id !== tempId))
+        }
       }
+    }
+
+    const workers = Array.from({ length: Math.min(CONCURRENCY, validFiles.length) }, () => uploadWorker())
+    await Promise.all(workers)
+
+    if (validFiles.length > 1) {
+      if (failedNames.length === 0) {
+        showToast(`Successfully uploaded ${successCount} files`, 'success')
+      } else if (successCount > 0) {
+        showToast(`Uploaded ${successCount} files (${failedNames.length} failed)`, 'info')
+      } else {
+        showToast(`Failed to upload ${failedNames.length} files.`, 'error')
+      }
+    } else if (failedNames.length > 0) {
+      showToast(`Failed to upload ${failedNames[0]}. Please try again.`, 'error')
     }
   }, [slug, addLocalFile, showToast])
 
@@ -184,12 +266,17 @@ export default function LivePage() {
       e.preventDefault()
     }
 
-    const handleDrop = (e: DragEvent) => {
+    const handleDrop = async (e: DragEvent) => {
       e.preventDefault()
       dragCounterRef.current = 0
       setIsDragging(false)
-      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
-        handleUpload(e.dataTransfer.files)
+      if (e.dataTransfer) {
+        const extracted = await extractFilesFromDataTransfer(e.dataTransfer)
+        if (extracted.length > 0) {
+          handleUpload(extracted)
+        } else if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+          showToast('The dropped folder contains no files.', 'info')
+        }
       }
     }
 
@@ -204,38 +291,50 @@ export default function LivePage() {
       window.removeEventListener('dragover', handleDragOver)
       window.removeEventListener('drop', handleDrop)
     }
-  }, [handleUpload])
+  }, [handleUpload, showToast])
 
   // Clipboard paste listener: paste images or files directly from clipboard (Ctrl+V / Cmd+V)
   useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
+    const handlePaste = async (e: ClipboardEvent) => {
       if (!e.clipboardData) return
-      const items = Array.from(e.clipboardData.items)
+      const items = Array.from(e.clipboardData.items || [])
       const fileItems = items.filter(item => item.kind === 'file')
 
       if (fileItems.length > 0) {
         e.preventDefault()
-        const filesToUpload: File[] = []
-        for (const item of fileItems) {
-          const file = item.getAsFile()
-          if (file) {
-            // Generate clean name for pasted screenshots/images if unnamed
-            const name = file.name === 'image.png'
-              ? `screenshot_${new Date().toISOString().replace(/[:.]/g, '-')}.png`
-              : file.name
-            const renamed = new File([file], name, { type: file.type })
-            filesToUpload.push(renamed)
+
+        try {
+          const extracted = await extractFilesFromDataTransfer(e.clipboardData)
+          if (extracted.length > 0) {
+            const filesToUpload = extracted.map(file => {
+              // Generate clean name for pasted screenshots/images if unnamed
+              const name = file.name === 'image.png'
+                ? `screenshot_${new Date().toISOString().replace(/[:.]/g, '-')}.png`
+                : file.name
+              return new File([file], name, { type: file.type || getMimeType(name) })
+            })
+            handleUpload(filesToUpload)
+          } else {
+            // Check if user attempted to paste a folder from clipboard that the browser blocked
+            const attemptedFolder = items.some(item => {
+              const entry = (item as unknown as { webkitGetAsEntry?: () => FileSystemEntry | null }).webkitGetAsEntry?.()
+              if (entry?.isDirectory) return true
+              const f = item.getAsFile()
+              return f && f.size === 0 && !f.type && !f.name.includes('.')
+            })
+            if (attemptedFolder) {
+              showToast('Browsers do not permit reading folder contents from clipboard (Ctrl+V). Please drag & drop the folder or use "Add Folder".', 'info')
+            }
           }
-        }
-        if (filesToUpload.length > 0) {
-          handleUpload(filesToUpload)
+        } catch (err) {
+          console.error('Failed to extract clipboard files:', err)
         }
       }
     }
 
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
-  }, [handleUpload])
+  }, [handleUpload, showToast])
 
   // Global keyboard shortcuts (Ctrl+S to save clip, Escape to close modals)
   useEffect(() => {
@@ -247,6 +346,7 @@ export default function LivePage() {
         setShowQrModal(false)
         setShowSaveModal(false)
         setLightboxUrl(null)
+        setPreviewFile(null)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -322,14 +422,15 @@ export default function LivePage() {
     }
   }
 
-  // File icon helper
-  const getFileIcon = (mime: string) => {
-    if (mime.startsWith('image/')) return <ImageIcon size={18} style={{ color: '#ffffff' }} />
-    if (mime.startsWith('video/')) return <Film size={18} style={{ color: '#ffffff' }} />
-    if (mime.startsWith('audio/')) return <Music size={18} style={{ color: '#ffffff' }} />
-    if (mime.includes('zip') || mime.includes('tar') || mime.includes('rar')) return <FileArchive size={18} style={{ color: '#ffffff' }} />
-    if (mime.includes('text') || mime.includes('json') || mime.includes('javascript') || mime.includes('typescript')) return <FileText size={18} style={{ color: '#ffffff' }} />
-    return <FileIcon size={18} style={{ color: '#a1a1aa' }} />
+  // File icon helper with comprehensive format detection
+  const getFileIcon = (mime: string, filename: string = '') => {
+    if (isImageFile(mime, filename)) return <ImageIcon size={18} style={{ color: '#34d399' }} />
+    if (isVideoFile(mime, filename)) return <Film size={18} style={{ color: '#f472b6' }} />
+    if (isAudioFile(mime, filename)) return <Music size={18} style={{ color: '#fbbf24' }} />
+    if (isPdfFile(mime, filename)) return <FileText size={18} style={{ color: '#ef4444' }} />
+    if (isArchiveFile(mime, filename)) return <FileArchive size={18} style={{ color: '#f59e0b' }} />
+    if (isTextOrCodeFile(mime, filename)) return <Code size={18} style={{ color: '#60a5fa' }} />
+    return <FileIcon size={18} style={{ color: '#94a3b8' }} />
   }
 
   // Word & character stats
@@ -338,14 +439,14 @@ export default function LivePage() {
   const lineCount = text ? text.split('\n').length : 1
 
   return (
-    <div className="page-wrapper" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden', padding: '1rem 1.5rem', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+    <div className="page-wrapper" style={{ height: isMobile ? '100dvh' : '100vh', maxHeight: isMobile ? '100dvh' : '100vh', overflow: 'hidden', padding: isMobile ? '0.5rem 0.6rem' : '1rem 1.5rem', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       {/* ── Drag & Drop Screen Overlay ────────────────────────────────────── */}
       {isDragging && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.9)',
+            background: 'rgba(0, 0, 0, 0.92)',
             backdropFilter: 'blur(8px)',
             zIndex: 9999,
             display: 'flex',
@@ -359,17 +460,17 @@ export default function LivePage() {
         >
           <Upload size={56} style={{ color: '#ffffff', marginBottom: '1.25rem' }} />
           <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.5rem' }}>
-            Drop files to share in real time
+            Drop files or folders to share in real time
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            All devices in this Live Pad will receive them instantly
+            All devices in this Live Pad will receive them instantly · Supports each and every file type
           </p>
         </div>
       )}
 
-      <main className="content-box animate-fade-up" style={{ height: '100%', maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
+      <main className="content-box animate-fade-up" style={{ height: '100%', maxHeight: isMobile ? 'calc(100dvh - 1rem)' : 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column' }}>
         <h1 style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', border: 0 }}>
-          Live Pad — Real-Time Collaborative Text and File Sharing
+          Live Pad - Real-Time Collaborative Text and File Sharing
         </h1>
         {/* ── Top Header Navigation ────────────────────────────────────────── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem', flexShrink: 0 }}>
@@ -577,11 +678,11 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     height: '100%',
                     minHeight: 0,
                     resize: 'none',
-                    fontSize: '0.95rem',
+                    fontSize: isMobile ? '16px' : '0.95rem',
                     lineHeight: 1.65,
                     fontFamily: 'var(--font-mono)',
                     background: '#050505',
-                    padding: '1.1rem',
+                    padding: isMobile ? '0.85rem' : '1.1rem',
                     borderRadius: '10px',
                     border: '1px solid var(--border)',
                     boxSizing: 'border-box',
@@ -619,31 +720,65 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     </span>
                   </div>
 
-                  {/* Hidden file input */}
-                  <label
-                    className="btn btn-secondary"
-                    style={{
-                      padding: '0.3rem 0.65rem',
-                      fontSize: '0.775rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                      cursor: 'pointer',
-                      margin: 0,
-                    }}
-                  >
-                    <Upload size={13} /> Add Files
-                    <input
-                      type="file"
-                      multiple
-                      style={{ display: 'none' }}
-                      onChange={e => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          handleUpload(e.target.files)
-                        }
+                  {/* File & Folder Inputs */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <label
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '0.3rem 0.6rem',
+                        fontSize: '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        cursor: 'pointer',
+                        margin: 0,
                       }}
-                    />
-                  </label>
+                      title="Upload individual files"
+                    >
+                      <Upload size={13} /> Add Files
+                      <input
+                        type="file"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleUpload(e.target.files)
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <label
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '0.3rem 0.6rem',
+                        fontSize: '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        cursor: 'pointer',
+                        margin: 0,
+                      }}
+                      title="Upload entire folder structure"
+                    >
+                      <FolderPlus size={13} /> Add Folder
+                      <input
+                        type="file"
+                        // @ts-expect-error webkitdirectory is standard in HTML5 directory picker
+                        webkitdirectory=""
+                        directory=""
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleUpload(e.target.files)
+                            e.target.value = ''
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {/* Uploading progress bars */}
@@ -701,7 +836,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                       No files uploaded yet
                     </p>
                     <p style={{ fontSize: '0.775rem', color: 'var(--text-dim)', marginTop: '0.4rem', lineHeight: 1.4 }}>
-                      Paste screenshots with <kbd style={{ background: '#222', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>Ctrl+V</kbd> or drag & drop files here.
+                      Paste screenshots with <kbd style={{ background: '#222', padding: '0.1rem 0.3rem', borderRadius: '4px' }}>Ctrl+V</kbd> or drag & drop files or folders here.
                     </p>
                   </div>
                 ) : (
@@ -717,8 +852,25 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     }}
                   >
                     {files.map(f => {
-                      const isImg = f.fileMime.startsWith('image/')
+                      const isImg = isImageFile(f.fileMime, f.fileName)
+                      const isVid = isVideoFile(f.fileMime, f.fileName)
+                      const isAud = isAudioFile(f.fileMime, f.fileName)
+                      const isCode = isTextOrCodeFile(f.fileMime, f.fileName)
+                      const badge = getFileTypeBadge(f.fileName, f.fileMime)
                       const downloadUrl = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
+
+                      const lastSlash = f.fileName.lastIndexOf('/')
+                      const dirPart = lastSlash >= 0 ? f.fileName.slice(0, lastSlash + 1) : ''
+                      const namePart = lastSlash >= 0 ? f.fileName.slice(lastSlash + 1) : f.fileName
+
+                      const triggerPreview = () => {
+                        setPreviewFile({
+                          url: downloadUrl,
+                          name: f.fileName,
+                          mime: f.fileMime,
+                          size: f.fileSize,
+                        })
+                      }
 
                       return (
                         <div
@@ -736,10 +888,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                           {/* Image Thumbnail Preview */}
                           {isImg ? (
                             <div
-                              onClick={() => {
-                                setLightboxUrl(downloadUrl)
-                                setLightboxName(f.fileName)
-                              }}
+                              onClick={triggerPreview}
                               style={{
                                 height: '110px',
                                 background: '#000000',
@@ -750,6 +899,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 position: 'relative',
                                 overflow: 'hidden',
                               }}
+                              title="Click to view image"
                             >
                               <img
                                 src={downloadUrl}
@@ -779,25 +929,87 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 <Eye size={20} style={{ color: '#ffffff' }} />
                               </div>
                             </div>
-                          ) : (
+                          ) : isVid ? (
                             <div
+                              onClick={triggerPreview}
                               style={{
-                                height: '56px',
-                                background: '#0e0e10',
+                                height: '70px',
+                                background: 'linear-gradient(135deg, #180d1e 0%, #0d0d12 100%)',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
+                                position: 'relative',
+                                gap: '0.5rem',
                               }}
+                              title="Click to play video"
                             >
-                              {getFileIcon(f.fileMime)}
+                              <div style={{ background: 'rgba(244,114,182,0.15)', border: '1px solid rgba(244,114,182,0.3)', padding: '0.4rem', borderRadius: '50%' }}>
+                                <Play size={18} style={{ color: '#f472b6', marginLeft: '2px' }} />
+                              </div>
+                              <span style={{ fontSize: '0.75rem', color: '#f472b6', fontWeight: 600 }}>Play Video</span>
+                            </div>
+                          ) : isAud ? (
+                            <div
+                              onClick={triggerPreview}
+                              style={{
+                                height: '56px',
+                                background: 'linear-gradient(135deg, #1c1808 0%, #0e0e10 100%)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                              }}
+                              title="Click to play audio"
+                            >
+                              <Music size={18} style={{ color: '#fbbf24' }} />
+                              <span style={{ fontSize: '0.75rem', color: '#fbbf24', fontWeight: 600 }}>Play Audio</span>
+                            </div>
+                          ) : isCode ? (
+                            <div
+                              onClick={triggerPreview}
+                              style={{
+                                height: '56px',
+                                background: '#0a0d14',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                              }}
+                              title="Click to preview code"
+                            >
+                              <Code size={18} style={{ color: '#60a5fa' }} />
+                              <span style={{ fontSize: '0.75rem', color: '#60a5fa', fontWeight: 600 }}>Preview Source</span>
+                            </div>
+                          ) : (
+                            <div
+                              onClick={triggerPreview}
+                              style={{
+                                height: '56px',
+                                background: '#0e0e10',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '0.5rem',
+                              }}
+                              title="Click to preview file"
+                            >
+                              {getFileIcon(f.fileMime, f.fileName)}
+                              <span style={{ fontSize: '0.75rem', color: '#a1a1aa', fontWeight: 500 }}>{badge} File</span>
                             </div>
                           )}
 
                           {/* File Details & Actions */}
                           <div style={{ padding: '0.6rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                            <div style={{ minWidth: 0, flex: 1 }}>
+                            <div
+                              onClick={triggerPreview}
+                              style={{ minWidth: 0, flex: 1, cursor: 'pointer' }}
+                              title={`Click to view: ${f.fileName}`}
+                            >
                               <p
-                                title={f.fileName}
                                 style={{
                                   fontSize: '0.8rem',
                                   fontWeight: 600,
@@ -808,17 +1020,45 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                   margin: 0,
                                 }}
                               >
-                                {f.fileName}
+                                {dirPart && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>{dirPart}</span>}
+                                {namePart}
                               </p>
-                              <p style={{ fontSize: '0.725rem', color: 'var(--text-dim)', margin: '0.15rem 0 0' }}>
-                                {formatBytes(f.fileSize)}
-                              </p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.15rem' }}>
+                                <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>
+                                  {formatBytes(f.fileSize)}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.625rem',
+                                    background: '#1a1a1e',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                    color: '#d4d4d8',
+                                    padding: '0.05rem 0.35rem',
+                                    borderRadius: '3px',
+                                    fontWeight: 600,
+                                    letterSpacing: '0.4px',
+                                  }}
+                                >
+                                  {badge}
+                                </span>
+                              </div>
                             </div>
 
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                onClick={triggerPreview}
+                                className="btn btn-ghost"
+                                style={{ padding: '0.25rem 0.4rem', color: 'var(--text-muted)' }}
+                                title="Preview file"
+                                onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
+                                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                              >
+                                <Eye size={12} />
+                              </button>
                               <a
                                 href={downloadUrl}
-                                download={f.fileName}
+                                download={namePart}
                                 className="btn btn-secondary"
                                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.725rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                                 title="Download"
@@ -849,64 +1089,312 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
         </div>
       </main>
 
-      {/* ── Lightbox Image Modal ─────────────────────────────────────────── */}
-      {lightboxUrl && (
-        <div
-          onClick={() => setLightboxUrl(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.92)',
-            backdropFilter: 'blur(10px)',
-            zIndex: 10000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-          }}
-        >
+      {/* ── Universal File Preview Modal (Images, Video, Audio, Code, PDF, etc.) ──── */}
+      {(previewFile || lightboxUrl) && (() => {
+        const active = previewFile || {
+          url: lightboxUrl!,
+          name: lightboxName || 'Preview',
+          mime: 'image/png',
+          size: 0,
+        }
+        const isImg = isImageFile(active.mime, active.name)
+        const isVid = isVideoFile(active.mime, active.name)
+        const isAud = isAudioFile(active.mime, active.name)
+        const isPdf = isPdfFile(active.mime, active.name)
+        const isCode = isTextOrCodeFile(active.mime, active.name)
+        const badge = getFileTypeBadge(active.name, active.mime)
+
+        const closePreview = () => {
+          setPreviewFile(null)
+          setLightboxUrl(null)
+        }
+
+        const copyContent = () => {
+          if (!previewTextContent) return
+          navigator.clipboard.writeText(previewTextContent)
+          setPreviewCopied(true)
+          showToast('File content copied to clipboard!', 'success')
+          setTimeout(() => setPreviewCopied(false), 2000)
+        }
+
+        return (
           <div
-            onClick={e => e.stopPropagation()}
+            onClick={closePreview}
             style={{
-              position: 'relative',
-              maxWidth: '90vw',
-              maxHeight: '90vh',
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.92)',
+              backdropFilter: 'blur(10px)',
+              zIndex: 10000,
               display: 'flex',
-              flexDirection: 'column',
               alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1.5rem',
             }}
           >
-            <button
-              onClick={() => setLightboxUrl(null)}
+            <div
+              onClick={e => e.stopPropagation()}
               style={{
-                position: 'absolute',
-                top: '-2.5rem',
-                right: 0,
-                background: 'transparent',
-                border: 'none',
-                color: '#ffffff',
-                cursor: 'pointer',
+                position: 'relative',
+                maxWidth: isPdf || isCode ? '900px' : '90vw',
+                width: isPdf || isCode ? '90vw' : 'auto',
+                maxHeight: '90vh',
+                display: 'flex',
+                flexDirection: 'column',
+                background: '#0a0a0d',
+                border: '1px solid var(--border)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.85)',
               }}
             >
-              <X size={26} />
-            </button>
-            <img
-              src={lightboxUrl}
-              alt={lightboxName}
-              style={{
-                maxWidth: '100%',
-                maxHeight: '80vh',
-                borderRadius: '8px',
-                objectFit: 'contain',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
-              }}
-            />
-            <p style={{ marginTop: '0.85rem', color: '#ffffff', fontSize: '0.9rem', fontWeight: 500 }}>
-              {lightboxName}
-            </p>
+              {/* Modal Header */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.85rem 1.15rem',
+                  borderBottom: '1px solid var(--border)',
+                  background: '#0f0f13',
+                  gap: '1rem',
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
+                  {getFileIcon(active.mime, active.name)}
+                  <span
+                    style={{
+                      color: '#ffffff',
+                      fontSize: '0.9rem',
+                      fontWeight: 600,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={active.name}
+                  >
+                    {active.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '0.65rem',
+                      background: '#1f1f26',
+                      color: '#a1a1aa',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '4px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {badge}
+                  </span>
+                  {active.size > 0 && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                      {formatBytes(active.size)}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                  {isCode && (
+                    <button
+                      type="button"
+                      onClick={copyContent}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      title="Copy file text"
+                    >
+                      {previewCopied ? <Check size={13} style={{ color: '#4ade80' }} /> : <Copy size={13} />}
+                      {previewCopied ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+
+                  <a
+                    href={active.url}
+                    download={active.name.split(/[/\\]/).pop() || active.name}
+                    className="btn btn-secondary"
+                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                    title="Download file"
+                  >
+                    <Download size={13} /> Download
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const f = files.find(item => item.fileName === active.name)
+                      if (f) {
+                        handleDeleteFile(f.id)
+                        closePreview()
+                      }
+                    }}
+                    className="btn btn-ghost"
+                    style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#ef4444' }}
+                    title="Delete file"
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={closePreview}
+                    className="btn btn-ghost"
+                    style={{ padding: '0.3rem', color: 'var(--text-muted)' }}
+                    title="Close"
+                    onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '1.25rem',
+                  overflowY: 'auto',
+                  maxHeight: 'calc(90vh - 60px)',
+                  background: '#050507',
+                }}
+              >
+                {isImg ? (
+                  <img
+                    src={active.url}
+                    alt={active.name}
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '75vh',
+                      borderRadius: '8px',
+                      objectFit: 'contain',
+                    }}
+                  />
+                ) : isVid ? (
+                  <video
+                    src={active.url}
+                    controls
+                    autoPlay
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '75vh',
+                      borderRadius: '8px',
+                      background: '#000000',
+                    }}
+                  />
+                ) : isAud ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '1.5rem',
+                      padding: '2.5rem 1.5rem',
+                      width: '100%',
+                      maxWidth: '480px',
+                      background: '#0b0b0f',
+                      border: '1px solid var(--border)',
+                      borderRadius: '12px',
+                    }}
+                  >
+                    <div style={{ background: 'rgba(251,191,36,0.1)', padding: '1.25rem', borderRadius: '50%' }}>
+                      <Music size={42} style={{ color: '#fbbf24' }} />
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{active.name}</p>
+                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>Audio Stream</p>
+                    </div>
+                    <audio src={active.url} controls autoPlay style={{ width: '100%' }} />
+                  </div>
+                ) : isPdf ? (
+                  <iframe
+                    src={active.url}
+                    title={active.name}
+                    style={{
+                      width: '100%',
+                      height: '75vh',
+                      border: 'none',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                    }}
+                  />
+                ) : isCode ? (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    {previewLoadingText ? (
+                      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        Loading file content...
+                      </div>
+                    ) : (
+                      <pre
+                        style={{
+                          margin: 0,
+                          padding: '1rem',
+                          background: '#09090c',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          color: '#e4e4e7',
+                          fontSize: '0.875rem',
+                          lineHeight: 1.6,
+                          fontFamily: 'var(--font-mono, monospace)',
+                          overflowX: 'auto',
+                          overflowY: 'auto',
+                          maxHeight: '70vh',
+                          whiteSpace: 'pre',
+                        }}
+                      >
+                        <code>{previewTextContent || '(Empty file)'}</code>
+                      </pre>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '1rem',
+                      padding: '3rem 1.5rem',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {getFileIcon(active.mime, active.name)}
+                    <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.1rem', fontWeight: 600 }}>{active.name}</h3>
+                    <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                      {badge} file · {formatBytes(active.size)} · {active.mime}
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <a
+                        href={active.url}
+                        download={active.name.split(/[/\\]/).pop() || active.name}
+                        className="btn btn-primary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <Download size={15} /> Download File
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const f = files.find(item => item.fileName === active.name)
+                          if (f) {
+                            handleDeleteFile(f.id)
+                            closePreview()
+                          }
+                        }}
+                        className="btn btn-danger"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem' }}
+                      >
+                        <Trash2 size={15} /> Delete File
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── QR Code / Phone Pairing Modal ─────────────────────────────────── */}
       {showQrModal && (

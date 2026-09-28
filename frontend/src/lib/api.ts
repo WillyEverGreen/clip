@@ -34,19 +34,6 @@ export interface PublicEntry {
 export interface CreateResponse { slug: string; expiresAt: number }
 export interface ApiError       { error: string; retryAfter?: number }
 
-// XHR Response types for better type safety
-interface XHRSuccessResponse<T> {
-  success: true
-  data: T
-}
-
-interface XHRErrorResponse {
-  success: false
-  error: string
-  retryAfter?: number
-}
-
-type XHRResponse<T> = T | ApiError
 
 // ── Create ────────────────────────────────────────────────────────────────────
 export async function createEntry(data: FormData): Promise<CreateResponse> {
@@ -84,17 +71,17 @@ function xhrUpload<T>(url: string, method: string, data: FormData, onProgress: (
     const xhr = new XMLHttpRequest()
     xhr.open(method, url)
 
-    xhr.upload.onprogress = (e) => {
+    xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable) {
         onProgress(Math.round((e.loaded / e.total) * 100))
       }
-    }
+    })
 
-    xhr.onload = () => {
+    xhr.addEventListener('load', () => {
       onProgress(100)
-      let json: XHRResponse<T>
+      let json: T | ApiError
       try { 
-        json = JSON.parse(xhr.responseText) as XHRResponse<T>
+        json = JSON.parse(xhr.responseText) as T | ApiError
       } catch { 
         json = { error: 'parse_error' } as ApiError
       }
@@ -103,10 +90,10 @@ function xhrUpload<T>(url: string, method: string, data: FormData, onProgress: (
       } else {
         reject(json as ApiError)
       }
-    }
+    })
 
-    xhr.onerror = () => reject({ error: 'network_error' } as ApiError)
-    xhr.ontimeout = () => reject({ error: 'timeout' } as ApiError)
+    xhr.addEventListener('error', () => reject({ error: 'network_error' } as ApiError))
+    xhr.addEventListener('timeout', () => reject({ error: 'timeout' } as ApiError))
 
     xhr.send(data)
   })
@@ -165,19 +152,19 @@ export async function uploadLiveFile(
   onProgress?: (pct: number) => void,
 ): Promise<FileItem> {
   const form = new FormData()
-  form.append('file', file)
+  form.append('file', file, file.name)
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${BASE}/api/live/${slug}/upload`)
 
-    xhr.upload.onprogress = (e) => {
+    xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable && onProgress) {
         onProgress(Math.round((e.loaded / e.total) * 100))
       }
-    }
+    })
 
-    xhr.onload = () => {
+    xhr.addEventListener('load', () => {
       if (onProgress) onProgress(100)
       interface UploadResponse {
         ok: boolean
@@ -194,10 +181,10 @@ export async function uploadLiveFile(
       } else {
         reject(json as ApiError)
       }
-    }
+    })
 
-    xhr.onerror = () => reject({ error: 'network_error' } as ApiError)
-    xhr.ontimeout = () => reject({ error: 'timeout' } as ApiError)
+    xhr.addEventListener('error', () => reject({ error: 'network_error' } as ApiError))
+    xhr.addEventListener('timeout', () => reject({ error: 'timeout' } as ApiError))
 
     xhr.send(form)
   })
@@ -220,6 +207,31 @@ export async function getLiveState(slug: string): Promise<{ text: string; files:
   if (!res.ok) throw await res.json()
   return res.json()
 }
+
+/**
+ * Requests a guaranteed-unique, production-grade slug from the worker.
+ * The server checks KV paste collisions, RESERVED words, and previously issued
+ * Live Pad slugs before atomically claiming the slug for 30 days.
+ *
+ * Falls back to a cryptographically-secure client-side slug (10 chars, base-36)
+ * when the network is unavailable, so the UI never blocks.
+ */
+export async function getUniqueLiveSlug(): Promise<string> {
+  try {
+    const res = await fetch(`${BASE}/api/live/new-slug`, { cache: 'no-store' })
+    if (res.ok) {
+      const json = await res.json() as { slug?: string }
+      if (json.slug && typeof json.slug === 'string') return json.slug
+    }
+  } catch {
+    // Network unavailable — fall through to local fallback
+  }
+  // Cryptographically secure offline fallback (never Math.random)
+  const bytes = crypto.getRandomValues(new Uint8Array(8))
+  return Array.from(bytes).map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 10)
+}
+
+
 
 
 // ── Verify edit code ──────────────────────────────────────────────────────────

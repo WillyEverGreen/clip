@@ -77,15 +77,12 @@ export function useEntrySSE(slug: string | undefined, { onUpdate }: Options) {
         retryDelay = 1_000  // reset backoff once stream confirmed live
       })
 
-      es.onerror = (event) => {
+      es.onerror = (_event) => {
         es?.close()
         es = null
         if (destroyed) return
         
         // Check if this is a 503 (Durable Object unavailable)
-        // EventSource doesn't expose status codes directly, but we can detect connection failures
-        // and fall back to interval-based polling after several failures
-        const wasConnectionFailure = event && (event as any).status === 503
         
         // Exponential backoff reconnect
         retryTimer = setTimeout(() => {

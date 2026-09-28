@@ -12,7 +12,7 @@ import type { Entry, FileItem } from '../lib/types'
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024  // 2 MB
 const MAX_FILE_BYTES = 25 * 1024 * 1024 // 25 MB (KV max limit)
-const DEFAULT_TTL_SECONDS = 21_600      // 6 hours
+
 
 export async function handleCreate(c: Context<{ Bindings: Env }>) {
   try {

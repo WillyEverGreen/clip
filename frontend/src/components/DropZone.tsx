@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { formatBytes } from '../lib/api'
 import { Plus, X, Check } from 'lucide-react'
+import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
 
 interface Props {
   onFile?: (file: File | null) => void
@@ -60,15 +61,15 @@ export default function DropZone({
     [maxBytes, onFiles, onFile],
   )
 
-  const onDrop = (e: React.DragEvent) => {
+  const onDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
-    const files = Array.from(e.dataTransfer.files)
+    const files = await extractFilesFromDataTransfer(e.dataTransfer)
     if (files.length > 0) acceptFiles(files)
   }
 
   const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
+    const files = normalizeFileInputFiles(e.target.files || [])
     if (files.length > 0) acceptFiles(files)
   }
 

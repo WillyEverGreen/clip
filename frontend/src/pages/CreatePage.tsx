@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FileText, Upload, Link as LinkIcon, ArrowRight, Info, Lock, Zap, AlertTriangle } from 'lucide-react'
+import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangle } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
-import { createEntryWithProgress, type ApiError } from '../lib/api'
+import { createEntryWithProgress, getUniqueLiveSlug, type ApiError } from '../lib/api'
 import { encryptContent } from '../lib/crypto'
 import { useSeo } from '../lib/useSeo'
 
@@ -15,7 +15,7 @@ export default function CreatePage() {
   const navigate = useNavigate()
 
   useSeo({
-    title: 'Clip — Free File Sharing & Text Sharing | Encrypted Pastebin',
+    title: 'Clip - Free File Sharing & Text Sharing | Encrypted Pastebin',
     description: 'Share text, code, markdown, and files instantly with custom links. Zero account required, client-side encryption, and real-time live pad collaboration.',
     canonicalUrl: 'https://clip.foo.ng/',
   })
@@ -29,6 +29,7 @@ export default function CreatePage() {
   const [lockContent,   setLockContent]   = useState(false)
   const [viewPassword,  setViewPassword]  = useState('')
   const [loading,       setLoading]       = useState(false)
+  const [livePadLoading, setLivePadLoading] = useState(false)
   const [error,         setError]         = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
@@ -98,26 +99,24 @@ export default function CreatePage() {
   }
 
   return (
-    <div className="page-wrapper" style={{ height: '100vh', maxHeight: '100vh', overflow: 'hidden', padding: '1rem 1.5rem', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-      <main className="content-box animate-fade-up" style={{ height: '100%', maxHeight: 'calc(100vh - 2rem)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+    <div className="page-wrapper create-page-wrapper">
+      <main className="content-box animate-fade-up create-content-box">
 
         {/* ── Header & Main SEO Heading ─────────────────────────────────────── */}
-        <header style={{ textAlign: 'center', marginBottom: '0.65rem', flexShrink: 0 }}>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: 700, margin: '0 0 0.2rem 0', color: '#ffffff', letterSpacing: '-0.02em' }}>
+        <header style={{ textAlign: 'center', marginBottom: '1rem', flexShrink: 0 }}>
+          <h1 style={{ fontSize: '1.35rem', fontWeight: 700, margin: '0 0 0.25rem 0', color: '#ffffff', letterSpacing: '-0.02em' }}>
             Instant File &amp; Text Sharing
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', margin: 0 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0, lineHeight: 1.4 }}>
             Share markdown, code, notes, and files with custom links. No account required.
           </p>
         </header>
 
-
-
         {/* ── Card ───────────────────────────────────────────────────────── */}
-        <form onSubmit={handleSubmit} className="card card-glow card-content" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: '1.25rem 1.75rem', overflow: 'hidden' }}>
+        <form onSubmit={handleSubmit} className="card card-glow card-content create-card">
 
           {/* Toggle */}
-          <div style={{ display:'flex', gap:'0.5rem', marginBottom:'0.85rem', padding:'0.25rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)', flexShrink: 0 }}>
+          <div className="toggle-pill" style={{ display:'flex', gap:'0.4rem', marginBottom:'1rem', padding:'0.25rem', background:'#000000', borderRadius:'10px', border:'1px solid var(--border)', flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => setMode('text')}
@@ -150,58 +149,64 @@ export default function CreatePage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                const randomSlug = Math.random().toString(36).slice(2, 8)
-                navigate(`/live/${randomSlug}`)
+              disabled={livePadLoading}
+              onClick={async () => {
+                setLivePadLoading(true)
+                try {
+                  const uniqueSlug = await getUniqueLiveSlug()
+                  navigate(`/live/${uniqueSlug}`)
+                } finally {
+                  setLivePadLoading(false)
+                }
               }}
               style={{
-                flex:1, padding:'0.55rem', borderRadius:'8px', cursor:'pointer',
+                flex:1, padding:'0.55rem', borderRadius:'8px', cursor: livePadLoading ? 'wait' : 'pointer',
                 fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
                 transition:'all 150ms ease',
                 background: 'transparent',
-                color: 'var(--text-muted)',
+                color: livePadLoading ? '#52525b' : 'var(--text-muted)',
                 border: '1px solid transparent',
+                opacity: livePadLoading ? 0.6 : 1,
               }}
               onMouseEnter={e => {
-                e.currentTarget.style.color = '#ffffff'
-                e.currentTarget.style.background = '#18181b'
+                if (!livePadLoading) {
+                  e.currentTarget.style.color = '#ffffff'
+                  e.currentTarget.style.background = '#18181b'
+                }
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.color = 'var(--text-muted)'
+                e.currentTarget.style.color = livePadLoading ? '#52525b' : 'var(--text-muted)'
                 e.currentTarget.style.background = 'transparent'
               }}
             >
-              <Zap size={16} /> Live Pad
+              <Zap size={16} /> {livePadLoading ? 'Getting room...' : 'Live Pad'}
             </button>
           </div>
 
           {/* Main Content input */}
-          <div className="field" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, margin: 0 }}>
+          <div className="field" style={{ margin: 0, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {mode === 'text' ? (
-              <>
-                <label className="label" style={{ marginBottom: '0.35rem', flexShrink: 0 }}>Content <span style={{color:'var(--text-muted)'}}>*</span></label>
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                  <textarea
-                    className="input"
-                    placeholder="Paste your text here… Markdown is supported"
-                    value={content}
-                    onChange={e => setContent(e.target.value)}
-                    style={{ flex: 1, height: '100%', minHeight: 0, resize: 'none' }}
-                  />
-                </div>
-              </>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                <label className="label" style={{ marginBottom: '0.4rem', flexShrink: 0 }}>Content <span style={{color:'var(--text-muted)'}}>*</span></label>
+                <textarea
+                  className="input create-textarea"
+                  placeholder="Paste your text here… Markdown is supported"
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                />
+              </div>
             ) : (
               <>
-                <label className="label" style={{ marginBottom: '0.35rem', flexShrink: 0 }}>File <span style={{color:'var(--text-muted)'}}>*</span></label>
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <label className="label" style={{ marginBottom: '0.4rem' }}>File <span style={{color:'var(--text-muted)'}}>*</span></label>
+                <div>
                   <DropZone
                     onFiles={setFiles}
-                    height="100%"
+                    height="220px"
                     uploadProgress={uploadProgress}
                     uploadingFileNames={files.map(f => f.name)}
                   />
-                  <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.4rem', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.65rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                     <p style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
                       <AlertTriangle size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                       <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Files auto-delete after 48 hours, regardless of expiration setting</span>
@@ -213,14 +218,12 @@ export default function CreatePage() {
                 </div>
               </>
             )}
-
           </div>
 
-
-          {/* Bottom Controls Row */}
-          <div style={{ display:'flex', alignItems:'flex-end', gap:'0.85rem', marginTop:'0.9rem', flexWrap:'wrap', flexShrink: 0 }}>
+          {/* Bottom Controls Grid */}
+          <div className="create-controls-grid">
             {/* Custom URL input */}
-            <div className="field" style={{ flex:'2 1 240px', marginTop: 0 }}>
+            <div className="field field-custom-url">
               <label className="label">Custom URL <span style={{color:'var(--text-dim)'}}>(optional)</span></label>
               <div className="url-group" style={{ display:'flex', alignItems:'stretch', height:'42px' }}>
                 <span className="url-prefix" style={{ height:'42px', boxSizing:'border-box', padding:'0 0.85rem', background:'#000000', border:'1px solid var(--border)', borderRight:'none', borderRadius:'10px 0 0 10px', color:'var(--text-dim)', fontSize:'0.85rem', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'0.35rem', transition:'all 180ms ease' }}>
@@ -239,7 +242,7 @@ export default function CreatePage() {
             </div>
 
             {/* Edit code */}
-            <div className="field" style={{ flex:'1 1 150px', marginTop: 0 }}>
+            <div className="field field-edit-code">
               <label className="label">Edit Code <span style={{color:'var(--text-muted)'}}>*</span></label>
               <input
                 className="input"
@@ -254,7 +257,7 @@ export default function CreatePage() {
             </div>
 
             {/* Expiration Select */}
-            <div className="field" style={{ flex:'1 1 150px', marginTop: 0 }}>
+            <div className="field field-expiration">
               <label className="label">Expiration <span style={{color:'var(--text-muted)'}}>*</span></label>
               <select
                 className="input"
@@ -274,7 +277,7 @@ export default function CreatePage() {
 
             {/* Lock / View Password */}
             {(mode === 'text' || mode === 'file') && (
-              <div className="field" style={{ flex:'1.2 1 180px', marginTop: 0 }}>
+              <div className="field field-password-lock">
                 <label className="label">Password Lock</label>
                 <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem' }}>
                   <label
@@ -355,22 +358,21 @@ export default function CreatePage() {
             )}
 
             {/* Submit Button */}
-            <div className="submit-container" style={{ marginTop: 0, flexGrow: 1 }}>
+            <div className="field field-submit">
               <button
                 type="submit"
                 className="btn btn-primary btn-submit"
                 disabled={loading}
-                style={{ padding:'0 1.5rem', fontSize:'0.9375rem', height:'42px', minWidth:'130px', width: '100%' }}
+                style={{ padding:'0 1.5rem', fontSize:'0.9375rem', height:'42px', width: '100%' }}
               >
                 {loading ? <><div className="spinner" />Creating…</> : <>Create Link <ArrowRight size={16} /></>}
               </button>
             </div>
           </div>
 
-
           {/* Error Message */}
           {error && (
-            <div style={{ marginTop:'0.65rem', padding:'0.5rem 0.85rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.85rem', color:'#ffffff', flexShrink: 0 }}>
+            <div style={{ marginTop:'0.75rem', padding:'0.55rem 0.85rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.85rem', color:'#ffffff' }}>
               {errorLabels[error] ?? error}
             </div>
           )}
@@ -383,12 +385,14 @@ export default function CreatePage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '1.5rem',
-            marginTop: '0.65rem',
+            gap: '1.25rem',
+            marginTop: '1rem',
+            marginBottom: '0.75rem',
             fontSize: '0.75rem',
             color: 'var(--text-dim)',
             flexShrink: 0,
             flexWrap: 'wrap',
+            padding: '0 0.5rem',
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
