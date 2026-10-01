@@ -49,7 +49,7 @@ export class ClipRoom extends DurableObject<Env> {
           }
         }
         const sec = await this.ctx.storage.get<RoomSecurity>('room_security')
-        if (sec && (this.currentText !== '' || this.currentFiles.length > 0)) {
+        if (sec) {
           this.roomSecurity = sec
         }
       } catch {
@@ -214,6 +214,7 @@ export class ClipRoom extends DurableObject<Env> {
           authHash: body.authHash,
         }
         await this.ctx.storage.put('room_security', this.roomSecurity)
+        await this.persistLiveState()
         this.authenticatedSockets.clear()
         return new Response(JSON.stringify({ ok: true, isProtected: this.roomSecurity.isProtected }), {
           headers: { 'Content-Type': 'application/json' },
@@ -240,7 +241,7 @@ export class ClipRoom extends DurableObject<Env> {
           this.roomSecurity = body.security
           await this.ctx.storage.put('room_security', this.roomSecurity)
         }
-        if (changed) {
+        if (changed || body.security) {
           await this.persistLiveState()
         }
         return new Response(JSON.stringify({ ok: true }), {

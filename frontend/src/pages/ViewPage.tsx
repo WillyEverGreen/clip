@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
-import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry } from '../lib/api'
+import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry, type FileItem } from '../lib/api'
 import { isEncrypted, decryptContent, computeAuthHash, generateSalt } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
@@ -250,11 +250,20 @@ export default function ViewPage() {
         await setLiveSecurity(slug, false)
       }
 
-      // Seed room with current content & files
+      // Seed room with current content & files (normalizing single-file clips if needed)
+      const entryFiles: FileItem[] = entry?.files && entry.files.length > 0
+        ? entry.files
+        : (entry?.fileName ? [{
+            id: entry.slug,
+            fileName: entry.fileName,
+            fileMime: entry.fileMime || 'application/octet-stream',
+            fileSize: entry.fileSize || 0,
+          }] : [])
+
       await seedLiveRoom(
         slug,
         displayContent || entry?.content || '',
-        entry?.files || []
+        entryFiles
       )
 
       // If user had pasted files, upload them directly to the LivePad

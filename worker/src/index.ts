@@ -355,10 +355,25 @@ app.get('/api/live/:slug/zip', async (c) => {
   const id  = c.env.CLIP_DO.idFromName(slug)
   const obj = c.env.CLIP_DO.get(id)
   const res = await obj.fetch(`https://clip-do/room/${slug}/live-state`)
-  const data = await res.json() as { text?: string; files?: any[]; isProtected?: boolean }
+  let data = await res.json() as { text?: string; files?: any[]; isProtected?: boolean; salt?: string }
 
   if (data.isProtected) {
-    return c.text('Error: This Live Pad is password protected. Please download via the authenticated web interface.', 401)
+    const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
+    if (password && data.salt) {
+      const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data.salt + password))
+      const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+      const authedRes = await obj.fetch(`https://clip-do/room/${slug}/live-state`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hash }),
+      })
+      if (!authedRes.ok) {
+        return c.text('Error: Incorrect password for protected Live Pad.', 401)
+      }
+      data = await authedRes.json()
+    } else {
+      return c.text('Error: This Live Pad is password protected. Please provide ?pass=<password> or authenticate via web interface.', 401)
+    }
   }
 
   const zipFiles: Record<string, Uint8Array> = {}

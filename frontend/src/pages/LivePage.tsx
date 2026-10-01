@@ -856,27 +856,31 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     </div>
 
                     {/* Quick ZIP download if files exist */}
-                    {files.length > 0 && (
-                      <a
-                        href={liveZipDownloadUrl(slug)}
-                        download={`${slug}_files.zip`}
-                        className="btn btn-secondary"
-                        style={{
-                          padding: '0.25rem 0.55rem',
-                          fontSize: '0.725rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.35rem',
-                          textDecoration: 'none',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                          height: '28px',
-                        }}
-                        title="Download all room files in a ZIP archive"
-                      >
-                        <Download size={12} /> ZIP
-                      </a>
-                    )}
+                    {files.length > 0 && (() => {
+                      const cachedPass = isProtected ? (sessionStorage.getItem('clip_live_pass_' + slug) || '') : ''
+                      const zipHref = liveZipDownloadUrl(slug) + (cachedPass ? `?pass=${encodeURIComponent(cachedPass)}` : '')
+                      return (
+                        <a
+                          href={zipHref}
+                          download={`${slug}_files.zip`}
+                          className="btn btn-secondary"
+                          style={{
+                            padding: '0.25rem 0.55rem',
+                            fontSize: '0.725rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            textDecoration: 'none',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            height: '28px',
+                          }}
+                          title="Download all room files in a ZIP archive"
+                        >
+                          <Download size={12} /> ZIP
+                        </a>
+                      )
+                    })()}
                   </div>
 
                   {/* Upload Action Buttons */}

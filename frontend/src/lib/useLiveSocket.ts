@@ -104,6 +104,10 @@ export function useLiveSocket(slug: string | undefined) {
 
               case 'auth_error':
                 setAuthError(data.message || 'Incorrect password')
+                currentPasswordRef.current = null
+                if (slug) {
+                  sessionStorage.removeItem('clip_live_pass_' + slug)
+                }
                 break
 
               case 'init':
