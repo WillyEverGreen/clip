@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock, AlertTriangle, AlertCircle } from 'lucide-react'
 import { verifyEditCode, getEntry, updateEntryWithProgress, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
 import { isEncrypted, decryptContent, encryptContent } from '../lib/crypto'
+import { extractFilesFromDataTransfer } from '../lib/fileDrop'
+import { getMimeType } from '../lib/fileTypes'
 import DropZone from '../components/DropZone'
 import { useSeo } from '../lib/useSeo'
 
@@ -34,11 +36,57 @@ export default function EditPage() {
   const [mode,              setMode]              = useState<Mode>('text')
   const [content,           setContent]           = useState('')
   const [keptExistingFiles, setKeptExistingFiles] = useState<any[]>([])
+  const [selectedFileIds,   setSelectedFileIds]   = useState<string[]>([])
   const [newFiles,          setNewFiles]          = useState<File[]>([])
+  const [toast,             setToast]             = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null)
   const [saving,            setSaving]            = useState(false)
   const [deleting,          setDeleting]          = useState(false)
   const [editError,         setEditError]         = useState<string | null>(null)
   const [uploadProgress,    setUploadProgress]    = useState<number | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3000)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  // Clipboard paste listener: paste files or screenshots directly (Ctrl+V / Cmd+V)
+  useEffect(() => {
+    if (step !== 'edit') return
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      if (!e.clipboardData) return
+      const items = Array.from(e.clipboardData.items || [])
+      const fileItems = items.filter(item => item.kind === 'file')
+
+      if (fileItems.length > 0) {
+        e.preventDefault()
+        const extracted = await extractFilesFromDataTransfer(e.clipboardData)
+        if (extracted.length > 0) {
+          const renamed = extracted.map(file => {
+            const name = file.name === 'image.png' || !file.name
+              ? `screenshot_${new Date().toISOString().replace(/[:.]/g, '-')}.png`
+              : file.name
+            return new File([file], name, { type: file.type || getMimeType(name) })
+          })
+
+          setNewFiles(prev => {
+            const deduped = renamed.filter(
+              nf => !prev.some(pf => pf.name === nf.name && pf.size === nf.size)
+            )
+            return [...prev, ...deduped]
+          })
+          if (mode !== 'file') {
+            setMode('file')
+          }
+          setToast({ message: `Added ${renamed.length} file(s) from clipboard!`, type: 'success' })
+        }
+      }
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [step, mode])
 
   // Encryption states
   const [viewPassword,         setViewPassword]         = useState('')
@@ -262,6 +310,30 @@ export default function EditPage() {
           </button>
         </div>
 
+        {toast && (
+          <div style={{
+            position: 'fixed',
+            top: '1.5rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: '#18181b',
+            border: '1px solid #3f3f46',
+            color: '#ffffff',
+            padding: '0.6rem 1.25rem',
+            borderRadius: '10px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+          }}>
+            <Check size={14} color="#10b981" />
+            <span>{toast.message}</span>
+          </div>
+        )}
+
         <div className="card card-glow card-content">
           {isLocked ? (
             <div style={{ textAlign:'center', padding:'2.5rem 1rem' }}>
@@ -352,45 +424,113 @@ export default function EditPage() {
                   <>
                     <label className="label">File Attachment</label>
 
-                    {/* Existing files list */}
+                    {/* Existing files list with multi-select batch delete */}
                     {keptExistingFiles.length > 0 && (
                       <div style={{ marginBottom:'1.25rem', display:'flex', flexDirection:'column', gap:'0.75rem' }}>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                          <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)' }}>
-                            Existing Attached Files ({keptExistingFiles.length})
-                          </span>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => setKeptExistingFiles([])}
-                            style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171' }}
-                          >
-                            <X size={14} /> Remove All Existing Files
-                          </button>
-                        </div>
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'0.5rem' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                            <label style={{ display:'flex', alignItems:'center', gap:'0.4rem', cursor:'pointer', userSelect:'none' }}>
+                              <input
+                                type="checkbox"
+                                checked={keptExistingFiles.length > 0 && selectedFileIds.length === keptExistingFiles.length}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setSelectedFileIds(keptExistingFiles.map((f, i) => f.id || String(i)))
+                                  } else {
+                                    setSelectedFileIds([])
+                                  }
+                                }}
+                                style={{ accentColor:'#71717a', width:14, height:14, cursor:'pointer' }}
+                              />
+                              <span style={{ fontSize:'0.85rem', fontWeight:600, color:'var(--text-muted)' }}>
+                                Existing Files ({keptExistingFiles.length})
+                              </span>
+                            </label>
+                          </div>
 
-                        {keptExistingFiles.map((item, idx) => (
-                          <div key={item.id ?? idx} style={{ padding:'0.85rem 1.1rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                            <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
-                              <FileIcon size={20} color="#ffffff" />
-                              <div>
-                                <div style={{ fontSize:'0.9rem', fontWeight:600, color:'#ffffff' }}>{item.fileName}</div>
-                                {item.fileSize && (
-                                  <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'2px' }}>{formatBytes(item.fileSize)}</div>
-                                )}
-                              </div>
-                            </div>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                            {selectedFileIds.length > 0 && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => {
+                                  const idSet = new Set(selectedFileIds)
+                                  setKeptExistingFiles(prev => prev.filter((f, i) => !idSet.has(f.id || String(i))))
+                                  setSelectedFileIds([])
+                                  setToast({ message: `Removed ${idSet.size} selected file(s)`, type: 'info' })
+                                }}
+                                style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171', border:'1px solid rgba(248,113,113,0.3)' }}
+                              >
+                                <Trash2 size={13} /> Remove Selected ({selectedFileIds.length})
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn btn-ghost"
-                              onClick={() => setKeptExistingFiles(prev => prev.filter((_, i) => i !== idx))}
-                              style={{ padding:'0.25rem 0.5rem', color:'var(--text-muted)', borderRadius:'6px' }}
-                              title="Remove file"
+                              onClick={() => {
+                                setKeptExistingFiles([])
+                                setSelectedFileIds([])
+                              }}
+                              style={{ fontSize:'0.75rem', padding:'0.35rem 0.65rem', gap:'0.3rem', color:'#f87171' }}
                             >
-                              <X size={14} />
+                              <X size={14} /> Remove All
                             </button>
                           </div>
-                        ))}
+                        </div>
+
+                        {keptExistingFiles.map((item, idx) => {
+                          const fileId = item.id || String(idx)
+                          const isChecked = selectedFileIds.includes(fileId)
+                          return (
+                            <div
+                              key={fileId}
+                              style={{
+                                padding:'0.85rem 1.1rem',
+                                background: isChecked ? '#141414' : '#000000',
+                                border: isChecked ? '1px solid #52525b' : '1px solid var(--border)',
+                                borderRadius:'10px',
+                                display:'flex',
+                                alignItems:'center',
+                                justifyContent:'space-between',
+                                transition:'all 150ms ease'
+                              }}
+                            >
+                              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={e => {
+                                    if (e.target.checked) {
+                                      setSelectedFileIds(prev => [...prev, fileId])
+                                    } else {
+                                      setSelectedFileIds(prev => prev.filter(id => id !== fileId))
+                                    }
+                                  }}
+                                  style={{ accentColor:'#71717a', width:15, height:15, cursor:'pointer' }}
+                                />
+                                <FileIcon size={20} color="#ffffff" />
+                                <div>
+                                  <div style={{ fontSize:'0.9rem', fontWeight:600, color:'#ffffff' }}>{item.fileName}</div>
+                                  {item.fileSize && (
+                                    <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', marginTop:'2px' }}>{formatBytes(item.fileSize)}</div>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => {
+                                  setKeptExistingFiles(prev => prev.filter((_, i) => i !== idx))
+                                  setSelectedFileIds(prev => prev.filter(id => id !== fileId))
+                                }}
+                                style={{ padding:'0.25rem 0.5rem', color:'var(--text-muted)', borderRadius:'6px' }}
+                                title="Remove file"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
 

@@ -208,7 +208,7 @@
   grid-template-columns: 2.5fr 1fr 1fr;
   gap: 0.85rem;
   align-items: end;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   flex-shrink: 0;
 }
 
@@ -246,6 +246,24 @@
   box-sizing: border-box;
 }
 
+/* Single-row streamlined layout for LivePad on big screens */
+.create-controls-grid--live {
+  grid-template-columns: 2fr 1.3fr auto !important;
+}
+
+.create-controls-grid--live .field-custom-url {
+  grid-column: 1 / 2 !important;
+}
+
+.create-controls-grid--live .field-password-lock {
+  grid-column: 2 / 3 !important;
+}
+
+.create-controls-grid--live .field-submit {
+  grid-column: 3 / 4 !important;
+  min-width: 175px;
+}
+
 @media (max-width: 860px) {
   .create-controls-grid {
     grid-template-columns: 1fr 1fr;
@@ -265,6 +283,19 @@
   }
   .create-controls-grid .field-submit {
     grid-column: 1 / -1;
+  }
+
+  .create-controls-grid--live {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .create-controls-grid--live .field-custom-url {
+    grid-column: 1 / -1 !important;
+  }
+  .create-controls-grid--live .field-password-lock {
+    grid-column: 1 / -1 !important;
+  }
+  .create-controls-grid--live .field-submit {
+    grid-column: 1 / -1 !important;
   }
 }
 

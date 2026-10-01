@@ -90,3 +90,18 @@ export function isEncrypted(content: string): boolean {
     return false
   }
 }
+
+/** Generates a random cryptographic salt (hex string) */
+export function generateSalt(): string {
+  const buf = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Derives a SHA-256 verifier hash for room authentication */
+export async function computeAuthHash(password: string, salt: string): Promise<string> {
+  const enc = new TextEncoder()
+  const data = enc.encode(`${password}:${salt}`)
+  const hashBuf = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+

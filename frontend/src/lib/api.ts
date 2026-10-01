@@ -190,6 +190,19 @@ export async function uploadLiveFile(
   })
 }
 
+export interface LiveStateResponse {
+  text: string
+  files: FileItem[]
+  peers: number
+  isProtected?: boolean
+  salt?: string
+  error?: string
+}
+
+export function liveZipDownloadUrl(slug: string): string {
+  return `${BASE}/api/live/${slug}/zip`
+}
+
 export async function deleteLiveFile(slug: string, fileId: string): Promise<void> {
   const res = await fetch(`${BASE}/api/live/${slug}/file/${fileId}`, {
     method: 'DELETE',
@@ -200,7 +213,48 @@ export async function deleteLiveFile(slug: string, fileId: string): Promise<void
   }
 }
 
-export async function getLiveState(slug: string): Promise<{ text: string; files: FileItem[]; peers: number }> {
+export async function batchDeleteLiveFiles(slug: string, fileIds: string[]): Promise<void> {
+  const res = await fetch(`${BASE}/api/live/${slug}/files/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileIds }),
+  })
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}))
+    throw json
+  }
+}
+
+export async function setLiveSecurity(
+  slug: string,
+  isProtected: boolean,
+  authHash?: string,
+  salt?: string,
+): Promise<{ ok: boolean; isProtected: boolean }> {
+  const res = await fetch(`${BASE}/api/live/${slug}/security`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isProtected, authHash, salt }),
+  })
+  if (!res.ok) throw await res.json().catch(() => ({ error: 'security_failed' }))
+  return res.json()
+}
+
+export async function seedLiveRoom(
+  slug: string,
+  text?: string,
+  files?: FileItem[],
+  security?: { isProtected: boolean; authHash?: string; salt?: string },
+): Promise<void> {
+  const res = await fetch(`${BASE}/api/live/${slug}/seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, files, security }),
+  })
+  if (!res.ok) throw await res.json().catch(() => ({ error: 'seed_failed' }))
+}
+
+export async function getLiveState(slug: string): Promise<LiveStateResponse> {
   const res = await fetch(`${BASE}/api/live/${slug}?_t=${Date.now()}`, {
     cache: 'no-store',
   })

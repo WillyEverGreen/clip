@@ -1,11 +1,13 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { formatBytes } from '../lib/api'
 import { Plus, X, Check } from 'lucide-react'
 import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
+import { getMimeType } from '../lib/fileTypes'
 
 interface Props {
   onFile?: (file: File | null) => void
   onFiles?: (files: File[]) => void
+  files?: File[]
   maxBytes?: number
   height?: string
   /** 0–100 while uploading, null when idle */
@@ -20,15 +22,22 @@ const MAX_PER_FILE = 25 * 1024 * 1024 // 25 MB per file limit
 export default function DropZone({
   onFile,
   onFiles,
+  files,
   maxBytes = MAX,
   height = '202px',
   uploadProgress = null,
   uploadingFileNames = [],
 }: Props) {
   const [dragging, setDragging] = useState(false)
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [selectedFiles, setSelectedFiles] = useState<File[]>(files || [])
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (files) {
+      setSelectedFiles(files)
+    }
+  }, [files])
 
   const acceptFiles = useCallback(
     (newFiles: File[]) => {
@@ -60,6 +69,22 @@ export default function DropZone({
     },
     [maxBytes, onFiles, onFile],
   )
+
+  const onPaste = async (e: React.ClipboardEvent) => {
+    if (!e.clipboardData) return
+    const extracted = await extractFilesFromDataTransfer(e.clipboardData)
+    if (extracted.length > 0) {
+      e.preventDefault()
+      e.stopPropagation()
+      const renamed = extracted.map(file => {
+        const name = file.name === 'image.png' || !file.name
+          ? `screenshot_${new Date().toISOString().replace(/[:.]/g, '-')}.png`
+          : file.name
+        return new File([file], name, { type: file.type || getMimeType(name) })
+      })
+      acceptFiles(renamed)
+    }
+  }
 
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault()
@@ -193,11 +218,12 @@ export default function DropZone({
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div
         className={`dropzone${dragging ? ' dropzone--over' : ''}`}
-        style={{ flex: 1, height, minHeight: height, boxSizing: 'border-box' }}
+        style={{ flex: 1, height, minHeight: height === '100%' ? '180px' : height, boxSizing: 'border-box' }}
         onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
+        onPaste={onPaste}
         onClick={() => inputRef.current?.click()}
         role="button"
         tabIndex={0}
@@ -206,7 +232,7 @@ export default function DropZone({
         <input ref={inputRef} type="file" multiple style={{ display: 'none' }} onChange={onInput} />
 
         {selectedFiles.length > 0 ? (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '170px', overflowY: 'auto' }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, minHeight: 0, maxHeight: height === '100%' ? '100%' : '170px', overflowY: 'auto' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', paddingBottom: '0.4rem', borderBottom: '1px solid #262626' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600 }}>

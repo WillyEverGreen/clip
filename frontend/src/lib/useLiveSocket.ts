@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { BASE, type FileItem } from './api'
+import { computeAuthHash } from './crypto'
 
 export function useLiveSocket(slug: string | undefined) {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>('connecting')
@@ -7,6 +8,13 @@ export function useLiveSocket(slug: string | undefined) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [peers, setPeers] = useState<number>(1)
   const [clientId, setClientId] = useState<string | null>(null)
+
+  // Authentication states
+  const [isProtected, setIsProtected] = useState<boolean>(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true)
+  const [salt, setSalt] = useState<string | null>(null)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const currentPasswordRef = useRef<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
   const destroyedRef = useRef(false)
@@ -74,7 +82,33 @@ export function useLiveSocket(slug: string | undefined) {
           try {
             const data = JSON.parse(event.data)
             switch (data.type) {
+              case 'auth_challenge':
+                setIsProtected(true)
+                setIsAuthenticated(false)
+                if (data.salt) {
+                  setSalt(data.salt)
+                  const cachedPass = currentPasswordRef.current || sessionStorage.getItem('clip_live_pass_' + slug)
+                  if (cachedPass && ws.readyState === WebSocket.OPEN) {
+                    computeAuthHash(cachedPass, data.salt).then(hash => {
+                      ws.send(JSON.stringify({ type: 'auth', hash }))
+                    })
+                  }
+                }
+                if (typeof data.peers === 'number') {
+                  setPeers(data.peers)
+                }
+                if (data.clientId) {
+                  setClientId(data.clientId)
+                }
+                break
+
+              case 'auth_error':
+                setAuthError(data.message || 'Incorrect password')
+                break
+
               case 'init':
+                setIsAuthenticated(true)
+                setAuthError(null)
                 if (typeof data.text === 'string') {
                   if (isDirtyRef.current && localTextRef.current !== data.text) {
                     // Local changes exist that the server didn't have; push them
@@ -129,6 +163,13 @@ export function useLiveSocket(slug: string | undefined) {
                 }
                 break
 
+              case 'files_removed':
+                if (Array.isArray(data.fileIds)) {
+                  const idSet = new Set(data.fileIds)
+                  setFiles(prev => prev.filter(f => !idSet.has(f.id)))
+                }
+                break
+
               case 'pong':
                 break
             }
@@ -170,6 +211,21 @@ export function useLiveSocket(slug: string | undefined) {
     }
   }, [slug, getWsUrl])
 
+  // Method to authenticate with room password
+  const authenticate = useCallback(async (password: string) => {
+    if (!salt || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+    setAuthError(null)
+    currentPasswordRef.current = password
+    if (slug) {
+      sessionStorage.setItem('clip_live_pass_' + slug, password)
+    }
+    const hash = await computeAuthHash(password, salt)
+    wsRef.current.send(JSON.stringify({
+      type: 'auth',
+      hash,
+    }))
+  }, [salt, slug])
+
   // Method to send live text update
   const sendText = useCallback((newText: string) => {
     localTextRef.current = newText
@@ -198,15 +254,27 @@ export function useLiveSocket(slug: string | undefined) {
     setFiles(prev => prev.filter(f => f.id !== fileId))
   }, [])
 
+  // Method to remove multiple files
+  const removeLocalFiles = useCallback((fileIds: string[]) => {
+    const idSet = new Set(fileIds)
+    setFiles(prev => prev.filter(f => !idSet.has(f.id)))
+  }, [])
+
   return {
     status,
     text,
     files,
     peers,
     clientId,
+    isProtected,
+    isAuthenticated,
+    authError,
+    authenticate,
     remoteUpdateTrigger,
     sendText,
     addLocalFile,
     removeLocalFile,
+    removeLocalFiles,
   }
 }
+

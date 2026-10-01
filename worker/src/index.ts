@@ -8,12 +8,12 @@ import { handleVerify } from './handlers/verify'
 import { handleUpdate } from './handlers/update'
 import { handleRemove } from './handlers/remove'
 import { generateLiveSlug, isReserved } from './lib/slug'
-import { entryExists } from './lib/kv'
+import { entryExists, getEntry, putFileKV, getFileKV, deleteFileKV } from './lib/kv'
 
 import { handleAdminList, handleAdminDelete, handleAdminPurgeAll } from './handlers/admin'
 import { handleReadZip } from './handlers/zip'
-import { putFileKV, getFileKV, deleteFileKV } from './lib/kv'
 import { getMimeType } from './lib/mime'
+import { zipSync, strToU8 } from 'fflate'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
@@ -135,7 +135,7 @@ app.get('/api/live/:slug/ws', async (c) => {
   return obj.fetch(c.req.raw)
 })
 
-// Fetch initial state for Live Pad
+// Fetch initial state for Live Pad (auto-seeds from KV if fresh)
 app.get('/api/live/:slug', async (c) => {
   if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
   const slug = c.req.param('slug') ?? ''
@@ -143,10 +143,83 @@ app.get('/api/live/:slug', async (c) => {
   const id  = c.env.CLIP_DO.idFromName(slug)
   const obj = c.env.CLIP_DO.get(id)
   const res = await obj.fetch(`https://clip-do/room/${slug}/live-state`)
-  const data = await res.json()
+  let data = await res.json() as { text: string; files: any[]; peers: number; isProtected?: boolean; salt?: string }
+
+  // Auto-seed from PASTE_KV if room is brand new & unseeded
+  if (!data.isProtected && (!data.text || data.text === '') && (!data.files || data.files.length === 0)) {
+    const entry = await getEntry(c.env.PASTE_KV, slug)
+    if (entry && ((!entry.isPermanent && Date.now() <= entry.expiresAt) || entry.isPermanent)) {
+      const seedRes = await obj.fetch(`https://clip-do/room/${slug}/seed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: entry.content || '',
+          files: entry.files || [],
+        }),
+      })
+      if (seedRes.ok) {
+        const refreshed = await obj.fetch(`https://clip-do/room/${slug}/live-state`)
+        data = await refreshed.json()
+      }
+    }
+  }
+
   return c.json(data, 200, {
     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
   })
+})
+
+// Authenticated state fetch for password-protected Live Pad
+app.post('/api/live/:slug/auth', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+  const body = await c.req.json().catch(() => ({}))
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  const res = await obj.fetch(`https://clip-do/room/${slug}/live-state`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  return c.json(data, res.status as any, {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+  })
+})
+
+// Update room password protection / security
+app.post('/api/live/:slug/security', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+  const body = await c.req.json().catch(() => ({}))
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  const res = await obj.fetch(`https://clip-do/room/${slug}/security`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  return c.json(data, res.status as any)
+})
+
+// Explicit seed endpoint from frontend
+app.post('/api/live/:slug/seed', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+  const body = await c.req.json().catch(() => ({}))
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  const res = await obj.fetch(`https://clip-do/room/${slug}/seed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  return c.json(data, res.status as any)
 })
 
 // Upload a live file/image
@@ -201,7 +274,7 @@ app.post('/api/live/:slug/upload', async (c) => {
   })
 })
 
-// Delete a live file
+// Delete a single live file
 app.delete('/api/live/:slug/file/:fileId', async (c) => {
   if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
   const slug   = c.req.param('slug') ?? ''
@@ -217,6 +290,35 @@ app.delete('/api/live/:slug/file/:fileId', async (c) => {
   })
 
   return c.json({ ok: true })
+})
+
+// Batch delete files from Live Pad
+app.post('/api/live/:slug/files/delete', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+
+  const body = await c.req.json().catch(() => ({})) as { fileIds?: string[] }
+  const fileIds = body?.fileIds
+  if (!Array.isArray(fileIds) || fileIds.length === 0) {
+    return c.json({ error: 'missing_file_ids' }, 400)
+  }
+
+  // Delete all binaries from KV
+  for (const fileId of fileIds) {
+    await deleteFileKV(c.env.PASTE_KV, slug, fileId)
+  }
+
+  // Notify DO
+  const id = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  await obj.fetch(`https://clip-do/room/${slug}/live-files-delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fileIds }),
+  })
+
+  return c.json({ ok: true, deletedCount: fileIds.length })
 })
 
 // Stream/View live file binary
@@ -238,6 +340,68 @@ app.get('/api/live/:slug/file/:fileId', async (c) => {
     headers: {
       'Content-Type':        requestedMime,
       'Content-Disposition': `inline; filename="${sanitizedBase}"; filename*=UTF-8''${encodeURIComponent(requestedName)}`,
+      'Cache-Control':       'no-cache, must-revalidate',
+      'Pragma':              'no-cache',
+    },
+  })
+})
+
+// Live Pad ZIP archive download
+app.get('/api/live/:slug/zip', async (c) => {
+  if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
+  const slug = c.req.param('slug') ?? ''
+  if (!slug) return c.json({ error: 'not_found' }, 404)
+
+  const id  = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  const res = await obj.fetch(`https://clip-do/room/${slug}/live-state`)
+  const data = await res.json() as { text?: string; files?: any[]; isProtected?: boolean }
+
+  if (data.isProtected) {
+    return c.text('Error: This Live Pad is password protected. Please download via the authenticated web interface.', 401)
+  }
+
+  const zipFiles: Record<string, Uint8Array> = {}
+  if (data.text) {
+    zipFiles[`${slug}.txt`] = strToU8(data.text)
+  }
+
+  const MAX_ZIP_SIZE_MB = 25
+  let totalFileSize = 0
+
+  if (Array.isArray(data.files)) {
+    for (const file of data.files) {
+      const buf = await getFileKV(c.env.PASTE_KV, slug, file.id)
+      if (buf) {
+        totalFileSize += buf.byteLength
+        if (totalFileSize > MAX_ZIP_SIZE_MB * 1024 * 1024) {
+          return c.json({ error: 'zip_too_large' }, 413)
+        }
+        let name = file.fileName || file.id
+        if (zipFiles[name]) {
+          const parts = name.split('.')
+          const ext = parts.length > 1 ? `.${parts.pop()}` : ''
+          const base = parts.join('.')
+          let cNum = 2
+          while (zipFiles[name]) {
+            name = `${base} (${cNum})${ext}`
+            cNum++
+          }
+        }
+        zipFiles[name] = new Uint8Array(buf)
+      }
+    }
+  }
+
+  if (Object.keys(zipFiles).length === 0) {
+    zipFiles[`${slug}.txt`] = strToU8('')
+  }
+
+  const zipped = zipSync(zipFiles)
+  return new Response(zipped, {
+    headers: {
+      'Content-Type':        'application/zip',
+      'Content-Disposition': `attachment; filename="${slug}-live.zip"`,
       'Cache-Control':       'no-cache, must-revalidate',
       'Pragma':              'no-cache',
     },

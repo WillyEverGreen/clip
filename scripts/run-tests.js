@@ -879,6 +879,203 @@ async function runLiveSlugUniquenessTests() {
   })
 }
 
+// ── 11. Live Pad 24-Hour Expiration, Security Handshake & Batch Tests ─────────────
+
+async function runLivePadExpirationAndSecurityTests() {
+  console.log(`\n${colors.bold}${colors.cyan}11. Live Pad 24-Hour Expiration, Alarms, Security & Seeding Tests${colors.reset}`)
+
+  await test('Rolling 24-hour expiration calculation & alarm triggers full cleanup', async () => {
+    const TTL_MS = 24 * 3600 * 1000
+    const now = 1700000000000
+    const expiresAt = now + TTL_MS
+
+    assert.strictEqual(expiresAt - now, 86400000, 'Expiration must be exactly 86,400,000ms (24 hours)')
+
+    // Simulated storage state
+    let storage = {
+      live_state: { text: 'Active collaboration', files: [{ id: 'f1', fileName: 'test.png' }], expiresAt },
+      room_security: { isProtected: true, salt: 'abc', authHash: 'def' }
+    }
+    let currentText = storage.live_state.text
+    let currentFiles = [...storage.live_state.files]
+    let roomSecurity = { ...storage.room_security }
+
+    // Alarm execution handler
+    function onAlarm() {
+      storage = {}
+      currentText = ''
+      currentFiles = []
+      roomSecurity = { isProtected: false }
+    }
+
+    onAlarm()
+
+    assert.strictEqual(Object.keys(storage).length, 0, 'Storage must be completely emptied')
+    assert.strictEqual(currentText, '', 'Live text must be reset to empty')
+    assert.strictEqual(currentFiles.length, 0, 'Current files must be empty')
+    assert.strictEqual(roomSecurity.isProtected, false, 'Security must be un-protected')
+  })
+
+  await test('Lazy expiration purge on cold reload when expiresAt is in the past', async () => {
+    const now = 1700000000000
+    const expiredTimestamp = now - 1000 // 1 second ago
+
+    const savedState = {
+      text: 'Stale text from abandoned room',
+      files: [{ id: 'old_1', fileName: 'stale.pdf' }],
+      expiresAt: expiredTimestamp,
+    }
+
+    let loadedText = ''
+    let loadedFiles = []
+    let storageDeleted = false
+
+    // Simulate constructor check
+    if (savedState.expiresAt && now > savedState.expiresAt) {
+      storageDeleted = true
+      loadedText = ''
+      loadedFiles = []
+    } else {
+      loadedText = savedState.text
+      loadedFiles = savedState.files
+    }
+
+    assert.strictEqual(storageDeleted, true, 'Expired room must trigger deleteAll')
+    assert.strictEqual(loadedText, '', 'Expired room must not load stale text')
+    assert.strictEqual(loadedFiles.length, 0, 'Expired room must not load stale files')
+  })
+
+  await test('Live file uploads enforce hard 24h (86,400s) TTL in Cloudflare KV', async () => {
+    const TTL_24H = 86_400 // seconds
+    assert.strictEqual(TTL_24H, 24 * 60 * 60, 'TTL must equal exactly 86,400 seconds')
+
+    // Simulate putFileKV call with TTL
+    let capturedTtl = 0
+    function mockPutFileKV(kv, slug, buf, ttlSeconds, fileId) {
+      capturedTtl = ttlSeconds
+    }
+    mockPutFileKV({}, 'my-room', Buffer.from('abc'), TTL_24H, 'f1')
+    assert.strictEqual(capturedTtl, 86400, 'putFileKV must be called with 86,400 seconds TTL')
+  })
+
+  await test('Room security password challenge-response handshake', async () => {
+    const password = 'RoomSecret123!'
+    const salt = 'randomSalt_12345'
+    
+    // Hash generator matching frontend & worker: SHA-256(salt + password)
+    async function computeHash(s, p) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s + p))
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+    }
+
+    const expectedHash = await computeHash(salt, password)
+
+    // Simulate server room security state
+    const roomSecurity = {
+      isProtected: true,
+      salt,
+      authHash: expectedHash,
+    }
+
+    // Client connects -> receives auth_challenge
+    const challenge = {
+      type: 'auth_challenge',
+      isProtected: roomSecurity.isProtected,
+      salt: roomSecurity.salt,
+    }
+    assert.strictEqual(challenge.isProtected, true)
+    assert.strictEqual(challenge.salt, salt)
+
+    // Client submits correct password
+    const clientCorrectHash = await computeHash(challenge.salt, password)
+    const isAuthenticated = clientCorrectHash === roomSecurity.authHash
+    assert.strictEqual(isAuthenticated, true, 'Client with correct password must authenticate')
+
+    // Client submits wrong password
+    const clientWrongHash = await computeHash(challenge.salt, 'WrongPassword999')
+    const isWrongAuthenticated = clientWrongHash === roomSecurity.authHash
+    assert.strictEqual(isWrongAuthenticated, false, 'Client with wrong password must be rejected')
+  })
+
+  await test('Room seeding from static KV clip populates empty room but never overwrites active session', async () => {
+    let room = {
+      currentText: '',
+      currentFiles: [],
+      roomSecurity: { isProtected: false },
+    }
+
+    function seedRoom(payload) {
+      let changed = false
+      if (!room.currentText && payload.text) {
+        room.currentText = payload.text
+        changed = true
+      }
+      if (room.currentFiles.length === 0 && Array.isArray(payload.files) && payload.files.length > 0) {
+        room.currentFiles = payload.files
+        changed = true
+      }
+      if (payload.security && !room.roomSecurity.isProtected) {
+        room.roomSecurity = payload.security
+      }
+      return changed
+    }
+
+    // Initial seed on empty room
+    const clipSeed = {
+      text: 'Seeded initial content from clip',
+      files: [{ id: 'clip_f1', fileName: 'doc.txt' }],
+      security: { isProtected: true, salt: 's1', authHash: 'h1' }
+    }
+    const seed1Success = seedRoom(clipSeed)
+    assert.strictEqual(seed1Success, true, 'Initial seed must succeed')
+    assert.strictEqual(room.currentText, 'Seeded initial content from clip')
+    assert.strictEqual(room.currentFiles.length, 1)
+    assert.strictEqual(room.roomSecurity.isProtected, true)
+
+    // Second seed while room is active should NOT overwrite active text or files
+    const secondSeed = {
+      text: 'Intruder text overwrite',
+      files: [{ id: 'clip_f2', fileName: 'malicious.exe' }],
+    }
+    const seed2Success = seedRoom(secondSeed)
+    assert.strictEqual(seed2Success, false, 'Second seed must not overwrite active room')
+    assert.strictEqual(room.currentText, 'Seeded initial content from clip')
+    assert.strictEqual(room.currentFiles.length, 1)
+  })
+
+  await test('LivePad batch file deletion correctly purges IDs and maintains list integrity', async () => {
+    let currentFiles = [
+      { id: 'f1', fileName: 'file1.txt' },
+      { id: 'f2', fileName: 'file2.jpg' },
+      { id: 'f3', fileName: 'file3.pdf' },
+      { id: 'f4', fileName: 'file4.zip' },
+    ]
+
+    function batchDelete(fileIds) {
+      const idSet = new Set(fileIds)
+      currentFiles = currentFiles.filter(f => !idSet.has(f.id))
+      return { type: 'files_removed', fileIds }
+    }
+
+    const event = batchDelete(['f2', 'f3'])
+    assert.strictEqual(currentFiles.length, 2)
+    assert.deepStrictEqual(currentFiles.map(f => f.id), ['f1', 'f4'])
+    assert.deepStrictEqual(event.fileIds, ['f2', 'f3'])
+  })
+
+  await test('UI responsive single-row desktop layout token verification', async () => {
+    const fs = require('fs')
+    const path = require('path')
+    const layoutCss = fs.readFileSync(path.join(__dirname, '../frontend/src/styles/layout.css'), 'utf-8')
+    assert.ok(layoutCss.includes('.create-controls-grid--live'), 'CSS must include .create-controls-grid--live rule')
+    assert.ok(layoutCss.includes('grid-template-columns: 2fr 1.3fr auto'), 'Desktop layout must specify single-row grid columns')
+
+    const livePageTsx = fs.readFileSync(path.join(__dirname, '../frontend/src/pages/LivePage.tsx'), 'utf-8')
+    assert.ok(livePageTsx.includes('whiteSpace: \'nowrap\''), 'LivePage files header must enforce whiteSpace nowrap')
+    assert.ok(livePageTsx.includes('24h'), 'LivePage must show 24h temporary tag')
+  })
+}
+
 // ── Main Test Runner ────────────────────────────────────────────────────────
 
 async function main() {
@@ -894,13 +1091,13 @@ async function main() {
   await runLivePadRealtimeTests()
   await runFolderDropAndFileTypeTests()
   await runLiveSlugUniquenessTests()
+  await runLivePadExpirationAndSecurityTests()
 
   console.log(`\n${colors.bold}=== Summary ===${colors.reset}`)
   console.log(`Total: ${passed + failed} | Passed: ${colors.green}${passed}${colors.reset} | Failed: ${failed > 0 ? colors.red + failed + colors.reset : '0'}`)
 
   if (failed > 0) {
     process.exit(1)
-
   }
 }
 

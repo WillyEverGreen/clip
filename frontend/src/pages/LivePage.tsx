@@ -4,13 +4,15 @@ import {
   Zap, ArrowLeft, ArrowRight, Copy, Check, QrCode, Upload, Download, Trash2,
   File as FileIcon, FileText, Image as ImageIcon, Film, Music, FileArchive,
   Eye, X, Lock, AlertCircle, Folder,
-  FolderPlus, Code, Play
+  FolderPlus, Code, Play, Clock
 } from 'lucide-react'
 import { useLiveSocket } from '../lib/useLiveSocket'
 import {
   liveFileDownloadUrl,
   uploadLiveFile,
   deleteLiveFile,
+  batchDeleteLiveFiles,
+  liveZipDownloadUrl,
   createEntryWithProgress,
   getUniqueLiveSlug,
   formatBytes,
@@ -63,7 +65,17 @@ export default function LivePage() {
     sendText,
     addLocalFile,
     removeLocalFile,
+    removeLocalFiles,
+    isProtected,
+    isAuthenticated,
+    authError,
+    authenticate,
   } = useLiveSocket(slug)
+
+  const [enterPass, setEnterPass] = useState('')
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false)
 
   const [copiedLink, setCopiedLink] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
@@ -359,12 +371,64 @@ export default function LivePage() {
     try {
       removeLocalFile(fileId)
       await deleteLiveFile(slug, fileId)
+      setSelectedFileIds(prev => prev.filter(id => id !== fileId))
       showToast('File removed', 'info')
     } catch (err) {
       console.error('Delete failed:', err)
       showToast('Failed to delete file', 'error')
     }
   }
+
+  // File selection for batch operations
+  const toggleSelectFile = (fileId: string) => {
+    setSelectedFileIds(prev =>
+      prev.includes(fileId) ? prev.filter(id => id !== fileId) : [...prev, fileId]
+    )
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedFileIds.length === files.length) {
+      setSelectedFileIds([])
+    } else {
+      setSelectedFileIds(files.map(f => f.id))
+    }
+  }
+
+  const handleBatchDelete = async () => {
+    if (!slug || selectedFileIds.length === 0) return
+    const count = selectedFileIds.length
+    setIsBatchDeleting(true)
+    try {
+      removeLocalFiles(selectedFileIds)
+      await batchDeleteLiveFiles(slug, selectedFileIds)
+      setSelectedFileIds([])
+      showToast(`Removed ${count} file${count > 1 ? 's' : ''}`, 'info')
+    } catch (err) {
+      console.error('Batch delete failed:', err)
+      showToast('Failed to delete selected files.', 'error')
+    } finally {
+      setIsBatchDeleting(false)
+    }
+  }
+
+  // Room unlock handler
+  const handleUnlock = async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    if (!enterPass) return
+    setIsAuthenticating(true)
+    try {
+      await authenticate(enterPass)
+    } catch (err: any) {
+      console.error('Auth error:', err)
+    } finally {
+      setIsAuthenticating(false)
+    }
+  }
+
+  // Clean up selected files when files list updates
+  useEffect(() => {
+    setSelectedFileIds(prev => prev.filter(id => files.some(f => f.id === id)))
+  }, [files])
 
   // Save as permanent / custom clip
   const handleSaveAsClip = async (e: React.FormEvent) => {
@@ -426,9 +490,9 @@ export default function LivePage() {
   const getFileIcon = (mime: string, filename: string = '') => {
     if (isImageFile(mime, filename)) return <ImageIcon size={18} style={{ color: '#34d399' }} />
     if (isVideoFile(mime, filename)) return <Film size={18} style={{ color: '#f472b6' }} />
-    if (isAudioFile(mime, filename)) return <Music size={18} style={{ color: '#fbbf24' }} />
+    if (isAudioFile(mime, filename)) return <Music size={18} style={{ color: '#ffffff' }} />
     if (isPdfFile(mime, filename)) return <FileText size={18} style={{ color: '#ef4444' }} />
-    if (isArchiveFile(mime, filename)) return <FileArchive size={18} style={{ color: '#f59e0b' }} />
+    if (isArchiveFile(mime, filename)) return <FileArchive size={18} style={{ color: '#a1a1aa' }} />
     if (isTextOrCodeFile(mime, filename)) return <Code size={18} style={{ color: '#60a5fa' }} />
     return <FileIcon size={18} style={{ color: '#94a3b8' }} />
   }
@@ -574,7 +638,46 @@ export default function LivePage() {
 
         {/* ── Main Workspace Card ──────────────────────────────────────────── */}
         <div className="card card-glow" style={{ padding: '0.9rem 1.15rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {/* Room Banner / Notification Bar */}
+          {isProtected && !isAuthenticated ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', textAlign: 'center' }}>
+              <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#141414', border: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem' }}>
+                <Lock size={26} color="#ffffff" />
+              </div>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.5rem' }}>
+                This LivePad is Password Protected
+              </h2>
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem', maxWidth: 420, lineHeight: 1.6 }}>
+                Enter the room password to join and decrypt this real-time session.
+              </p>
+              <form onSubmit={handleUnlock} style={{ display: 'flex', gap: '0.6rem', width: '100%', maxWidth: 360 }}>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder="Enter password…"
+                  value={enterPass}
+                  onChange={e => setEnterPass(e.target.value)}
+                  autoFocus
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isAuthenticating || !enterPass}
+                  style={{ padding: '0 1.5rem', fontWeight: 600 }}
+                >
+                  {isAuthenticating ? <div className="spinner" style={{ borderColor: '#000', borderTopColor: 'transparent' }} /> : 'Unlock'}
+                </button>
+              </form>
+              {authError && (
+                <p style={{ marginTop: '1rem', fontSize: '0.825rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <AlertCircle size={14} />
+                  <span>{authError}</span>
+                </p>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Room Banner / Notification Bar */}
           <div
             style={{
               display: 'flex',
@@ -695,8 +798,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
             {(!isMobile ? showFilesPanel : mobileTab === 'files') && (
               <div
                 style={{
-                  width: isMobile ? '100%' : '360px',
-                  minWidth: isMobile ? '100%' : '280px',
+                  width: isMobile ? '100%' : 'clamp(340px, 26vw, 420px)',
+                  minWidth: isMobile ? '100%' : '300px',
                   height: '100%',
                   minHeight: 0,
                   display: 'flex',
@@ -710,30 +813,90 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                 }}
               >
                 {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexShrink: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#ffffff' }}>
-                      Files & Media ({files.length})
-                    </span>
-                    <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>
-                      (24h)
-                    </span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginBottom: '0.75rem', flexShrink: 0 }}>
+                  {/* Title Bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flexWrap: 'nowrap' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.875rem', color: '#ffffff', whiteSpace: 'nowrap' }}>
+                        Files & Media
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.72rem',
+                          fontWeight: 600,
+                          color: '#ffffff',
+                          background: '#27272a',
+                          padding: '0.1rem 0.45rem',
+                          borderRadius: '999px',
+                          lineHeight: 1,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {files.length}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          color: 'var(--text-muted)',
+                          background: '#141414',
+                          border: '1px solid #27272a',
+                          padding: '0.15rem 0.45rem',
+                          borderRadius: '4px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1,
+                          flexShrink: 0,
+                        }}
+                        title="Temporary 24-hour storage"
+                      >
+                        <Clock size={10} /> 24h
+                      </span>
+                    </div>
+
+                    {/* Quick ZIP download if files exist */}
+                    {files.length > 0 && (
+                      <a
+                        href={liveZipDownloadUrl(slug)}
+                        download={`${slug}_files.zip`}
+                        className="btn btn-secondary"
+                        style={{
+                          padding: '0.25rem 0.55rem',
+                          fontSize: '0.725rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.35rem',
+                          textDecoration: 'none',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                          height: '28px',
+                        }}
+                        title="Download all room files in a ZIP archive"
+                      >
+                        <Download size={12} /> ZIP
+                      </a>
+                    )}
                   </div>
 
-                  {/* File & Folder Inputs */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  {/* Upload Action Buttons */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
                     <label
                       className="btn btn-secondary"
                       style={{
-                        padding: '0.3rem 0.6rem',
+                        padding: '0.35rem 0.5rem',
                         fontSize: '0.75rem',
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'center',
                         gap: '0.35rem',
                         cursor: 'pointer',
                         margin: 0,
+                        height: '32px',
+                        boxSizing: 'border-box',
+                        whiteSpace: 'nowrap',
                       }}
-                      title="Upload individual files"
+                      title="Upload individual files or media"
                     >
                       <Upload size={13} /> Add Files
                       <input
@@ -752,13 +915,17 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     <label
                       className="btn btn-secondary"
                       style={{
-                        padding: '0.3rem 0.6rem',
+                        padding: '0.35rem 0.5rem',
                         fontSize: '0.75rem',
                         display: 'flex',
                         alignItems: 'center',
+                        justifyContent: 'center',
                         gap: '0.35rem',
                         cursor: 'pointer',
                         margin: 0,
+                        height: '32px',
+                        boxSizing: 'border-box',
+                        whiteSpace: 'nowrap',
                       }}
                       title="Upload entire folder structure"
                     >
@@ -810,6 +977,53 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Batch selection & delete toolbar */}
+                {files.length > 0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.35rem 0.6rem',
+                      background: '#0d0d10',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      marginBottom: '0.6rem',
+                      fontSize: '0.75rem',
+                      flexShrink: 0
+                    }}
+                  >
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', margin: 0, color: 'var(--text-muted)' }}>
+                      <input
+                        type="checkbox"
+                        checked={files.length > 0 && selectedFileIds.length === files.length}
+                        onChange={toggleSelectAll}
+                      />
+                      <span>Select All ({files.length})</span>
+                    </label>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {selectedFileIds.length > 0 && (
+                        <>
+                          <span style={{ color: '#ffffff', fontWeight: 600 }}>
+                            {selectedFileIds.length} selected
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleBatchDelete}
+                            disabled={isBatchDeleting}
+                            className="btn btn-ghost"
+                            style={{ padding: '0.2rem 0.5rem', fontSize: '0.725rem', color: '#ef4444', gap: '0.3rem' }}
+                          >
+                            {isBatchDeleting ? <div className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
+                            Delete ({selectedFileIds.length})
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -876,8 +1090,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                         <div
                           key={f.id}
                           style={{
-                            background: '#0a0a0a',
-                            border: '1px solid var(--border)',
+                            background: selectedFileIds.includes(f.id) ? '#18181b' : '#0a0a0a',
+                            border: selectedFileIds.includes(f.id) ? '1px solid #71717a' : '1px solid var(--border)',
                             borderRadius: '8px',
                             overflow: 'hidden',
                             display: 'flex',
@@ -954,7 +1168,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                               onClick={triggerPreview}
                               style={{
                                 height: '56px',
-                                background: 'linear-gradient(135deg, #1c1808 0%, #0e0e10 100%)',
+                                background: 'linear-gradient(135deg, #18181b 0%, #0e0e10 100%)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -963,8 +1177,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                               }}
                               title="Click to play audio"
                             >
-                              <Music size={18} style={{ color: '#fbbf24' }} />
-                              <span style={{ fontSize: '0.75rem', color: '#fbbf24', fontWeight: 600 }}>Play Audio</span>
+                              <Music size={18} style={{ color: '#ffffff' }} />
+                              <span style={{ fontSize: '0.75rem', color: '#ffffff', fontWeight: 600 }}>Play Audio</span>
                             </div>
                           ) : isCode ? (
                             <div
@@ -1004,11 +1218,20 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
 
                           {/* File Details & Actions */}
                           <div style={{ padding: '0.6rem 0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                            <div
-                              onClick={triggerPreview}
-                              style={{ minWidth: 0, flex: 1, cursor: 'pointer' }}
-                              title={`Click to view: ${f.fileName}`}
-                            >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: 1 }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedFileIds.includes(f.id)}
+                                onChange={() => toggleSelectFile(f.id)}
+                                onClick={e => e.stopPropagation()}
+                                style={{ cursor: 'pointer', flexShrink: 0 }}
+                                title="Select file"
+                              />
+                              <div
+                                onClick={triggerPreview}
+                                style={{ minWidth: 0, flex: 1, cursor: 'pointer' }}
+                                title={`Click to view: ${f.fileName}`}
+                              >
                               <p
                                 style={{
                                   fontSize: '0.8rem',
@@ -1041,6 +1264,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 >
                                   {badge}
                                 </span>
+                              </div>
                               </div>
                             </div>
 
@@ -1086,6 +1310,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
       </main>
 
@@ -1299,8 +1525,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                       borderRadius: '12px',
                     }}
                   >
-                    <div style={{ background: 'rgba(251,191,36,0.1)', padding: '1.25rem', borderRadius: '50%' }}>
-                      <Music size={42} style={{ color: '#fbbf24' }} />
+                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', padding: '1.25rem', borderRadius: '50%' }}>
+                      <Music size={42} style={{ color: '#ffffff' }} />
                     </div>
                     <div style={{ textAlign: 'center' }}>
                       <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{active.name}</p>

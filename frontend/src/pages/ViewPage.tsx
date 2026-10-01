@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock } from 'lucide-react'
-import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, type PublicEntry } from '../lib/api'
-import { isEncrypted, decryptContent } from '../lib/crypto'
+import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
+import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry } from '../lib/api'
+import { isEncrypted, decryptContent, computeAuthHash, generateSalt } from '../lib/crypto'
+import { extractFilesFromDataTransfer } from '../lib/fileDrop'
+import { getMimeType } from '../lib/fileTypes'
 import { useEntrySSE } from '../lib/useEntrySSE'
 import Countdown from '../components/Countdown'
 import Logo      from '../components/Logo'
@@ -37,6 +39,40 @@ export default function ViewPage() {
   const loadedRef      = useRef(false)       // tracks whether we've ever loaded data
   const lastUpdatedAtRef = useRef<number | undefined>(undefined)  // tracks last known updatedAt
   const fetchEntryRef  = useRef<((isManual?: boolean, expectedUpdatedAt?: number) => Promise<void>) | null>(null)
+
+  // LivePad hosting modal states
+  const [showHostLiveModal, setShowHostLiveModal] = useState(false)
+  const [hostLiveChoice, setHostLiveChoice] = useState<'existing' | 'new' | 'none' | 'pass'>('existing')
+  const [hostLivePassword, setHostLivePassword] = useState('')
+  const [hostLiveLoading, setHostLiveLoading] = useState(false)
+  const [hostLiveError, setHostLiveError] = useState<string | null>(null)
+  const [pastedFiles, setPastedFiles] = useState<File[] | null>(null)
+
+  // Clipboard paste listener on ViewPage: paste screenshot/file to quick-share
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      if (!e.clipboardData) return
+      const items = Array.from(e.clipboardData.items || [])
+      const fileItems = items.filter(item => item.kind === 'file')
+
+      if (fileItems.length > 0) {
+        e.preventDefault()
+        const extracted = await extractFilesFromDataTransfer(e.clipboardData)
+        if (extracted.length > 0) {
+          const renamed = extracted.map(file => {
+            const name = file.name === 'image.png' || !file.name
+              ? `screenshot_${new Date().toISOString().replace(/[:.]/g, '-')}.png`
+              : file.name
+            return new File([file], name, { type: file.type || getMimeType(name) })
+          })
+          setPastedFiles(renamed)
+        }
+      }
+    }
+
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   // Dynamic SEO Title & Description
   const rawText = decryptedContent || entry?.content || ''
@@ -168,6 +204,75 @@ export default function ViewPage() {
     }
   }
 
+  const handleLaunchLivePad = async () => {
+    if (!slug) return
+    setHostLiveLoading(true)
+    setHostLiveError(null)
+
+    try {
+      const isEnc = entry?.content ? isEncrypted(entry.content) : false
+      let effectivePassword = ''
+
+      if (isEnc) {
+        if (hostLiveChoice === 'existing') {
+          effectivePassword = decryptPassword || sessionStorage.getItem('clip_decrypt_' + slug) || ''
+          if (!effectivePassword) {
+            setHostLiveError('Please unlock the clip first or select "Set New Password".')
+            setHostLiveLoading(false)
+            return
+          }
+        } else if (hostLiveChoice === 'new') {
+          if (hostLivePassword.length < 4) {
+            setHostLiveError('Password must be at least 4 characters.')
+            setHostLiveLoading(false)
+            return
+          }
+          effectivePassword = hostLivePassword
+        }
+      } else {
+        if (hostLiveChoice === 'pass') {
+          if (hostLivePassword.length < 4) {
+            setHostLiveError('Password must be at least 4 characters.')
+            setHostLiveLoading(false)
+            return
+          }
+          effectivePassword = hostLivePassword
+        }
+      }
+
+      // Configure room security
+      if (effectivePassword) {
+        const salt = generateSalt()
+        const authHash = await computeAuthHash(effectivePassword, salt)
+        await setLiveSecurity(slug, true, authHash, salt)
+        sessionStorage.setItem('clip_live_pass_' + slug, effectivePassword)
+      } else {
+        await setLiveSecurity(slug, false)
+      }
+
+      // Seed room with current content & files
+      await seedLiveRoom(
+        slug,
+        displayContent || entry?.content || '',
+        entry?.files || []
+      )
+
+      // If user had pasted files, upload them directly to the LivePad
+      if (pastedFiles && pastedFiles.length > 0) {
+        for (const file of pastedFiles) {
+          await uploadLiveFile(slug, file)
+        }
+        setPastedFiles(null)
+      }
+
+      navigate(`/live/${slug}`)
+    } catch (err: any) {
+      setHostLiveError(err?.message || 'Failed to start LivePad.')
+    } finally {
+      setHostLiveLoading(false)
+    }
+  }
+
   if (loading) return <LoadingScreen />
   if (!entry)  return null
 
@@ -247,6 +352,18 @@ export default function ViewPage() {
           </div>
 
           <div className="top-bar-actions">
+            <button
+              className="btn btn-secondary btn-compact-mobile"
+              onClick={() => {
+                const isEnc = entry?.content ? isEncrypted(entry.content) : false
+                setHostLiveChoice(isEnc ? 'existing' : 'none')
+                setShowHostLiveModal(true)
+              }}
+              title="Host LivePad from this URL"
+              style={{ gap: '0.4rem' }}
+            >
+              <Zap size={14} /> Host LivePad
+            </button>
             <button
               className="btn btn-ghost btn-compact-mobile"
               onClick={() => fetchEntry(true)}
@@ -491,6 +608,316 @@ export default function ViewPage() {
           document.body
         )}
 
+        {/* ── Host LivePad Modal ───────────────────────────────────────────── */}
+        {showHostLiveModal && createPortal(
+          <div className="modal-backdrop" onClick={() => !hostLiveLoading && setShowHostLiveModal(false)}>
+            <div
+              className="card animate-fade-up"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: 480, width: '92%', padding: '1.75rem', border: '1px solid #3f3f46', background: '#0a0a0a' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: '#18181b', border: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Zap size={18} color="#ffffff" />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>Host LivePad</h3>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Synchronized real-time session for /{slug}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowHostLiveModal(false)}
+                  disabled={hostLiveLoading}
+                  className="btn btn-ghost"
+                  style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
+                Launch a collaborative workspace with real-time text syncing, multi-file sharing, and viewer presence.
+              </p>
+
+              {contentIsEncrypted ? (
+                /* Source Clip is Encrypted */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  <label
+                    onClick={() => setHostLiveChoice('existing')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 8,
+                      border: hostLiveChoice === 'existing' ? '1px solid #ffffff' : '1px solid var(--border)',
+                      background: hostLiveChoice === 'existing' ? '#18181b' : '#000000',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="hostLiveChoice"
+                      checked={hostLiveChoice === 'existing'}
+                      onChange={() => setHostLiveChoice('existing')}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>Keep Existing Password</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Retains this clip's encryption password for the LivePad room.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label
+                    onClick={() => setHostLiveChoice('new')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 8,
+                      border: hostLiveChoice === 'new' ? '1px solid #ffffff' : '1px solid var(--border)',
+                      background: hostLiveChoice === 'new' ? '#18181b' : '#000000',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="hostLiveChoice"
+                      checked={hostLiveChoice === 'new'}
+                      onChange={() => setHostLiveChoice('new')}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>Set New Password</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Set a different password specifically for this LivePad.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label
+                    onClick={() => setHostLiveChoice('none')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 8,
+                      border: hostLiveChoice === 'none' ? '1px solid #ffffff' : '1px solid var(--border)',
+                      background: hostLiveChoice === 'none' ? '#18181b' : '#000000',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="hostLiveChoice"
+                      checked={hostLiveChoice === 'none'}
+                      onChange={() => setHostLiveChoice('none')}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>Make Public (No Password)</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Anyone with the link can join without entering a password.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                /* Source Clip is Public */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  <label
+                    onClick={() => setHostLiveChoice('none')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 8,
+                      border: hostLiveChoice === 'none' ? '1px solid #ffffff' : '1px solid var(--border)',
+                      background: hostLiveChoice === 'none' ? '#18181b' : '#000000',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="hostLiveChoicePublic"
+                      checked={hostLiveChoice === 'none'}
+                      onChange={() => setHostLiveChoice('none')}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>Public LivePad</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Open to anyone who visits /live/{slug}.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label
+                    onClick={() => setHostLiveChoice('pass')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 8,
+                      border: hostLiveChoice === 'pass' ? '1px solid #ffffff' : '1px solid var(--border)',
+                      background: hostLiveChoice === 'pass' ? '#18181b' : '#000000',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="hostLiveChoicePublic"
+                      checked={hostLiveChoice === 'pass'}
+                      onChange={() => setHostLiveChoice('pass')}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>Password Protected</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        Require visitors to enter a password to enter and edit.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Password Input field if needed */}
+              {(hostLiveChoice === 'new' || hostLiveChoice === 'pass') && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    LivePad Password (min 4 chars)
+                  </label>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="Enter password…"
+                    value={hostLivePassword}
+                    onChange={e => { setHostLivePassword(e.target.value); setHostLiveError(null) }}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {/* Existing password prompt if user hasn't unlocked yet */}
+              {contentIsEncrypted && hostLiveChoice === 'existing' && !decryptedContent && !decryptPassword && !sessionStorage.getItem('clip_decrypt_' + slug) && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Current Clip Password
+                  </label>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="Enter this clip's current password…"
+                    value={decryptPassword}
+                    onChange={e => { setDecryptPassword(e.target.value); setHostLiveError(null) }}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {hostLiveError && (
+                <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <AlertCircle size={14} />
+                  <span>{hostLiveError}</span>
+                </p>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => setShowHostLiveModal(false)}
+                  disabled={hostLiveLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleLaunchLivePad}
+                  disabled={hostLiveLoading}
+                  style={{ gap: '0.5rem', fontWeight: 600 }}
+                >
+                  {hostLiveLoading ? <div className="spinner" style={{ borderColor: '#000000', borderTopColor: 'transparent' }} /> : <Zap size={15} />}
+                  Launch LivePad
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* ── Clipboard Paste Prompt Modal ─────────────────────────────────── */}
+        {pastedFiles && pastedFiles.length > 0 && createPortal(
+          <div className="modal-backdrop" onClick={() => setPastedFiles(null)}>
+            <div
+              className="card animate-fade-up"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: 440, width: '92%', padding: '1.5rem', border: '1px solid #3f3f46', background: '#0a0a0a' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Upload size={18} color="#ffffff" />
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#ffffff' }}>File(s) Pasted</h3>
+                </div>
+                <button
+                  onClick={() => setPastedFiles(null)}
+                  className="btn btn-ghost"
+                  style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                You pasted {pastedFiles.length} file{pastedFiles.length > 1 ? 's' : ''} from clipboard:
+              </p>
+
+              <div style={{ maxHeight: 130, overflowY: 'auto', background: '#000000', border: '1px solid var(--border)', borderRadius: 8, padding: '0.5rem 0.75rem', marginBottom: '1.25rem' }}>
+                {pastedFiles.map((f, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.775rem', padding: '0.25rem 0', borderBottom: i < pastedFiles.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{ color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                      {f.name}
+                    </span>
+                    <span style={{ color: 'var(--text-dim)', fontSize: '0.7rem' }}>
+                      {formatBytes(f.size)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const isEnc = entry?.content ? isEncrypted(entry.content) : false
+                    setHostLiveChoice(isEnc ? 'existing' : 'none')
+                    setShowHostLiveModal(true)
+                  }}
+                  style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', fontWeight: 600 }}
+                >
+                  <Zap size={14} /> Host LivePad & Attach Pasted File{pastedFiles.length > 1 ? 's' : ''}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    navigate(`/edit/${slug}`)
+                  }}
+                  style={{ width: '100%', justifyContent: 'center', gap: '0.4rem' }}
+                >
+                  <Edit3 size={14} /> Edit Existing Clip
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
         {/* ── Content ────────────────────────────────────────────────────── */}
         <div className="card card-glow card-content">
           {contentIsEncrypted && !decryptedContent ? (
@@ -621,7 +1048,7 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
     if (mime.startsWith('audio/'))  return <Music size={size} color="#ffffff" />
     if (mime.includes('zip'))        return <FileArchive size={size} color="#ffffff" />
     if (mime === 'application/pdf') return <FileText size={size} color="#ffffff" />
-    return <File size={size} color="#ffffff" />
+    return <FileIcon size={size} color="#ffffff" />
   }
 
   const handleDownloadAll = () => {
