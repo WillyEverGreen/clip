@@ -4,7 +4,7 @@ import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangl
 
 import DropZone from '../components/DropZone'
 import { createEntryWithProgress, getUniqueLiveSlug, setLiveSecurity, seedLiveRoom, uploadLiveFile, formatBytes, type ApiError } from '../lib/api'
-import { encryptContent, computeAuthHash, generateSalt } from '../lib/crypto'
+import { encryptContent, computeAuthHash, generateSalt, encryptFile } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
 import { useSeo } from '../lib/useSeo'
@@ -113,7 +113,10 @@ export default function CreatePage() {
         }
         if (files && files.length > 0) {
           for (const f of files) {
-            await uploadLiveFile(targetSlug, f)
+            const fileToUpload = (lockContent && viewPassword)
+              ? await encryptFile(f, viewPassword)
+              : f
+            await uploadLiveFile(targetSlug, fileToUpload)
           }
         }
         navigate(`/live/${targetSlug}`)
@@ -144,14 +147,21 @@ export default function CreatePage() {
       form.append('content', finalContent)
     }
     if (mode === 'file') {
-      files.forEach((f) => {
+      const filesToUpload: File[] = []
+      if (lockContent && viewPassword) {
+        for (const f of files) {
+          const encFile = await encryptFile(f, viewPassword)
+          filesToUpload.push(encFile)
+        }
+        const placeholder = await encryptContent('{"file_lock":true}', viewPassword)
+        form.append('content', placeholder)
+      } else {
+        filesToUpload.push(...files)
+      }
+      filesToUpload.forEach((f) => {
         form.append('files', f)
         form.append('file', f)
       })
-      if (lockContent && viewPassword) {
-        const placeholder = await encryptContent('{"file_lock":true}', viewPassword)
-        form.append('content', placeholder)
-      }
     }
 
     setLoading(true)

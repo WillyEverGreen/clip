@@ -26,6 +26,8 @@ export class ClipRoom extends DurableObject<Env> {
   // Live Pad state
   private sockets: Set<WebSocket> = new Set()
   private authenticatedSockets: Set<WebSocket> = new Set()
+  private clientMap: Map<string, WebSocket> = new Map()
+  private socketToClient: Map<WebSocket, string> = new Map()
   private currentText: string = ''
   private currentFiles: FileItem[] = []
   private roomSecurity: RoomSecurity = { isProtected: false }
@@ -70,6 +72,8 @@ export class ClipRoom extends DurableObject<Env> {
       server.accept()
       const clientId = crypto.randomUUID()
       this.sockets.add(server)
+      this.clientMap.set(clientId, server)
+      this.socketToClient.set(server, clientId)
 
       // If room is protected, require authentication challenge before sharing state
       if (this.roomSecurity.isProtected) {
@@ -78,6 +82,7 @@ export class ClipRoom extends DurableObject<Env> {
           isProtected: true,
           salt: this.roomSecurity.salt,
           peers: this.sockets.size,
+          peerIds: Array.from(this.clientMap.keys()),
           clientId,
         }))
       } else {
@@ -87,6 +92,7 @@ export class ClipRoom extends DurableObject<Env> {
           text: this.currentText,
           files: this.currentFiles,
           peers: this.sockets.size,
+          peerIds: Array.from(this.clientMap.keys()),
           clientId,
         }))
       }
@@ -95,6 +101,7 @@ export class ClipRoom extends DurableObject<Env> {
       this.broadcastWebsocket({
         type: 'peers',
         peers: this.sockets.size,
+        peerIds: Array.from(this.clientMap.keys()),
       })
 
       server.addEventListener('message', (event) => {
@@ -110,6 +117,7 @@ export class ClipRoom extends DurableObject<Env> {
                 text: this.currentText,
                 files: this.currentFiles,
                 peers: this.sockets.size,
+                peerIds: Array.from(this.clientMap.keys()),
                 clientId,
               }))
             } else {
@@ -123,6 +131,21 @@ export class ClipRoom extends DurableObject<Env> {
 
           // Protected room: ignore commands if not authenticated
           if (this.roomSecurity.isProtected && !this.authenticatedSockets.has(server)) {
+            return
+          }
+
+          // ── WebRTC Signaling Relay ───────────────────────────────────────
+          if (data.type === 'rtc_signal' && typeof data.targetId === 'string' && data.payload) {
+            const targetWs = this.clientMap.get(data.targetId)
+            if (targetWs) {
+              try {
+                targetWs.send(JSON.stringify({
+                  type: 'rtc_signal',
+                  senderId: clientId,
+                  payload: data.payload,
+                }))
+              } catch {}
+            }
             return
           }
 
@@ -147,9 +170,12 @@ export class ClipRoom extends DurableObject<Env> {
       const cleanup = () => {
         this.sockets.delete(server)
         this.authenticatedSockets.delete(server)
+        this.clientMap.delete(clientId)
+        this.socketToClient.delete(server)
         this.broadcastWebsocket({
           type: 'peers',
           peers: this.sockets.size,
+          peerIds: Array.from(this.clientMap.keys()),
         })
       }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { BASE, type FileItem } from './api'
 import { computeAuthHash } from './crypto'
+import { useWebRtcPeer } from './useWebRtcPeer'
 
 export function useLiveSocket(slug: string | undefined) {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>('connecting')
@@ -8,6 +9,7 @@ export function useLiveSocket(slug: string | undefined) {
   const [files, setFiles] = useState<FileItem[]>([])
   const [peers, setPeers] = useState<number>(1)
   const [clientId, setClientId] = useState<string | null>(null)
+  const [peerIds, setPeerIds] = useState<string[]>([])
 
   // Authentication states
   const [isProtected, setIsProtected] = useState<boolean>(false)
@@ -21,6 +23,8 @@ export function useLiveSocket(slug: string | undefined) {
   const localTextRef = useRef<string>('')
   const isDirtyRef = useRef(false)
   const [remoteUpdateTrigger, setRemoteUpdateTrigger] = useState(0)
+  const p2pBlobsRef = useRef<Map<string, Blob>>(new Map())
+  const handleIncomingSignalRef = useRef<((senderId: string, payload: any) => Promise<void>) | null>(null)
 
   // Helper to derive WebSocket URL from the base API URL
   const getWsUrl = useCallback((s: string) => {
@@ -135,6 +139,9 @@ export function useLiveSocket(slug: string | undefined) {
                 if (data.clientId) {
                   setClientId(data.clientId)
                 }
+                if (Array.isArray(data.peerIds)) {
+                  setPeerIds(data.peerIds)
+                }
                 break
 
               case 'text':
@@ -149,6 +156,15 @@ export function useLiveSocket(slug: string | undefined) {
               case 'peers':
                 if (typeof data.peers === 'number') {
                   setPeers(data.peers)
+                }
+                if (Array.isArray(data.peerIds)) {
+                  setPeerIds(data.peerIds)
+                }
+                break
+
+              case 'rtc_signal':
+                if (data.senderId && data.payload && handleIncomingSignalRef.current) {
+                  handleIncomingSignalRef.current(data.senderId, data.payload)
                 }
                 break
 
@@ -215,6 +231,50 @@ export function useLiveSocket(slug: string | undefined) {
     }
   }, [slug, getWsUrl])
 
+  // WebRTC P2P DataChannel setup
+  const sendWsSignal = useCallback((targetId: string, payload: any) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'rtc_signal',
+        targetId,
+        payload,
+      }))
+    }
+  }, [])
+
+  const onRemoteText = useCallback((remoteText: string) => {
+    localTextRef.current = remoteText
+    isDirtyRef.current = false
+    setText(remoteText)
+    setRemoteUpdateTrigger(prev => prev + 1)
+  }, [])
+
+  const onRemoteFileReceived = useCallback((file: FileItem, blob: Blob) => {
+    p2pBlobsRef.current.set(file.id, blob)
+    setFiles(prev => {
+      if (prev.some(f => f.id === file.id)) return prev
+      return [...prev, file]
+    })
+  }, [])
+
+  const {
+    isP2PActive,
+    p2pPeerCount,
+    sendP2PText,
+    sendP2PFile,
+    handleIncomingSignal,
+  } = useWebRtcPeer({
+    myClientId: clientId,
+    activePeerIds: peerIds,
+    sendWsSignal,
+    onRemoteText,
+    onRemoteFileReceived,
+  })
+
+  useEffect(() => {
+    handleIncomingSignalRef.current = handleIncomingSignal
+  }, [handleIncomingSignal])
+
   // Method to authenticate with room password
   const authenticate = useCallback(async (password: string) => {
     if (!salt || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
@@ -230,10 +290,14 @@ export function useLiveSocket(slug: string | undefined) {
     }))
   }, [salt, slug])
 
-  // Method to send live text update
+  // Method to send live text update (fast path over P2P DataChannel + WebSocket persistence)
   const sendText = useCallback((newText: string) => {
     localTextRef.current = newText
     setText(newText)
+
+    // Send immediately over WebRTC DataChannel (sub-millisecond latency on LAN)
+    sendP2PText(newText)
+
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       isDirtyRef.current = false
       wsRef.current.send(JSON.stringify({
@@ -243,7 +307,7 @@ export function useLiveSocket(slug: string | undefined) {
     } else {
       isDirtyRef.current = true
     }
-  }, [])
+  }, [sendP2PText])
 
   // Method to update local files after an upload
   const addLocalFile = useCallback((file: FileItem) => {
@@ -256,12 +320,22 @@ export function useLiveSocket(slug: string | undefined) {
   // Method to remove local file after deletion
   const removeLocalFile = useCallback((fileId: string) => {
     setFiles(prev => prev.filter(f => f.id !== fileId))
+    p2pBlobsRef.current.delete(fileId)
   }, [])
 
   // Method to remove multiple files
   const removeLocalFiles = useCallback((fileIds: string[]) => {
     const idSet = new Set(fileIds)
     setFiles(prev => prev.filter(f => !idSet.has(f.id)))
+    fileIds.forEach(id => p2pBlobsRef.current.delete(id))
+  }, [])
+
+  const getP2PBlob = useCallback((fileId: string) => {
+    return p2pBlobsRef.current.get(fileId)
+  }, [])
+
+  const setLocalP2PBlob = useCallback((fileId: string, blob: Blob) => {
+    p2pBlobsRef.current.set(fileId, blob)
   }, [])
 
   return {
@@ -279,6 +353,11 @@ export function useLiveSocket(slug: string | undefined) {
     addLocalFile,
     removeLocalFile,
     removeLocalFiles,
+    isP2PActive,
+    p2pPeerCount,
+    sendP2PFile,
+    getP2PBlob,
+    setLocalP2PBlob,
   }
 }
 

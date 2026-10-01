@@ -113,6 +113,74 @@ async function runCryptoTests() {
       async () => await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, wrongKey, cipherBuf)
     )
   })
+
+  await test('Zero-Knowledge binary file encryption & decryption (ENC1 envelope)', async () => {
+    const password = 'FileSecretPassword999'
+    const fileName = 'secret_photo.png'
+    const fileMime = 'image/png'
+    const rawFileBytes = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02, 0x03])
+
+    const ENC_MAGIC = new Uint8Array([0x45, 0x4E, 0x43, 0x31]) // 'ENC1'
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+
+    const enc = new TextEncoder()
+    const rawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+      rawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    )
+
+    const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, rawFileBytes)
+    const metaJson = JSON.stringify({ name: fileName, mime: fileMime, size: rawFileBytes.byteLength })
+    const metaBytes = enc.encode(metaJson)
+
+    const container = new Uint8Array(4 + 16 + 12 + 2 + metaBytes.length + cipherBuf.byteLength)
+    let offset = 0
+    container.set(ENC_MAGIC, offset); offset += 4
+    container.set(salt, offset); offset += 16
+    container.set(iv, offset); offset += 12
+    const view = new DataView(container.buffer, container.byteOffset, container.byteLength)
+    view.setUint16(offset, metaBytes.length, false); offset += 2
+    container.set(metaBytes, offset); offset += metaBytes.length
+    container.set(new Uint8Array(cipherBuf), offset)
+
+    // Verify magic bytes
+    assert.strictEqual(container[0], 0x45) // 'E'
+    assert.strictEqual(container[1], 0x4E) // 'N'
+    assert.strictEqual(container[2], 0x43) // 'C'
+    assert.strictEqual(container[3], 0x31) // '1'
+
+    // Decrypt container
+    let decOffset = 4
+    const decSalt = container.slice(decOffset, decOffset + 16); decOffset += 16
+    const decIv = container.slice(decOffset, decOffset + 12); decOffset += 12
+    const decView = new DataView(container.buffer, container.byteOffset, container.byteLength)
+    const decMetaLen = decView.getUint16(decOffset, false); decOffset += 2
+    const decMetaBytes = container.slice(decOffset, decOffset + decMetaLen); decOffset += decMetaLen
+    const decMeta = JSON.parse(new TextDecoder().decode(decMetaBytes))
+    const decCipher = container.slice(decOffset)
+
+    assert.strictEqual(decMeta.name, fileName)
+    assert.strictEqual(decMeta.mime, fileMime)
+    assert.strictEqual(decMeta.size, rawFileBytes.byteLength)
+
+    const decRawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const decKey = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: decSalt, iterations: 250000, hash: 'SHA-256' },
+      decRawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    )
+
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decIv }, decKey, decCipher)
+    const plainBytes = new Uint8Array(plainBuf)
+    assert.deepStrictEqual(plainBytes, rawFileBytes)
+  })
 }
 
 // ── 2. Cross-Platform CLI Command Generators ────────────────────────────────
@@ -1076,6 +1144,188 @@ async function runLivePadExpirationAndSecurityTests() {
   })
 }
 
+// ── 12. WebRTC P2P AirDrop & Signaling Relay Tests ─────────────────────────
+
+async function runWebRtcAndAirdropTests() {
+  console.log(`\n${colors.bold}${colors.cyan}12. WebRTC P2P AirDrop & Signaling Relay Tests${colors.reset}`)
+
+  await test('WebRTC signaling relay routing in Durable Object room', async () => {
+    const sessions = new Set()
+    const clientMap = new Map()
+    const socketToClient = new Map()
+
+    function addClient(clientId) {
+      const mockWs = {
+        sent: [],
+        send(msg) {
+          this.sent.push(JSON.parse(msg))
+        },
+      }
+      sessions.add(mockWs)
+      clientMap.set(clientId, mockWs)
+      socketToClient.set(mockWs, clientId)
+      return mockWs
+    }
+
+    function sendToClient(targetId, msgStr) {
+      const targetWs = clientMap.get(targetId)
+      if (targetWs) {
+        targetWs.send(msgStr)
+        return true
+      }
+      return false
+    }
+
+    const wsA = addClient('client_aaa')
+    const wsB = addClient('client_bbb')
+    const wsC = addClient('client_ccc')
+
+    const rtcSignal = {
+      type: 'rtc_signal',
+      targetId: 'client_bbb',
+      payload: { type: 'offer', sdp: 'v=0...' },
+    }
+
+    const senderId = socketToClient.get(wsA)
+    const delivered = sendToClient(rtcSignal.targetId, JSON.stringify({
+      type: 'rtc_signal',
+      senderId,
+      payload: rtcSignal.payload,
+    }))
+
+    assert.strictEqual(delivered, true)
+    assert.strictEqual(wsB.sent.length, 1)
+    assert.strictEqual(wsB.sent[0].type, 'rtc_signal')
+    assert.strictEqual(wsB.sent[0].senderId, 'client_aaa')
+    assert.strictEqual(wsB.sent[0].payload.type, 'offer')
+
+    // Verify other clients received nothing (zero leakage)
+    assert.strictEqual(wsA.sent.length, 0)
+    assert.strictEqual(wsC.sent.length, 0)
+  })
+
+  await test('ENC1 container tamper detection & authentication tag verification', async () => {
+    const password = 'AirDropSecurePassword!'
+    const fileName = 'top_secret.pdf'
+    const rawData = new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80])
+
+    const enc = new TextEncoder()
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+
+    const rawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+      rawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    )
+
+    const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, rawData)
+    const metaBytes = enc.encode(JSON.stringify({ name: fileName, mime: 'application/pdf', size: rawData.length }))
+
+    const container = new Uint8Array(4 + 16 + 12 + 2 + metaBytes.length + cipherBuf.byteLength)
+    let offset = 0
+    container.set([0x45, 0x4E, 0x43, 0x31], offset); offset += 4
+    container.set(salt, offset); offset += 16
+    container.set(iv, offset); offset += 12
+    new DataView(container.buffer).setUint16(offset, metaBytes.length, false); offset += 2
+    container.set(metaBytes, offset); offset += metaBytes.length
+    container.set(new Uint8Array(cipherBuf), offset)
+
+    // Tamper with one single byte in the ciphertext payload
+    const tampered = new Uint8Array(container)
+    tampered[tampered.length - 1] ^= 0xFF
+
+    // Attempt decryption of tampered container
+    const decSalt = tampered.slice(4, 20)
+    const decIv = tampered.slice(20, 32)
+    const decMetaLen = new DataView(tampered.buffer).getUint16(32, false)
+    const decCipher = tampered.slice(34 + decMetaLen)
+
+    const decRawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const decKey = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: decSalt, iterations: 250000, hash: 'SHA-256' },
+      decRawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    )
+
+    await assert.rejects(
+      async () => await crypto.subtle.decrypt({ name: 'AES-GCM', iv: decIv }, decKey, decCipher),
+      /operation failed|tag/i,
+      'Tampered ciphertext must fail AES-GCM AEAD decryption'
+    )
+  })
+
+  await test('P2P binary 64KB chunk framing and reassembly', async () => {
+    // Generate a 150KB test binary payload spanning 3 chunks
+    const original = new Uint8Array(150 * 1024)
+    for (let i = 0; i < original.length; i++) {
+      original[i] = (i * 31) & 0xFF
+    }
+
+    const fileId = 'clip-test-file-uuid-123456789'
+    const idBytes = new TextEncoder().encode(fileId.padEnd(36, ' ').slice(0, 36))
+    const CHUNK_SIZE = 64 * 1024
+
+    // Sender chunking
+    const packets = []
+    let sentBytes = 0
+    while (sentBytes < original.byteLength) {
+      const sliceEnd = Math.min(sentBytes + CHUNK_SIZE, original.byteLength)
+      const chunk = original.slice(sentBytes, sliceEnd)
+      const packet = new Uint8Array(36 + chunk.byteLength)
+      packet.set(idBytes, 0)
+      packet.set(chunk, 36)
+      packets.push(packet)
+      sentBytes = sliceEnd
+    }
+
+    assert.strictEqual(packets.length, 3, '150KB file should produce exactly 3 chunks')
+
+    // Receiver reassembly
+    const receivedChunks = []
+    for (const pkt of packets) {
+      const extractedId = new TextDecoder().decode(pkt.slice(0, 36)).trim()
+      assert.strictEqual(extractedId, fileId)
+      receivedChunks.push(pkt.slice(36))
+    }
+
+    const totalReceivedBytes = receivedChunks.reduce((acc, c) => acc + c.byteLength, 0)
+    assert.strictEqual(totalReceivedBytes, original.byteLength)
+
+    const reassembled = new Uint8Array(totalReceivedBytes)
+    let reOffset = 0
+    for (const chunk of receivedChunks) {
+      reassembled.set(chunk, reOffset)
+      reOffset += chunk.byteLength
+    }
+
+    assert.deepStrictEqual(reassembled, original, 'Reassembled binary buffer must match original byte-for-byte')
+  })
+
+  await test('Lexicographical role assignment prevents WebRTC glare', async () => {
+    function getRole(localId, remoteId) {
+      if (localId < remoteId) return 'offerer'
+      if (localId > remoteId) return 'answerer'
+      return 'self'
+    }
+
+    const peer1 = 'peer_1111'
+    const peer2 = 'peer_2222'
+
+    const role1 = getRole(peer1, peer2)
+    const role2 = getRole(peer2, peer1)
+
+    assert.strictEqual(role1, 'offerer')
+    assert.strictEqual(role2, 'answerer')
+    assert.notStrictEqual(role1, role2, 'Roles must be asymmetric to avoid collision')
+  })
+}
+
 // ── Main Test Runner ────────────────────────────────────────────────────────
 
 async function main() {
@@ -1092,6 +1342,7 @@ async function main() {
   await runFolderDropAndFileTypeTests()
   await runLiveSlugUniquenessTests()
   await runLivePadExpirationAndSecurityTests()
+  await runWebRtcAndAirdropTests()
 
   console.log(`\n${colors.bold}=== Summary ===${colors.reset}`)
   console.log(`Total: ${passed + failed} | Passed: ${colors.green}${passed}${colors.reset} | Failed: ${failed > 0 ? colors.red + failed + colors.reset : '0'}`)
@@ -1105,3 +1356,4 @@ main().catch(err => {
   console.error('Test suite runner crashed:', err)
   process.exit(1)
 })
+

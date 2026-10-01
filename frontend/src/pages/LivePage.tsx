@@ -28,13 +28,127 @@ import {
   getFileTypeBadge,
   getMimeType
 } from '../lib/fileTypes'
-import { encryptContent } from '../lib/crypto'
+import { encryptContent, encryptFile, decryptFileBuffer, isEncryptedFileBuffer } from '../lib/crypto'
 import Logo from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
 
 const QRCodeSVG = lazy(() =>
   import('qrcode.react').then(m => ({ default: m.QRCodeSVG }))
 )
+
+function LiveImageThumbnail({
+  slug,
+  file,
+  getP2PBlob,
+  onClick,
+}: {
+  slug: string
+  file: { id: string; fileName: string; fileMime: string }
+  getP2PBlob: (id: string) => Blob | undefined
+  onClick: () => void
+}) {
+  const [src, setSrc] = useState<string>(() => {
+    const p2p = getP2PBlob(file.id)
+    if (p2p) return URL.createObjectURL(p2p)
+    return liveFileDownloadUrl(slug, file.id, file.fileMime, file.fileName)
+  })
+
+  useEffect(() => {
+    let active = true
+    let blobUrlToRevoke: string | null = null
+
+    const resolve = async () => {
+      const p2p = getP2PBlob(file.id)
+      const livePass = sessionStorage.getItem('clip_live_pass_' + slug)
+      if (p2p) {
+        const buf = await p2p.arrayBuffer()
+        if (isEncryptedFileBuffer(buf) && livePass) {
+          const dec = await decryptFileBuffer(buf, livePass)
+          if (dec && active) {
+            const u = URL.createObjectURL(dec.blob)
+            blobUrlToRevoke = u
+            setSrc(u)
+            return
+          }
+        }
+        if (active) {
+          const u = URL.createObjectURL(p2p)
+          blobUrlToRevoke = u
+          setSrc(u)
+          return
+        }
+      }
+
+      if (livePass) {
+        try {
+          const url = liveFileDownloadUrl(slug, file.id, file.fileMime, file.fileName)
+          const res = await fetch(url)
+          if (!res.ok) return
+          const buf = await res.arrayBuffer()
+          if (isEncryptedFileBuffer(buf)) {
+            const dec = await decryptFileBuffer(buf, livePass)
+            if (dec && active) {
+              const u = URL.createObjectURL(dec.blob)
+              blobUrlToRevoke = u
+              setSrc(u)
+            }
+          }
+        } catch {}
+      }
+    }
+
+    resolve()
+    return () => {
+      active = false
+      if (blobUrlToRevoke) URL.revokeObjectURL(blobUrlToRevoke)
+    }
+  }, [file.id, slug, getP2PBlob])
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        height: '110px',
+        background: '#000000',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+      title="Click to view image"
+    >
+      <img
+        src={src}
+        alt={file.fileName}
+        loading="lazy"
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transition: 'transform 200ms ease',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0,0,0,0.3)',
+          opacity: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'opacity 150ms ease',
+        }}
+        onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+        onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+      >
+        <Eye size={20} style={{ color: '#ffffff' }} />
+      </div>
+    </div>
+  )
+}
 
 export default function LivePage() {
   const { slug: rawSlug } = useParams<{ slug: string }>()
@@ -70,6 +184,11 @@ export default function LivePage() {
     isAuthenticated,
     authError,
     authenticate,
+    isP2PActive,
+    p2pPeerCount,
+    sendP2PFile,
+    getP2PBlob,
+    setLocalP2PBlob,
   } = useLiveSocket(slug)
 
   const [enterPass, setEnterPass] = useState('')
@@ -220,12 +339,24 @@ export default function LivePage() {
         setUploadingFiles(prev => [...prev, { id: tempId, name: f.name, pct: 0 }])
 
         try {
-          const uploaded = await uploadLiveFile(slug, f, (pct) => {
+          const livePass = sessionStorage.getItem('clip_live_pass_' + slug)
+          let fileToUpload = f
+          if (livePass && livePass.length >= 4) {
+            fileToUpload = await encryptFile(f, livePass)
+          }
+
+          const uploaded = await uploadLiveFile(slug, fileToUpload, (pct) => {
             setUploadingFiles(prev =>
               prev.map(item => item.id === tempId ? { ...item, pct } : item)
             )
           })
           addLocalFile(uploaded)
+          setLocalP2PBlob(uploaded.id, fileToUpload)
+
+          if (isP2PActive) {
+            sendP2PFile(uploaded, fileToUpload).catch(() => {})
+          }
+
           successCount++
           if (validFiles.length === 1) {
             showToast(`Uploaded ${f.name}`, 'success')
@@ -425,6 +556,107 @@ export default function LivePage() {
     }
   }
 
+  const handleDownloadLiveFile = useCallback(async (f: { id: string; fileName: string; fileMime: string }) => {
+    const livePass = sessionStorage.getItem('clip_live_pass_' + slug) || ''
+    const p2pBlob = getP2PBlob(f.id)
+
+    try {
+      let buf: ArrayBuffer
+      if (p2pBlob) {
+        buf = await p2pBlob.arrayBuffer()
+      } else {
+        const url = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
+        const res = await fetch(url)
+        if (!res.ok) throw new Error('Fetch failed')
+        buf = await res.arrayBuffer()
+      }
+
+      if (isEncryptedFileBuffer(buf)) {
+        if (livePass) {
+          const dec = await decryptFileBuffer(buf, livePass)
+          if (dec) {
+            const blobUrl = URL.createObjectURL(dec.blob)
+            const a = document.createElement('a')
+            a.href = blobUrl
+            a.download = dec.fileName
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+            return
+          }
+        }
+      }
+
+      const blob = new Blob([buf], { type: f.fileMime || 'application/octet-stream' })
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = f.fileName.split(/[/\\]/).pop() || f.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+    } catch (err) {
+      console.error('Download error:', err)
+      const a = document.createElement('a')
+      a.href = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
+      a.download = f.fileName.split(/[/\\]/).pop() || f.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }, [slug, getP2PBlob])
+
+  const handleTriggerPreview = useCallback(async (f: { id: string; fileName: string; fileMime: string; fileSize: number }) => {
+    const livePass = sessionStorage.getItem('clip_live_pass_' + slug) || ''
+    const p2pBlob = getP2PBlob(f.id)
+
+    if (p2pBlob || livePass) {
+      try {
+        let buf: ArrayBuffer
+        if (p2pBlob) {
+          buf = await p2pBlob.arrayBuffer()
+        } else {
+          const url = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
+          const res = await fetch(url)
+          if (!res.ok) throw new Error('Fetch failed')
+          buf = await res.arrayBuffer()
+        }
+
+        if (isEncryptedFileBuffer(buf) && livePass) {
+          const dec = await decryptFileBuffer(buf, livePass)
+          if (dec) {
+            const blobUrl = URL.createObjectURL(dec.blob)
+            setPreviewFile({
+              url: blobUrl,
+              name: dec.fileName,
+              mime: dec.fileMime,
+              size: dec.blob.size,
+            })
+            return
+          }
+        } else if (p2pBlob) {
+          const blobUrl = URL.createObjectURL(p2pBlob)
+          setPreviewFile({
+            url: blobUrl,
+            name: f.fileName,
+            mime: f.fileMime,
+            size: f.fileSize,
+          })
+          return
+        }
+      } catch {}
+    }
+
+    setPreviewFile({
+      url: liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName),
+      name: f.fileName,
+      mime: f.fileMime,
+      size: f.fileSize,
+    })
+  }, [slug, getP2PBlob])
+
   // Clean up selected files when files list updates
   useEffect(() => {
     setSelectedFileIds(prev => prev.filter(id => files.some(f => f.id === id)))
@@ -598,6 +830,37 @@ export default function LivePage() {
                 {status === 'connected' ? (isMobile ? peers : `${peers} ${peers === 1 ? 'device' : 'devices'}`) : status}
               </span>
             </div>
+
+            {/* P2P LAN Direct Indicator */}
+            {isP2PActive && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.65rem',
+                  background: '#141414',
+                  border: '1px solid #27272a',
+                  borderRadius: '20px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#ffffff',
+                  letterSpacing: '0.02em',
+                }}
+                title={`WebRTC DataChannel active with ${p2pPeerCount} local peer${p2pPeerCount === 1 ? '' : 's'}. Direct LAN transfer speed.`}
+              >
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    boxShadow: '0 0 6px rgba(255, 255, 255, 0.8)',
+                  }}
+                />
+                <span>⚡ LAN Direct</span>
+              </div>
+            )}
 
             {/* QR Code Button (Desktop/Tablet only) */}
             {!isMobile && (
@@ -1075,20 +1338,10 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                       const isAud = isAudioFile(f.fileMime, f.fileName)
                       const isCode = isTextOrCodeFile(f.fileMime, f.fileName)
                       const badge = getFileTypeBadge(f.fileName, f.fileMime)
-                      const downloadUrl = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
 
                       const lastSlash = f.fileName.lastIndexOf('/')
                       const dirPart = lastSlash >= 0 ? f.fileName.slice(0, lastSlash + 1) : ''
                       const namePart = lastSlash >= 0 ? f.fileName.slice(lastSlash + 1) : f.fileName
-
-                      const triggerPreview = () => {
-                        setPreviewFile({
-                          url: downloadUrl,
-                          name: f.fileName,
-                          mime: f.fileMime,
-                          size: f.fileSize,
-                        })
-                      }
 
                       return (
                         <div
@@ -1105,51 +1358,15 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                         >
                           {/* Image Thumbnail Preview */}
                           {isImg ? (
-                            <div
-                              onClick={triggerPreview}
-                              style={{
-                                height: '110px',
-                                background: '#000000',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                position: 'relative',
-                                overflow: 'hidden',
-                              }}
-                              title="Click to view image"
-                            >
-                              <img
-                                src={downloadUrl}
-                                alt={f.fileName}
-                                loading="lazy"
-                                style={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  transition: 'transform 200ms ease',
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  inset: 0,
-                                  background: 'rgba(0,0,0,0.3)',
-                                  opacity: 0,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  transition: 'opacity 150ms ease',
-                                }}
-                                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
-                              >
-                                <Eye size={20} style={{ color: '#ffffff' }} />
-                              </div>
-                            </div>
+                            <LiveImageThumbnail
+                              slug={slug}
+                              file={f}
+                              getP2PBlob={getP2PBlob}
+                              onClick={() => handleTriggerPreview(f)}
+                            />
                           ) : isVid ? (
                             <div
-                              onClick={triggerPreview}
+                              onClick={() => handleTriggerPreview(f)}
                               style={{
                                 height: '70px',
                                 background: 'linear-gradient(135deg, #180d1e 0%, #0d0d12 100%)',
@@ -1169,7 +1386,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                             </div>
                           ) : isAud ? (
                             <div
-                              onClick={triggerPreview}
+                              onClick={() => handleTriggerPreview(f)}
                               style={{
                                 height: '56px',
                                 background: 'linear-gradient(135deg, #18181b 0%, #0e0e10 100%)',
@@ -1186,7 +1403,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                             </div>
                           ) : isCode ? (
                             <div
-                              onClick={triggerPreview}
+                              onClick={() => handleTriggerPreview(f)}
                               style={{
                                 height: '56px',
                                 background: '#0a0d14',
@@ -1203,7 +1420,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                             </div>
                           ) : (
                             <div
-                              onClick={triggerPreview}
+                              onClick={() => handleTriggerPreview(f)}
                               style={{
                                 height: '56px',
                                 background: '#0e0e10',
@@ -1232,7 +1449,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 title="Select file"
                               />
                               <div
-                                onClick={triggerPreview}
+                                onClick={() => handleTriggerPreview(f)}
                                 style={{ minWidth: 0, flex: 1, cursor: 'pointer' }}
                                 title={`Click to view: ${f.fileName}`}
                               >
@@ -1275,7 +1492,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}>
                               <button
                                 type="button"
-                                onClick={triggerPreview}
+                                onClick={() => handleTriggerPreview(f)}
                                 className="btn btn-ghost"
                                 style={{ padding: '0.25rem 0.4rem', color: 'var(--text-muted)' }}
                                 title="Preview file"
@@ -1284,15 +1501,15 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                               >
                                 <Eye size={12} />
                               </button>
-                              <a
-                                href={downloadUrl}
-                                download={namePart}
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadLiveFile(f)}
                                 className="btn btn-secondary"
                                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.725rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                                 title="Download"
                               >
                                 <Download size={12} />
-                              </a>
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteFile(f.id)}
@@ -1439,15 +1656,27 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     </button>
                   )}
 
-                  <a
-                    href={active.url}
-                    download={active.name.split(/[/\\]/).pop() || active.name}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const f = files.find(item => item.fileName === active.name)
+                      if (f) {
+                        handleDownloadLiveFile(f)
+                      } else {
+                        const a = document.createElement('a')
+                        a.href = active.url
+                        a.download = active.name.split(/[/\\]/).pop() || active.name
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                      }
+                    }}
                     className="btn btn-secondary"
                     style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                     title="Download file"
                   >
                     <Download size={13} /> Download
-                  </a>
+                  </button>
 
                   <button
                     type="button"

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry, type FileItem } from '../lib/api'
-import { isEncrypted, decryptContent, computeAuthHash, generateSalt } from '../lib/crypto'
+import { isEncrypted, decryptContent, computeAuthHash, generateSalt, isEncryptedFileBuffer, decryptFileBuffer } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
 import { useEntrySSE } from '../lib/useEntrySSE'
@@ -1060,16 +1060,61 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
     return <FileIcon size={size} color="#ffffff" />
   }
 
+  const handleDownloadFile = async (item: { id?: string; fileName: string }) => {
+    const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug) || ''
+    const downloadLink = fileUrl(slug, item.id)
+    if (!sessionPass) {
+      const a = document.createElement('a')
+      a.href = downloadLink
+      a.download = item.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      return
+    }
+
+    try {
+      const res = await fetch(downloadLink)
+      if (!res.ok) throw new Error('Fetch failed')
+      const buf = await res.arrayBuffer()
+      if (isEncryptedFileBuffer(buf)) {
+        const dec = await decryptFileBuffer(buf, sessionPass)
+        if (dec) {
+          const blobUrl = URL.createObjectURL(dec.blob)
+          const a = document.createElement('a')
+          a.href = blobUrl
+          a.download = dec.fileName
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+          return
+        }
+      }
+      const blob = new Blob([buf])
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = item.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000)
+    } catch {
+      const a = document.createElement('a')
+      a.href = downloadLink
+      a.download = item.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    }
+  }
+
   const handleDownloadAll = () => {
     filesList.forEach((file, idx) => {
       setTimeout(() => {
-        const a = document.createElement('a')
-        a.href = fileUrl(slug, file.id)
-        a.download = file.fileName
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-      }, idx * 300)
+        handleDownloadFile(file)
+      }, idx * 350)
     })
   }
 
@@ -1146,7 +1191,6 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           {filesList.map((item, i) => {
             const ext = (item.fileName ?? '').split('.').pop()?.toUpperCase() ?? 'FILE'
-            const downloadLink = fileUrl(slug, item.id)
 
             return (
               <div
@@ -1171,14 +1215,14 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
                     </span>
                   </p>
                 </div>
-                <a
-                  href={downloadLink}
+                <button
+                  type="button"
+                  onClick={() => handleDownloadFile(item)}
                   className="btn btn-ghost"
-                  download={item.fileName}
                   style={{ flexShrink:0, gap:'0.5rem', padding:'0.5rem 0.9rem', fontSize:'0.8125rem' }}
                 >
                   <Download size={14} /> Download
-                </a>
+                </button>
               </div>
             )
           })}
@@ -1190,7 +1234,6 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
           {filesList.map((item, i) => {
             const ext = (item.fileName ?? '').split('.').pop()?.toUpperCase() ?? 'FILE'
-            const downloadLink = fileUrl(slug, item.id)
 
             return (
               <div
@@ -1215,14 +1258,14 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
                     <Countdown expiresAt={fileExpiresAt} />
                   </p>
                 </div>
-                <a
-                  href={downloadLink}
+                <button
+                  type="button"
+                  onClick={() => handleDownloadFile(item)}
                   className="btn btn-ghost"
-                  download={item.fileName}
                   style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.45rem 0.75rem', fontSize: '0.8rem' }}
                 >
                   <Download size={14} /> Download
-                </a>
+                </button>
               </div>
             )
           })}
@@ -1233,15 +1276,12 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
       {layout === 'tiles' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.75rem' }}>
           {filesList.map((item, i) => {
-            const downloadLink = fileUrl(slug, item.id)
-
             return (
-              <a
+              <div
                 key={item.id ?? i}
-                href={downloadLink}
-                download={item.fileName}
+                onClick={() => handleDownloadFile(item)}
                 style={{
-                  textDecoration: 'none',
+                  cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
                   padding: '1rem 0.75rem', background: '#000000', border: '1px solid var(--border)', borderRadius: '10px',
                   gap: '0.6rem', transition: 'border-color 150ms ease, background 150ms ease'
@@ -1262,7 +1302,7 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
                 <span style={{ fontSize: '0.725rem', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
                   <Download size={12} /> Download
                 </span>
-              </a>
+              </div>
             )
           })}
         </div>

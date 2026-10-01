@@ -105,3 +105,103 @@ export async function computeAuthHash(password: string, salt: string): Promise<s
   return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
+// ── Zero-Knowledge Binary File Encryption (ENC1 Envelope) ───────────────────
+const ENC_MAGIC = new Uint8Array([0x45, 0x4E, 0x43, 0x31]) // 'ENC1'
+
+export interface DecryptedFileResult {
+  blob: Blob
+  fileName: string
+  fileMime: string
+  fileSize: number
+}
+
+/** Check if an ArrayBuffer starts with the ENC1 magic container header */
+export function isEncryptedFileBuffer(buf: ArrayBuffer): boolean {
+  if (buf.byteLength < 34) return false
+  const bytes = new Uint8Array(buf, 0, 4)
+  return bytes[0] === ENC_MAGIC[0] &&
+         bytes[1] === ENC_MAGIC[1] &&
+         bytes[2] === ENC_MAGIC[2] &&
+         bytes[3] === ENC_MAGIC[3]
+}
+
+/** Encrypts a File client-side with AES-256-GCM and wraps it in an ENC1 container */
+export async function encryptFile(file: File, password: string): Promise<File> {
+  const salt = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(16)))
+  const iv   = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)))
+  const key  = await deriveKey(password, salt)
+
+  const fileData = await file.arrayBuffer()
+  const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, fileData)
+
+  const metaJson = JSON.stringify({
+    name: file.name,
+    mime: file.type || 'application/octet-stream',
+    size: file.size,
+  })
+  const metaBytes = new TextEncoder().encode(metaJson)
+  if (metaBytes.length > 65535) {
+    throw new Error('File metadata too long')
+  }
+
+  const totalLength = 4 + 16 + 12 + 2 + metaBytes.length + cipherBuf.byteLength
+  const container = new Uint8Array(totalLength)
+  let offset = 0
+
+  // 1. Magic
+  container.set(ENC_MAGIC, offset); offset += 4
+  // 2. Salt
+  container.set(salt, offset); offset += 16
+  // 3. IV
+  container.set(iv, offset); offset += 12
+  // 4. Meta length (Uint16 Big-Endian)
+  const view = new DataView(container.buffer, container.byteOffset, container.byteLength)
+  view.setUint16(offset, metaBytes.length, false); offset += 2
+  // 5. Meta bytes
+  container.set(metaBytes, offset); offset += metaBytes.length
+  // 6. Ciphertext
+  container.set(new Uint8Array(cipherBuf), offset)
+
+  return new File([container], file.name, {
+    type: 'application/octet-stream',
+    lastModified: file.lastModified,
+  })
+}
+
+/** Decrypts an ENC1 container ArrayBuffer into original File Blob & metadata */
+export async function decryptFileBuffer(
+  containerBuf: ArrayBuffer,
+  password: string,
+): Promise<DecryptedFileResult | null> {
+  try {
+    if (!isEncryptedFileBuffer(containerBuf)) return null
+
+    const container = new Uint8Array(containerBuf)
+    let offset = 4 // skip magic
+
+    const salt = container.slice(offset, offset + 16); offset += 16
+    const iv = container.slice(offset, offset + 12); offset += 12
+
+    const view = new DataView(containerBuf, container.byteOffset, container.byteLength)
+    const metaLen = view.getUint16(offset, false); offset += 2
+
+    const metaBytes = container.slice(offset, offset + metaLen); offset += metaLen
+    const metaStr = new TextDecoder().decode(metaBytes)
+    const meta = JSON.parse(metaStr) as { name: string; mime: string; size: number }
+
+    const ciphertext = container.slice(offset)
+    const key = await deriveKey(password, salt)
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext)
+
+    const blob = new Blob([plainBuf], { type: meta.mime || 'application/octet-stream' })
+    return {
+      blob,
+      fileName: meta.name || 'decrypted_file',
+      fileMime: meta.mime || 'application/octet-stream',
+      fileSize: meta.size ?? plainBuf.byteLength,
+    }
+  } catch {
+    return null
+  }
+}
+
