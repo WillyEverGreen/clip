@@ -31,6 +31,7 @@ import {
 import { encryptContent, encryptFile, decryptFileBuffer, isEncryptedFileBuffer } from '../lib/crypto'
 import Logo from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
+import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
 
 const QRCodeSVG = lazy(() =>
   import('qrcode.react').then(m => ({ default: m.QRCodeSVG }))
@@ -199,36 +200,9 @@ export default function LivePage() {
   const [copiedLink, setCopiedLink] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
   const [showSaveModal, setShowSaveModal] = useState(false)
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
-  const [lightboxName, _setLightboxName] = useState<string>('')
-  const [previewFile, setPreviewFile] = useState<{ url: string; name: string; mime: string; size: number } | null>(null)
-  const [previewTextContent, setPreviewTextContent] = useState<string | null>(null)
-  const [previewLoadingText, setPreviewLoadingText] = useState(false)
-  const [previewCopied, setPreviewCopied] = useState(false)
+  const [previewFile, setPreviewFile] = useState<PreviewFileItem | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [uploadingFiles, setUploadingFiles] = useState<{ id: string; name: string; pct: number }[]>([])
-
-  // Fetch text content when previewing code or text files
-  useEffect(() => {
-    if (!previewFile) {
-      setPreviewTextContent(null)
-      setPreviewLoadingText(false)
-      setPreviewCopied(false)
-      return
-    }
-
-    if (isTextOrCodeFile(previewFile.mime, previewFile.name)) {
-      setPreviewLoadingText(true)
-      fetch(previewFile.url)
-        .then(async (res) => {
-          if (!res.ok) throw new Error('Fetch failed')
-          return res.text()
-        })
-        .then((text) => setPreviewTextContent(text))
-        .catch(() => setPreviewTextContent('(Unable to display text preview)'))
-        .finally(() => setPreviewLoadingText(false))
-    }
-  }, [previewFile])
 
   const [showFilesPanel, setShowFilesPanel] = useState(true)
   const [mobileTab, setMobileTab] = useState<'editor' | 'files'>('editor')
@@ -488,7 +462,6 @@ export default function LivePage() {
       } else if (e.key === 'Escape') {
         setShowQrModal(false)
         setShowSaveModal(false)
-        setLightboxUrl(null)
         setPreviewFile(null)
       }
     }
@@ -629,7 +602,9 @@ export default function LivePage() {
           if (dec) {
             const blobUrl = URL.createObjectURL(dec.blob)
             setPreviewFile({
+              id: f.id,
               url: blobUrl,
+              blob: dec.blob,
               name: dec.fileName,
               mime: dec.fileMime,
               size: dec.blob.size,
@@ -639,7 +614,9 @@ export default function LivePage() {
         } else if (p2pBlob) {
           const blobUrl = URL.createObjectURL(p2pBlob)
           setPreviewFile({
+            id: f.id,
             url: blobUrl,
+            blob: p2pBlob,
             name: f.fileName,
             mime: f.fileMime,
             size: f.fileSize,
@@ -650,6 +627,7 @@ export default function LivePage() {
     }
 
     setPreviewFile({
+      id: f.id,
       url: liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName),
       name: f.fileName,
       mime: f.fileMime,
@@ -1536,324 +1514,53 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
         </div>
       </main>
 
-      {/* ── Universal File Preview Modal (Images, Video, Audio, Code, PDF, etc.) ──── */}
-      {(previewFile || lightboxUrl) && (() => {
-        const active = previewFile || {
-          url: lightboxUrl!,
-          name: lightboxName || 'Preview',
-          mime: 'image/png',
-          size: 0,
-        }
-        const isImg = isImageFile(active.mime, active.name)
-        const isVid = isVideoFile(active.mime, active.name)
-        const isAud = isAudioFile(active.mime, active.name)
-        const isPdf = isPdfFile(active.mime, active.name)
-        const isCode = isTextOrCodeFile(active.mime, active.name)
-        const badge = getFileTypeBadge(active.name, active.mime)
-
-        const closePreview = () => {
-          setPreviewFile(null)
-          setLightboxUrl(null)
-        }
-
-        const copyContent = () => {
-          if (!previewTextContent) return
-          navigator.clipboard.writeText(previewTextContent)
-          setPreviewCopied(true)
-          showToast('File content copied to clipboard!', 'success')
-          setTimeout(() => setPreviewCopied(false), 2000)
-        }
-
-        return (
-          <div
-            onClick={closePreview}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0, 0, 0, 0.92)',
-              backdropFilter: 'blur(10px)',
-              zIndex: 10000,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '1.5rem',
-            }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                position: 'relative',
-                maxWidth: isPdf || isCode ? '900px' : '90vw',
-                width: isPdf || isCode ? '90vw' : 'auto',
-                maxHeight: '90vh',
-                display: 'flex',
-                flexDirection: 'column',
-                background: '#0a0a0d',
-                border: '1px solid var(--border)',
-                borderRadius: '12px',
-                overflow: 'hidden',
-                boxShadow: '0 25px 60px rgba(0,0,0,0.85)',
-              }}
-            >
-              {/* Modal Header */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '0.85rem 1.15rem',
-                  borderBottom: '1px solid var(--border)',
-                  background: '#0f0f13',
-                  gap: '1rem',
-                  flexShrink: 0,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0 }}>
-                  {getFileIcon(active.mime, active.name)}
-                  <span
-                    style={{
-                      color: '#ffffff',
-                      fontSize: '0.9rem',
-                      fontWeight: 600,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                    title={active.name}
-                  >
-                    {active.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '0.65rem',
-                      background: '#1f1f26',
-                      color: '#a1a1aa',
-                      padding: '0.1rem 0.4rem',
-                      borderRadius: '4px',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {badge}
-                  </span>
-                  {active.size > 0 && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                      {formatBytes(active.size)}
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-                  {isCode && (
-                    <button
-                      type="button"
-                      onClick={copyContent}
-                      className="btn btn-secondary"
-                      style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                      title="Copy file text"
-                    >
-                      {previewCopied ? <Check size={13} style={{ color: '#4ade80' }} /> : <Copy size={13} />}
-                      {previewCopied ? 'Copied' : 'Copy'}
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const f = files.find(item => item.fileName === active.name)
-                      if (f) {
-                        handleDownloadLiveFile(f)
-                      } else {
-                        const a = document.createElement('a')
-                        a.href = active.url
-                        a.download = active.name.split(/[/\\]/).pop() || active.name
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
-                      }
-                    }}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                    title="Download file"
-                  >
-                    <Download size={13} /> Download
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const f = files.find(item => item.fileName === active.name)
-                      if (f) {
-                        handleDeleteFile(f.id)
-                        closePreview()
-                      }
-                    }}
-                    className="btn btn-ghost"
-                    style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#ef4444' }}
-                    title="Delete file"
-                  >
-                    <Trash2 size={13} /> Delete
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={closePreview}
-                    className="btn btn-ghost"
-                    style={{ padding: '0.3rem', color: 'var(--text-muted)' }}
-                    title="Close"
-                    onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
-                    onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Modal Body */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '1.25rem',
-                  overflowY: 'auto',
-                  maxHeight: 'calc(90vh - 60px)',
-                  background: '#050507',
-                }}
-              >
-                {isImg ? (
-                  <img
-                    src={active.url}
-                    alt={active.name}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '75vh',
-                      borderRadius: '8px',
-                      objectFit: 'contain',
-                    }}
-                  />
-                ) : isVid ? (
-                  <video
-                    src={active.url}
-                    controls
-                    autoPlay
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '75vh',
-                      borderRadius: '8px',
-                      background: '#000000',
-                    }}
-                  />
-                ) : isAud ? (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '1.5rem',
-                      padding: '2.5rem 1.5rem',
-                      width: '100%',
-                      maxWidth: '480px',
-                      background: '#0b0b0f',
-                      border: '1px solid var(--border)',
-                      borderRadius: '12px',
-                    }}
-                  >
-                    <div style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', padding: '1.25rem', borderRadius: '50%' }}>
-                      <Music size={42} style={{ color: '#ffffff' }} />
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#ffffff' }}>{active.name}</p>
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--text-dim)' }}>Audio Stream</p>
-                    </div>
-                    <audio src={active.url} controls autoPlay style={{ width: '100%' }} />
-                  </div>
-                ) : isPdf ? (
-                  <iframe
-                    src={active.url}
-                    title={active.name}
-                    style={{
-                      width: '100%',
-                      height: '75vh',
-                      border: 'none',
-                      borderRadius: '8px',
-                      background: '#ffffff',
-                    }}
-                  />
-                ) : isCode ? (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    {previewLoadingText ? (
-                      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                        Loading file content...
-                      </div>
-                    ) : (
-                      <pre
-                        style={{
-                          margin: 0,
-                          padding: '1rem',
-                          background: '#09090c',
-                          border: '1px solid var(--border)',
-                          borderRadius: '8px',
-                          color: '#e4e4e7',
-                          fontSize: '0.875rem',
-                          lineHeight: 1.6,
-                          fontFamily: 'var(--font-mono, monospace)',
-                          overflowX: 'auto',
-                          overflowY: 'auto',
-                          maxHeight: '70vh',
-                          whiteSpace: 'pre',
-                        }}
-                      >
-                        <code>{previewTextContent || '(Empty file)'}</code>
-                      </pre>
-                    )}
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '1rem',
-                      padding: '3rem 1.5rem',
-                      textAlign: 'center',
-                    }}
-                  >
-                    {getFileIcon(active.mime, active.name)}
-                    <h3 style={{ margin: 0, color: '#ffffff', fontSize: '1.1rem', fontWeight: 600 }}>{active.name}</h3>
-                    <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-                      {badge} file · {formatBytes(active.size)} · {active.mime}
-                    </p>
-                    <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                      <a
-                        href={active.url}
-                        download={active.name.split(/[/\\]/).pop() || active.name}
-                        className="btn btn-primary"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                      >
-                        <Download size={15} /> Download File
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const f = files.find(item => item.fileName === active.name)
-                          if (f) {
-                            handleDeleteFile(f.id)
-                            closePreview()
-                          }
-                        }}
-                        className="btn btn-danger"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem' }}
-                      >
-                        <Trash2 size={15} /> Delete File
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+      {/* ── High-Quality File Preview Modal ─────────────────────────────── */}
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          onClose={() => {
+            if (previewFile.blob) URL.revokeObjectURL(previewFile.url)
+            setPreviewFile(null)
+          }}
+          onDownload={(item) => {
+            const f = files.find(item2 => item2.id === item.id || item2.fileName === item.name)
+            if (f) {
+              handleDownloadLiveFile(f)
+            } else {
+              const a = document.createElement('a')
+              a.href = item.url
+              a.download = item.name.split(/[/\\]/).pop() || item.name
+              document.body.appendChild(a)
+              a.click()
+              document.body.removeChild(a)
+            }
+          }}
+          onDelete={(item) => {
+            const f = files.find(item2 => item2.id === item.id || item2.fileName === item.name)
+            if (f) {
+              handleDeleteFile(f.id)
+              if (previewFile.blob) URL.revokeObjectURL(previewFile.url)
+              setPreviewFile(null)
+            }
+          }}
+          hasPrev={(() => {
+            const idx = files.findIndex(f => f.fileName === previewFile.name || f.id === previewFile.id)
+            return idx > 0
+          })()}
+          hasNext={(() => {
+            const idx = files.findIndex(f => f.fileName === previewFile.name || f.id === previewFile.id)
+            return idx >= 0 && idx < files.length - 1
+          })()}
+          onNavigatePrev={() => {
+            const idx = files.findIndex(f => f.fileName === previewFile.name || f.id === previewFile.id)
+            if (idx > 0) handleTriggerPreview(files[idx - 1])
+          }}
+          onNavigateNext={() => {
+            const idx = files.findIndex(f => f.fileName === previewFile.name || f.id === previewFile.id)
+            if (idx >= 0 && idx < files.length - 1) handleTriggerPreview(files[idx + 1])
+          }}
+        />
+      )}
 
       {/* ── QR Code / Phone Pairing Modal ─────────────────────────────────── */}
       {showQrModal && (

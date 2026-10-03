@@ -4,6 +4,37 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
+## 🗓️ October 2026 — Universal Media & Document Viewer, Client-Side ZIP Inspector & Zero-Knowledge Encryption Expansion
+
+### 1. 🎬 Universal High-Quality File Previewer (`FilePreviewModal`)
+* **Feature:** Built a unified, responsive media and document preview modal for both **LivePad** (`/live/:slug`) and **Static URL Pastes** (`/:slug`).
+* **Cinematic Video Player:** Generous player container (`maxWidth: 1240px`, up to `100vw` in fullscreen/theater mode) up to `86vh / 94vh` height with native controls, picture-in-picture, and duration/resolution tags. No cramped or tiny boxes.
+* **High-Res Image Lightbox:** Crisp uncompressed rendering (`image-rendering: auto`), 25% to 500% zoom controls, 90° rotation, mouse wheel zoom, drag-to-pan when zoomed in, and natural pixel dimension badges (`width × height px`).
+* **Interactive Code & Text Viewer:** Monospace typography with line numbers gutter, Prism syntax highlighting across 30+ languages, word-wrap toggle, in-file search, and 1-click clipboard copy.
+* **Audio & PDF Players:** Sleek dark audio card with waveform badge, and full-height embedded PDF frame with quick "Open in new tab" fallback.
+* **Keyboard Navigation:** Cycle through all files in a paste or room using `ArrowLeft` / `ArrowRight` or floating chevrons; `Escape` to close.
+
+### 2. 🗜️ Client-Side ZIP Archive Inspector
+* **Feature:** Interactive ZIP archive explorer powered by `fflate` in client memory.
+* **Capability:** Users can click on `.zip` attachments to inspect the complete archive manifest, folder structure, file counts, and uncompressed sizes with a live search filter.
+* **Individual Extraction:** Users can extract and download individual files directly from within the ZIP archive without downloading the full package.
+
+### 3. 🔐 Zero-Knowledge Binary File Encryption Expansion
+* **Edit Mode Client-Side Encryption:** Newly added files in `EditPage.tsx` are encrypted client-side with AES-256-GCM before upload when the paste is password-protected.
+* **Worker-Side ENC1 Decryption for Downloads & ZIPs:** Cloudflare Worker can decrypt `ENC1` files on-the-fly when provided a valid decryption password via `x-pass` or `?pass=`, enabling direct CLI downloads and complete decrypted ZIP bundle archives.
+* **In-Memory Preview Decryption:** `ViewPage.tsx` decrypts `ENC1` files directly in memory via `decryptFileBuffer` so password-protected images, videos, audio, code, and zip archives can be viewed seamlessly in the previewer.
+
+### 4. ⏳ Decoupled File Expiration & Storage Management
+* **Separation of Concerns:** Entry expiration and file attachment expiration are completely decoupled.
+* **Auto-Purge:** Permanent text pastes now cleanly purge attached files after 48 hours for storage efficiency while preserving permanent text forever.
+
+### 5. 📊 Real-Time View Tracking & ETag Cache Fixes
+* **Isolated KV Metrics:** View tracking stored atomically in `views:${slug}` without corrupting or mutating core entry documents.
+* **Cache Integrity:** Active page visits increment view counters, while background SSE polling and ETag 304 revalidations are ignored.
+* **Admin Dashboard:** Dynamic view counts enriched in real time.
+
+---
+
 ## 🗓️ September 27, 2026 — Live Pad, Real-Time Sync, Zero-Scroll Monochrome UI & Full SEO Suite
 
 ### 1. ⚡ Live Pad Real-Time Sync (`/live/:slug`)

@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Env } from '../lib/types'
 import { getEntry, getFileKV } from '../lib/kv'
-import { isEncrypted, decryptContent } from '../lib/crypto'
+import { isEncrypted, decryptContent, isEncryptedFileBuffer, decryptFileArrayBuffer } from '../lib/crypto'
 import { zipSync, strToU8 } from 'fflate'
 
 // ── ETag helper ───────────────────────────────────────────────────────────────
@@ -35,11 +35,11 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
 
 
   // 1. Add text content as <slug>.txt
+  const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
   const zipFiles: Record<string, Uint8Array> = {}
   if (entry.content) {
     let contentToZip = entry.content
     if (isEncrypted(entry.content)) {
-      const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
       if (password) {
         const decrypted = await decryptContent(entry.content, password)
         if (decrypted !== null) {
@@ -73,8 +73,19 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
       for (const file of entry.files) {
         const data = await getFileKV(c.env.PASTE_KV, slug, file.id)
         if (data) {
+          let fileBytes = data
+          let name = file.fileName
+
+          if (password && isEncryptedFileBuffer(data)) {
+            const dec = await decryptFileArrayBuffer(data, password)
+            if (dec) {
+              fileBytes = dec.buffer
+              name = dec.fileName
+            }
+          }
+
           // Check size as we load files
-          totalFileSize += data.byteLength
+          totalFileSize += fileBytes.byteLength
           if (totalFileSize > MAX_ZIP_SIZE_MB * 1024 * 1024) {
             return c.json({ 
               error: 'zip_too_large', 
@@ -85,9 +96,8 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
           }
 
           // Deduplicate filenames with human-readable suffixes like (2), (3)
-          let name = file.fileName
           if (zipFiles[name]) {
-            const originalName = file.fileName
+            const originalName = name
             const parts = originalName.split('.')
             const ext = parts.length > 1 ? `.${parts.pop()}` : ''
             const baseName = parts.join('.')
@@ -97,7 +107,7 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
               counter++
             }
           }
-          zipFiles[name] = new Uint8Array(data)
+          zipFiles[name] = new Uint8Array(fileBytes)
         } else {
           // File blob missing from KV (TTL expired or propagation lag)
           missingFiles.push(file.fileName)
@@ -108,7 +118,18 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
       // Legacy single-file entry
       const data = await getFileKV(c.env.PASTE_KV, slug)
       if (data && entry.fileName) {
-        totalFileSize = data.byteLength
+        let fileBytes = data
+        let name = entry.fileName
+
+        if (password && isEncryptedFileBuffer(data)) {
+          const dec = await decryptFileArrayBuffer(data, password)
+          if (dec) {
+            fileBytes = dec.buffer
+            name = dec.fileName
+          }
+        }
+
+        totalFileSize = fileBytes.byteLength
         if (totalFileSize > MAX_ZIP_SIZE_MB * 1024 * 1024) {
           return c.json({ 
             error: 'zip_too_large', 
@@ -117,7 +138,7 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
             limit: MAX_ZIP_SIZE_MB * 1024 * 1024
           }, 413)
         }
-        zipFiles[entry.fileName] = new Uint8Array(data)
+        zipFiles[name] = new Uint8Array(fileBytes)
       } else if (entry.fileName) {
         missingFiles.push(entry.fileName)
         console.error(`ZIP: Missing legacy file blob for ${slug} (${entry.fileName})`)

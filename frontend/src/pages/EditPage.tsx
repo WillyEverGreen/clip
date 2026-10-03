@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock, AlertTriangle, AlertCircle } from 'lucide-react'
 import { verifyEditCode, getEntry, updateEntryWithProgress, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
-import { isEncrypted, decryptContent, encryptContent } from '../lib/crypto'
+import { isEncrypted, decryptContent, encryptContent, encryptFile } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
 import DropZone from '../components/DropZone'
@@ -205,7 +205,16 @@ export default function EditPage() {
       }
 
       if (newFiles.length > 0) {
-        newFiles.forEach((f) => {
+        const filesToUpload: File[] = []
+        if (viewPassword) {
+          for (const f of newFiles) {
+            const enc = await encryptFile(f, viewPassword)
+            filesToUpload.push(enc)
+          }
+        } else {
+          filesToUpload.push(...newFiles)
+        }
+        filesToUpload.forEach((f) => {
           form.append('files', f)
           form.append('file', f)
         })

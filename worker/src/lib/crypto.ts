@@ -120,6 +120,70 @@ export async function decryptContent(raw: string, password: string): Promise<str
   }
 }
 
+// ─── Zero-Knowledge Binary File Encryption (ENC1 Envelope) ───────────────────
+const ENC_MAGIC = new Uint8Array([0x45, 0x4E, 0x43, 0x31]) // 'ENC1'
+
+export interface DecryptedFileBuffer {
+  buffer: ArrayBuffer
+  fileName: string
+  fileMime: string
+  fileSize: number
+}
+
+export function isEncryptedFileBuffer(buf: ArrayBuffer): boolean {
+  if (buf.byteLength < 34) return false
+  const bytes = new Uint8Array(buf, 0, 4)
+  return bytes[0] === ENC_MAGIC[0] &&
+         bytes[1] === ENC_MAGIC[1] &&
+         bytes[2] === ENC_MAGIC[2] &&
+         bytes[3] === ENC_MAGIC[3]
+}
+
+export async function decryptFileArrayBuffer(
+  containerBuf: ArrayBuffer,
+  password: string,
+): Promise<DecryptedFileBuffer | null> {
+  try {
+    if (!isEncryptedFileBuffer(containerBuf)) return null
+
+    const container = new Uint8Array(containerBuf)
+    let offset = 4 // skip magic
+
+    const salt = container.slice(offset, offset + 16); offset += 16
+    const iv   = container.slice(offset, offset + 12); offset += 12
+
+    const view = new DataView(containerBuf, container.byteOffset, container.byteLength)
+    const metaLen = view.getUint16(offset, false); offset += 2
+
+    const metaBytes = container.slice(offset, offset + metaLen); offset += metaLen
+    const metaStr = new TextDecoder().decode(metaBytes)
+    const meta = JSON.parse(metaStr) as { name: string; mime: string; size: number }
+
+    const ciphertext = container.slice(offset)
+
+    const enc = new TextEncoder()
+    const rawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: PBKDF2_PAYLOAD_ITERATIONS, hash: 'SHA-256' },
+      rawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    )
+
+    const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext)
+
+    return {
+      buffer: plainBuf,
+      fileName: meta.name || 'decrypted_file',
+      fileMime: meta.mime || 'application/octet-stream',
+      fileSize: meta.size ?? plainBuf.byteLength,
+    }
+  } catch {
+    return null
+  }
+}
+
 // ─── IP hashing (for privacy-safe logging) ────────────────────────────────────
 
 export async function hashIp(ip: string, pepper: string = 'clip_default_pepper'): Promise<string> {

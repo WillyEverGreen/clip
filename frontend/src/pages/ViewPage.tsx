@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, Eye, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
 import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry, type FileItem } from '../lib/api'
 import { isEncrypted, decryptContent, computeAuthHash, generateSalt, isEncryptedFileBuffer, decryptFileBuffer } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
@@ -10,6 +10,7 @@ import { useEntrySSE } from '../lib/useEntrySSE'
 import Countdown from '../components/Countdown'
 import Logo      from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
+import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
 
 // Heavy components lazy-loaded: their library chunks are only downloaded when needed
 const MarkdownRenderer = lazy(() => import('../components/MarkdownRenderer'))
@@ -1036,6 +1037,10 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
     return (localStorage.getItem('clip_file_layout') as 'list' | 'grid' | 'tiles') || 'list'
   })
 
+  const [previewFile, setPreviewFile] = useState<PreviewFileItem | null>(null)
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
+  const [previewLoadingIndex, setPreviewLoadingIndex] = useState<number | null>(null)
+
   const changeLayout = (mode: 'list' | 'grid' | 'tiles') => {
     setLayout(mode)
     localStorage.setItem('clip_file_layout', mode)
@@ -1052,11 +1057,11 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
   const usedPercent = Math.min(100, (totalSize / maxStorage) * 100)
 
   const getIcon = (mime: string, size = 32) => {
-    if (mime.startsWith('image/'))  return <ImageIcon size={size} color="#ffffff" />
-    if (mime.startsWith('video/'))  return <Film size={size} color="#ffffff" />
-    if (mime.startsWith('audio/'))  return <Music size={size} color="#ffffff" />
-    if (mime.includes('zip'))        return <FileArchive size={size} color="#ffffff" />
-    if (mime === 'application/pdf') return <FileText size={size} color="#ffffff" />
+    if (mime.startsWith('image/'))  return <ImageIcon size={size} color="#38bdf8" />
+    if (mime.startsWith('video/'))  return <Film size={size} color="#ec4899" />
+    if (mime.startsWith('audio/'))  return <Music size={size} color="#f59e0b" />
+    if (mime.includes('zip') || mime.includes('tar') || mime.includes('rar')) return <FileArchive size={size} color="#10b981" />
+    if (mime === 'application/pdf') return <FileText size={size} color="#ef4444" />
     return <FileIcon size={size} color="#ffffff" />
   }
 
@@ -1108,6 +1113,63 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
       a.click()
       document.body.removeChild(a)
     }
+  }
+
+  const handleOpenPreview = async (idx: number) => {
+    const item = filesList[idx]
+    if (!item) return
+    setPreviewIndex(idx)
+    setPreviewLoadingIndex(idx)
+
+    const sessionPass = sessionStorage.getItem('clip_decrypt_' + slug) || ''
+    const downloadLink = fileUrl(slug, item.id)
+
+    try {
+      if (sessionPass) {
+        const res = await fetch(downloadLink)
+        if (res.ok) {
+          const buf = await res.arrayBuffer()
+          if (isEncryptedFileBuffer(buf)) {
+            const dec = await decryptFileBuffer(buf, sessionPass)
+            if (dec) {
+              const blobUrl = URL.createObjectURL(dec.blob)
+              setPreviewFile({
+                id: item.id,
+                name: dec.fileName,
+                mime: dec.fileMime,
+                size: dec.blob.size,
+                url: blobUrl,
+                blob: dec.blob,
+              })
+              return
+            }
+          }
+          const blob = new Blob([buf], { type: item.fileMime || 'application/octet-stream' })
+          const blobUrl = URL.createObjectURL(blob)
+          setPreviewFile({
+            id: item.id,
+            name: item.fileName,
+            mime: item.fileMime,
+            size: item.fileSize,
+            url: blobUrl,
+            blob,
+          })
+          return
+        }
+      }
+    } catch (err) {
+      console.error('Failed to prepare preview:', err)
+    } finally {
+      setPreviewLoadingIndex(null)
+    }
+
+    setPreviewFile({
+      id: item.id,
+      name: item.fileName,
+      mime: item.fileMime,
+      size: item.fileSize,
+      url: downloadLink,
+    })
   }
 
   const handleDownloadAll = () => {
@@ -1162,7 +1224,6 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
             </button>
           </div>
 
-
           <button
             onClick={handleDownloadAll}
             className="btn btn-primary"
@@ -1191,38 +1252,82 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
           {filesList.map((item, i) => {
             const ext = (item.fileName ?? '').split('.').pop()?.toUpperCase() ?? 'FILE'
+            const isLoadingThis = previewLoadingIndex === i
 
             return (
               <div
                 key={item.id ?? i}
                 style={{
-                  display:'flex', alignItems:'center', gap:'1.25rem', flexWrap:'wrap',
-                  padding:'1rem 1.25rem', background:'#000000', border:'1px solid var(--border)', borderRadius:'12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1.25rem',
+                  flexWrap: 'wrap',
+                  padding: '0.9rem 1.25rem',
+                  background: '#09090c',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  transition: 'border-color 150ms ease, background 150ms ease',
                 }}
+                className="file-list-row"
               >
-                <div style={{ background:'#09090b', border:'1px solid var(--border)', padding:'0.75rem', borderRadius:'10px', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <div
+                  onClick={() => handleOpenPreview(i)}
+                  style={{
+                    background: '#121216',
+                    border: '1px solid var(--border)',
+                    padding: '0.75rem',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                  }}
+                  title="Click to preview"
+                >
                   {getIcon(item.fileMime)}
                 </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <p style={{ fontWeight:600, fontSize:'1.05rem', color:'#ffffff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+
+                <div
+                  onClick={() => handleOpenPreview(i)}
+                  style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  title="Click to preview"
+                >
+                  <p style={{ fontWeight: 600, fontSize: '1rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>
                     {item.fileName}
                   </p>
-                  <p style={{ color:'var(--text-muted)', fontSize:'0.8125rem', marginTop:'0.25rem', display:'flex', alignItems:'center', gap:'0.5rem', flexWrap:'wrap' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8125rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', margin: 0 }}>
                     <span>{ext} · {formatBytes(item.fileSize)}</span>
-                    <span style={{ color:'var(--text-dim)' }}>·</span>
-                    <span style={{ color:'#f87171', display:'inline-flex', alignItems:'center', gap:'0.25rem' }}>
+                    <span style={{ color: 'var(--text-dim)' }}>·</span>
+                    <span style={{ color: '#f87171', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                       Auto-deletes in: <Countdown expiresAt={fileExpiresAt} />
                     </span>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadFile(item)}
-                  className="btn btn-ghost"
-                  style={{ flexShrink:0, gap:'0.5rem', padding:'0.5rem 0.9rem', fontSize:'0.8125rem' }}
-                >
-                  <Download size={14} /> Download
-                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenPreview(i)}
+                    disabled={isLoadingThis}
+                    className="btn btn-secondary"
+                    style={{ gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+                    title="Preview file"
+                  >
+                    {isLoadingThis ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Eye size={14} />}
+                    Preview
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadFile(item)}
+                    className="btn btn-ghost"
+                    style={{ gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
+                    title="Download file"
+                  >
+                    <Download size={14} /> Download
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -1231,41 +1336,85 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
 
       {/* ── 2. GRID / CARDS VIEW ───────────────────────────────────────────── */}
       {layout === 'grid' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '1rem' }}>
           {filesList.map((item, i) => {
             const ext = (item.fileName ?? '').split('.').pop()?.toUpperCase() ?? 'FILE'
+            const isLoadingThis = previewLoadingIndex === i
 
             return (
               <div
                 key={item.id ?? i}
                 style={{
-                  display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                  padding: '1.25rem', background: '#000000', border: '1px solid var(--border)', borderRadius: '12px',
-                  gap: '1rem', textAlign: 'center', alignItems: 'center'
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  padding: '1.25rem',
+                  background: '#09090c',
+                  border: '1px solid var(--border)',
+                  borderRadius: '12px',
+                  gap: '1rem',
+                  textAlign: 'center',
+                  alignItems: 'center',
+                  transition: 'border-color 150ms ease, transform 150ms ease',
                 }}
               >
-                <div style={{ background: '#09090b', border: '1px solid var(--border)', padding: '1rem', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '56px', height: '56px' }}>
+                <div
+                  onClick={() => handleOpenPreview(i)}
+                  style={{
+                    background: '#121216',
+                    border: '1px solid var(--border)',
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '64px',
+                    height: '64px',
+                    cursor: 'pointer',
+                  }}
+                  title="Click to preview"
+                >
                   {getIcon(item.fileMime, 36)}
                 </div>
-                <div style={{ width: '100%', minWidth: 0 }}>
-                  <p style={{ fontWeight: 600, fontSize: '0.95rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.fileName}>
+
+                <div
+                  onClick={() => handleOpenPreview(i)}
+                  style={{ width: '100%', minWidth: 0, cursor: 'pointer' }}
+                  title="Click to preview"
+                >
+                  <p style={{ fontWeight: 600, fontSize: '0.95rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }} title={item.fileName}>
                     {item.fileName}
                   </p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.785rem', marginTop: '0.35rem' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.785rem', marginTop: '0.35rem', margin: 0 }}>
                     {ext} · {formatBytes(item.fileSize)}
                   </p>
-                  <p style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                  <p style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.2rem', margin: 0 }}>
                     <Countdown expiresAt={fileExpiresAt} />
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDownloadFile(item)}
-                  className="btn btn-ghost"
-                  style={{ width: '100%', justifyContent: 'center', gap: '0.4rem', padding: '0.45rem 0.75rem', fontSize: '0.8rem' }}
-                >
-                  <Download size={14} /> Download
-                </button>
+
+                <div style={{ display: 'flex', gap: '0.4rem', width: '100%' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenPreview(i)}
+                    disabled={isLoadingThis}
+                    className="btn btn-secondary"
+                    style={{ flex: 1, justifyContent: 'center', gap: '0.35rem', padding: '0.45rem 0.6rem', fontSize: '0.775rem' }}
+                    title="Preview file"
+                  >
+                    {isLoadingThis ? <div className="spinner" style={{ width: 12, height: 12 }} /> : <Eye size={13} />} Preview
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadFile(item)}
+                    className="btn btn-ghost"
+                    style={{ flex: 1, justifyContent: 'center', gap: '0.35rem', padding: '0.45rem 0.6rem', fontSize: '0.775rem' }}
+                    title="Download file"
+                  >
+                    <Download size={13} /> Download
+                  </button>
+                </div>
               </div>
             )
           })}
@@ -1276,36 +1425,85 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
       {layout === 'tiles' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '0.75rem' }}>
           {filesList.map((item, i) => {
+            const isLoadingThis = previewLoadingIndex === i
+
             return (
               <div
                 key={item.id ?? i}
-                onClick={() => handleDownloadFile(item)}
+                onClick={() => handleOpenPreview(i)}
                 style={{
                   cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center',
-                  padding: '1rem 0.75rem', background: '#000000', border: '1px solid var(--border)', borderRadius: '10px',
-                  gap: '0.6rem', transition: 'border-color 150ms ease, background 150ms ease'
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  textAlign: 'center',
+                  padding: '1rem 0.75rem',
+                  background: '#09090c',
+                  border: '1px solid var(--border)',
+                  borderRadius: '10px',
+                  gap: '0.6rem',
+                  transition: 'border-color 150ms ease, background 150ms ease',
                 }}
                 className="tile-card"
+                title="Click to preview"
               >
-                <div style={{ background: '#09090b', border: '1px solid var(--border)', padding: '0.6rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ background: '#121216', border: '1px solid var(--border)', padding: '0.6rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   {getIcon(item.fileMime, 26)}
                 </div>
                 <div style={{ width: '100%', minWidth: 0 }}>
-                  <p style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.fileName}>
+                  <p style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }} title={item.fileName}>
                     {item.fileName}
                   </p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.725rem', marginTop: '2px' }}>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.725rem', marginTop: '2px', margin: 0 }}>
                     {formatBytes(item.fileSize)}
                   </p>
                 </div>
-                <span style={{ fontSize: '0.725rem', color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                  <Download size={12} /> Download
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '2px' }}>
+                  <span style={{ fontSize: '0.725rem', color: '#38bdf8', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                    {isLoadingThis ? <div className="spinner" style={{ width: 10, height: 10 }} /> : <Eye size={12} />} View
+                  </span>
+                  <span style={{ color: 'var(--text-dim)', fontSize: '0.65rem' }}>·</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDownloadFile(item)
+                    }}
+                    className="btn btn-ghost"
+                    style={{ padding: '0.1rem 0.3rem', fontSize: '0.725rem', color: '#a1a1aa' }}
+                    title="Download file"
+                  >
+                    <Download size={12} />
+                  </button>
+                </div>
               </div>
             )
           })}
         </div>
+      )}
+
+      {/* ── High-Quality File Preview Modal ─────────────────────────────── */}
+      {previewFile && (
+        <FilePreviewModal
+          file={previewFile}
+          onClose={() => {
+            if (previewFile.blob) URL.revokeObjectURL(previewFile.url)
+            setPreviewFile(null)
+            setPreviewIndex(null)
+          }}
+          onDownload={(f) => {
+            const itemToDownload = filesList[previewIndex ?? 0] || { id: f.id, fileName: f.name }
+            handleDownloadFile(itemToDownload)
+          }}
+          hasPrev={previewIndex !== null && previewIndex > 0}
+          hasNext={previewIndex !== null && previewIndex < filesList.length - 1}
+          onNavigatePrev={() => {
+            if (previewIndex !== null && previewIndex > 0) handleOpenPreview(previewIndex - 1)
+          }}
+          onNavigateNext={() => {
+            if (previewIndex !== null && previewIndex < filesList.length - 1) handleOpenPreview(previewIndex + 1)
+          }}
+        />
       )}
     </div>
   )

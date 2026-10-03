@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 import type { Env } from '../lib/types'
 import { getEntry, putEntry, toPublic, getFileKV, deleteFileKV, getViews, incrementViewsKV } from '../lib/kv'
-import { isEncrypted, decryptContent } from '../lib/crypto'
+import { isEncrypted, decryptContent, isEncryptedFileBuffer, decryptFileArrayBuffer } from '../lib/crypto'
 import { notifyRoom } from '../lib/notify'
 
 function sanitizeFilename(name: string): string {
@@ -64,13 +64,29 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
   const fileData = await getFileKV(c.env.PASTE_KV, slug, fileId)
   if (!fileData) return c.json({ error: 'not_found' }, 404)
 
+  let serveData = fileData
+  if (isEncryptedFileBuffer(fileData)) {
+    const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
+    if (password) {
+      const dec = await decryptFileArrayBuffer(fileData, password)
+      if (dec) {
+        serveData = dec.buffer
+        fileName = dec.fileName
+        fileMime = dec.fileMime
+        fileSize = dec.fileSize
+      } else {
+        return c.text(`Error: Incorrect password for encrypted file in /${slug}.\n`, 401)
+      }
+    }
+  }
+
   const safeName = sanitizeFilename(fileName)
 
-  return new Response(fileData, {
+  return new Response(serveData, {
     headers: {
       'Content-Type':        fileMime,
       'Content-Disposition': `attachment; filename="${safeName}"`,
-      'Content-Length':      String(fileSize || fileData.byteLength),
+      'Content-Length':      String(fileSize || serveData.byteLength),
       'ETag':                etag,
       'Cache-Control':       'no-cache, must-revalidate',
       'Pragma':              'no-cache',
@@ -223,16 +239,14 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
     return handleReadRaw(c)
   }
 
-  const isPolling = !!c.req.query('_t') || c.req.query('poll') === 'true'
+  const isPolling = c.req.query('poll') === 'true'
   const currentViews = extraViews !== null ? Math.max(entry.views ?? 0, extraViews) : (entry.views ?? 0)
 
   // ── ETag / 304 for JSON API ────────────────────────────────────────────────
+  // Only return 304 for background polling where client only checks for content changes.
+  // Real view requests (!isPolling) must return 200 with the freshly updated pub.views payload.
   const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt)
-  if (isNotModified(c.req.raw, etag)) {
-    // Skip incrementing view count in background if it's a polling/refresh request
-    if (!isPolling) {
-      c.executionCtx?.waitUntil(incrementViewsKV(c.env.PASTE_KV, slug, currentViews))
-    }
+  if (isPolling && isNotModified(c.req.raw, etag)) {
     return new Response(null, {
       status: 304,
       headers: {

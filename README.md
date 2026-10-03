@@ -26,14 +26,16 @@
 
 - 🚀 **Zero Friction & No Sign-up**: Open the site, paste your text or drop your files, get your link instantly. No account, email, or credentials required.
 - ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file sharing room with instant WebSocket synchronization powered by Cloudflare Durable Objects (SQLite). Everything synchronizes live across devices as you type.
+- 🎬 **Universal Media & Document Viewer**: Full-screen theater viewer for both LivePad and URL pastes. Generous cinematic video player, uncompromised high-res image lightbox with 25%–500% zoom and pan, line-numbered syntax-highlighted code with search and copy, and embedded PDF / audio playback.
+- 🗜️ **Client-Side ZIP Archive Inspector**: Click on any attached `.zip` to explore its internal directories and files in real-time, search inside the archive, and extract/download individual files without downloading the full archive.
 - 📱 **Phone Pair via QR Code**: Connect your phone to any Live Pad room in one second by scanning a QR code with your camera.
 - 📋 **Direct Clipboard & Drag-and-Drop Sharing**: Paste images or screenshots directly from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop any file up to 25 MB.
 - 🖥️ **Zero-Scroll Viewport Layout**: Desktop workspace dynamically adapts to 100% viewport height with no vertical page scroll. Seamlessly collapses into dedicated mobile tabs on narrow screens.
 - 🎨 **Pure Monochrome (Black & White) Aesthetics**: Clean, distraction-free solid black (`#000000`) and pure white theme with Lucide iconography and zero emojis.
-- 💻 **Terminal / CLI Downloads**: Fetch pastes and files straight from Linux, macOS, or Windows terminals using simple `curl` commands.
-- 🗜️ **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive.
-- 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` (text only).
-- 🔒 **Zero-Knowledge Client-Side Encryption**: Secure text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption. The server never sees your password or plaintext data.
+- 💻 **Terminal / CLI Downloads**: Fetch pastes and files straight from Linux, macOS, or Windows terminals using simple `curl` commands with optional password flags.
+- 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive, decrypted on-the-fly when encrypted.
+- 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` (files cleanly auto-purge after 48h to optimize storage).
+- 🔒 **Zero-Knowledge Client-Side Encryption**: Secure text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption across creation, edits, and live rooms. The server never sees your password or plaintext data.
 - 🔑 **Secret Edit Code**: Protect your links with a custom edit password to modify content, add/remove files, or delete early.
 - 🔗 **Custom & Retained Slugs**: Pick your own readable URL slug (`clip.foo.ng/my-notes`) or convert live rooms into permanent clips while preserving the same slug.
 - 📁 **Rich Markdown & KaTeX Math**: Full support for GitHub Flavored Markdown (GFM), task lists, tables, and KaTeX mathematical typesetting ($\LaTeX$, matrices, piecewise functions, integrals).
@@ -80,7 +82,7 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 
 | Component | Technology |
 | :--- | :--- |
-| **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Pure Monochrome), Lucide Icons, Marked, KaTeX, Prism.js |
+| **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Pure Monochrome), Lucide Icons, Marked, KaTeX, Prism.js, fflate |
 | **Backend API** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
 | **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed WebSocket state synchronization) |
 | **Hosting & CDN** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |

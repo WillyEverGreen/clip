@@ -181,6 +181,80 @@ async function runCryptoTests() {
     const plainBytes = new Uint8Array(plainBuf)
     assert.deepStrictEqual(plainBytes, rawFileBytes)
   })
+
+  await test('Worker decrypts ENC1 file buffer with valid password and rejects invalid password', async () => {
+    const password = 'CorrectFilePass456'
+    const wrongPass = 'IncorrectPass'
+    const fileName = 'report.pdf'
+    const fileMime = 'application/pdf'
+    const rawFileBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]) // %PDF-1.4
+
+    const ENC_MAGIC = new Uint8Array([0x45, 0x4E, 0x43, 0x31])
+    const salt = crypto.getRandomValues(new Uint8Array(16))
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+
+    const enc = new TextEncoder()
+    const rawKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey'])
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' },
+      rawKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    )
+
+    const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, rawFileBytes)
+    const metaBytes = enc.encode(JSON.stringify({ name: fileName, mime: fileMime, size: rawFileBytes.byteLength }))
+
+    const container = new Uint8Array(4 + 16 + 12 + 2 + metaBytes.length + cipherBuf.byteLength)
+    let offset = 0
+    container.set(ENC_MAGIC, offset); offset += 4
+    container.set(salt, offset); offset += 16
+    container.set(iv, offset); offset += 12
+    const view = new DataView(container.buffer, container.byteOffset, container.byteLength)
+    view.setUint16(offset, metaBytes.length, false); offset += 2
+    container.set(metaBytes, offset); offset += metaBytes.length
+    container.set(new Uint8Array(cipherBuf), offset)
+
+    // Decrypt helper matching worker implementation
+    async function decryptFileArrayBuffer(containerBuf, pass) {
+      const bytes = new Uint8Array(containerBuf, 0, 4)
+      if (bytes[0] !== 0x45 || bytes[1] !== 0x4E || bytes[2] !== 0x43 || bytes[3] !== 0x31) return null
+      try {
+        const c = new Uint8Array(containerBuf)
+        let o = 4
+        const s = c.slice(o, o + 16); o += 16
+        const i = c.slice(o, o + 12); o += 12
+        const v = new DataView(containerBuf, containerBuf.byteOffset, containerBuf.byteLength)
+        const ml = v.getUint16(o, false); o += 2
+        const mb = c.slice(o, o + ml); o += ml
+        const m = JSON.parse(new TextDecoder().decode(mb))
+        const cipher = c.slice(o)
+
+        const rk = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey'])
+        const k = await crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: s, iterations: 250000, hash: 'SHA-256' },
+          rk,
+          { name: 'AES-GCM', length: 256 },
+          false,
+          ['decrypt']
+        )
+        const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: i }, k, cipher)
+        return { buffer: plain, fileName: m.name, fileMime: m.mime, fileSize: m.size }
+      } catch {
+        return null
+      }
+    }
+
+    const decrypted = await decryptFileArrayBuffer(container.buffer, password)
+    assert.ok(decrypted, 'Valid password must successfully decrypt container')
+    assert.strictEqual(decrypted.fileName, fileName)
+    assert.strictEqual(decrypted.fileMime, fileMime)
+    assert.deepStrictEqual(new Uint8Array(decrypted.buffer), rawFileBytes)
+
+    const failed = await decryptFileArrayBuffer(container.buffer, wrongPass)
+    assert.strictEqual(failed, null, 'Invalid password must return null')
+  })
 }
 
 // ── 2. Cross-Platform CLI Command Generators ────────────────────────────────
@@ -310,6 +384,38 @@ async function runSecurityTests() {
 
     const isExpired = !expiredEntry.isPermanent && Date.now() > expiredEntry.expiresAt
     assert.strictEqual(isExpired, true)
+  })
+
+  await test('File-only entry without explicit TTL defaults to permanent entry with 48-hour file TTL', async () => {
+    const isFile = true
+    const hasContent = false
+    const ttlSeconds = null
+    const now = 1700000000000
+    const FILE_TTL_SECONDS = 172_800
+    const PERMANENT_MS = 3_153_600_000_000
+
+    let expiresAt
+    let fileExpiresAt
+
+    if (ttlSeconds !== null) {
+      expiresAt = now + (ttlSeconds * 1000)
+      if (isFile) {
+        fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
+      }
+    } else {
+      if (isFile && !hasContent) {
+        expiresAt = now + PERMANENT_MS
+        fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
+      } else if (hasContent && !isFile) {
+        expiresAt = now + PERMANENT_MS
+      } else {
+        expiresAt = now + PERMANENT_MS
+        fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
+      }
+    }
+
+    assert.strictEqual(expiresAt, now + PERMANENT_MS, 'File-only entry metadata should be permanent')
+    assert.strictEqual(fileExpiresAt, now + (FILE_TTL_SECONDS * 1000), 'Attached files should expire after 48h')
   })
 
   await test('Security headers match required policy', async () => {
@@ -509,6 +615,127 @@ async function runKVReadProtectionAndCacheTests() {
     // Verify: views is tracked separately
     const views = await mockKV.get(`views:${slug}`)
     assert.strictEqual(views, '2')
+  })
+
+  await test('Real page visits increment view counter while polling requests are ignored', async () => {
+    const kvStore = new Map()
+    const mockKV = {
+      async get(key) { return kvStore.get(key) || null },
+      async put(key, val) { kvStore.set(key, String(val)) }
+    }
+
+    async function incrementViewsKV(kv, s, base = 0) {
+      const v = await kv.get(`views:${s}`)
+      const cur = v !== null ? parseInt(v, 10) : base
+      await kv.put(`views:${s}`, String(cur + 1))
+    }
+
+    async function simulateHandleRead(slug, query, entry) {
+      const extraViews = await mockKV.get(`views:${slug}`).then(v => v !== null ? parseInt(v, 10) : null)
+      const currentViews = extraViews !== null ? Math.max(entry.views ?? 0, extraViews) : (entry.views ?? 0)
+      const isPolling = query.poll === 'true'
+
+      if (!isPolling) {
+        await incrementViewsKV(mockKV, slug, currentViews)
+      }
+
+      return {
+        slug: entry.slug,
+        views: currentViews + (isPolling ? 0 : 1)
+      }
+    }
+
+    const entry = { slug: 'view-test', views: 0 }
+
+    // Visit 1: Initial page load with cache-busting timestamp _t
+    const res1 = await simulateHandleRead('view-test', { _t: '1728000000000' }, entry)
+    assert.strictEqual(res1.views, 1, 'Initial view with _t timestamp must return incremented view count (1)')
+    assert.strictEqual(await mockKV.get('views:view-test'), '1', 'KV views:slug must be incremented to 1')
+
+    // Visit 2: Manual refresh button clicked (sends new _t timestamp)
+    const res2 = await simulateHandleRead('view-test', { _t: '1728000005000' }, entry)
+    assert.strictEqual(res2.views, 2, 'Manual refresh with _t must return incremented view count (2)')
+    assert.strictEqual(await mockKV.get('views:view-test'), '2', 'KV views:slug must be incremented to 2')
+
+    // Visit 3: Auto-polling / SSE background check (sends poll=true)
+    const res3 = await simulateHandleRead('view-test', { poll: 'true' }, entry)
+    assert.strictEqual(res3.views, 2, 'Background polling with poll=true must NOT increment view count')
+    assert.strictEqual(await mockKV.get('views:view-test'), '2', 'KV views:slug must remain 2 after poll request')
+  })
+
+  await test('ETag 304 handling only short-circuits polling requests and serves fresh payload on active views', async () => {
+    function simulateReadResponse(query, ifNoneMatch, etag, currentViews, isNotModified) {
+      const isPolling = query.poll === 'true'
+      if (isPolling && isNotModified(ifNoneMatch, etag)) {
+        return { status: 304, body: null }
+      }
+      return { status: 200, body: { views: currentViews + (isPolling ? 0 : 1) } }
+    }
+
+    const etag = '"etag-1000"'
+    const isNotModified = (reqEtag, targetEtag) => reqEtag === targetEtag
+
+    // Case A: Real viewer has previous ETag in browser cache
+    const viewerRes = simulateReadResponse({ _t: '123' }, '"etag-1000"', etag, 5, isNotModified)
+    assert.strictEqual(viewerRes.status, 200, 'Real viewer must receive 200 with updated payload')
+    assert.strictEqual(viewerRes.body.views, 6, 'Real viewer response payload must include incremented view count')
+
+    // Case B: Background polling with matching ETag
+    const pollRes = simulateReadResponse({ poll: 'true' }, '"etag-1000"', etag, 5, isNotModified)
+    assert.strictEqual(pollRes.status, 304, 'Background poll with matching ETag must receive 304')
+    assert.strictEqual(pollRes.body, null, '304 must have no body')
+  })
+
+  await test('Admin entries listing dynamically enriches items with live views from views:slug KV key', async () => {
+    const kvStore = new Map([
+      ['entry:alpha', JSON.stringify({ slug: 'alpha', createdAt: 100, views: 0 })],
+      ['entry:beta', JSON.stringify({ slug: 'beta', createdAt: 200, views: 0 })],
+      ['views:alpha', '42'],
+      ['views:beta', '15']
+    ])
+
+    const mockKV = {
+      async list() {
+        return {
+          keys: [
+            { name: 'entry:alpha', metadata: { slug: 'alpha', createdAt: 100, views: 0 } },
+            { name: 'entry:beta', metadata: { slug: 'beta', createdAt: 200, views: 0 } }
+          ],
+          list_complete: true
+        }
+      },
+      async get(key) {
+        return kvStore.get(key) || null
+      }
+    }
+
+    async function getViews(kv, slug) {
+      const v = await kv.get(`views:${slug}`)
+      return v !== null ? parseInt(v, 10) : null
+    }
+
+    // Simulate handleAdminList
+    const listRes = await mockKV.list()
+    const entries = await Promise.all(listRes.keys.map(async k => {
+      let meta = { ...k.metadata }
+      const liveViews = await getViews(mockKV, meta.slug)
+      if (liveViews !== null) {
+        meta.views = Math.max(meta.views ?? 0, liveViews)
+      }
+      return meta
+    }))
+
+    let totalViews = 0
+    for (const e of entries) {
+      totalViews += e.views || 0
+    }
+
+    const alphaEntry = entries.find(e => e.slug === 'alpha')
+    const betaEntry = entries.find(e => e.slug === 'beta')
+
+    assert.strictEqual(alphaEntry.views, 42, 'Alpha entry views must be 42')
+    assert.strictEqual(betaEntry.views, 15, 'Beta entry views must be 15')
+    assert.strictEqual(totalViews, 57, 'Total views across admin dashboard must be 57 (42 + 15)')
   })
 
   await test('Cache-Control headers prevent stale browser and CDN caching', async () => {

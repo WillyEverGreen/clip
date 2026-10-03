@@ -109,9 +109,9 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     } else {
       // Default behavior
       if (isFile && !hasContent) {
-        // File-only entries: entry expires when files expire (48 hours)
-        expiresAt = now + (FILE_TTL_SECONDS * 1000)
-        fileExpiresAt = expiresAt
+        // File-only entries: entry metadata is permanent, files expire after 48 hours
+        expiresAt = now + PERMANENT_MS
+        fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
       } else if (hasContent && !isFile) {
         // Text-only entries: permanent
         expiresAt = now + PERMANENT_MS
