@@ -32,12 +32,23 @@ export class ClipRoom extends DurableObject<Env> {
   private currentFiles: FileItem[] = []
   private roomSecurity: RoomSecurity = { isProtected: false }
   private loadedStorage: boolean = false
+  private slug: string = ''
+  private createdAt: number = 0
+  private updatedAt: number = 0
+  private expiresAt: number = 0
 
   constructor(state: DurableObjectState, env: Env) {
     super(state, env)
     this.ctx.blockConcurrencyWhile(async () => {
       try {
-        const saved = await this.ctx.storage.get<{ text: string; files: FileItem[]; expiresAt?: number }>('live_state')
+        const saved = await this.ctx.storage.get<{
+          text: string
+          files: FileItem[]
+          expiresAt?: number
+          createdAt?: number
+          updatedAt?: number
+          slug?: string
+        }>('live_state')
         if (saved) {
           if (saved.expiresAt && Date.now() > saved.expiresAt) {
             // Room expired after 24 hours of inactivity
@@ -48,6 +59,10 @@ export class ClipRoom extends DurableObject<Env> {
           } else {
             this.currentText = saved.text || ''
             this.currentFiles = saved.files || []
+            this.createdAt = saved.createdAt || 0
+            this.updatedAt = saved.updatedAt || 0
+            this.expiresAt = saved.expiresAt || 0
+            if (saved.slug) this.slug = saved.slug
           }
         }
         const sec = await this.ctx.storage.get<RoomSecurity>('room_security')
@@ -63,6 +78,37 @@ export class ClipRoom extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
+    const match = url.pathname.match(/(?:\/room\/|\/api\/live\/)([^\/]+)/)
+    if (match && match[1]) {
+      this.slug = match[1]
+      const now = Date.now()
+      if (!this.createdAt) this.createdAt = now
+      if (!this.updatedAt) this.updatedAt = now
+      if (!this.expiresAt) this.expiresAt = now + 24 * 3600 * 1000
+    }
+
+    // ── DELETE /room/:slug/terminate — terminate live room from admin ──────
+    if (request.method === 'DELETE' && (url.pathname.includes('/terminate') || url.pathname.endsWith('/live-terminate'))) {
+      for (const ws of this.sockets) {
+        try {
+          ws.send(JSON.stringify({ type: 'room_closed', message: 'Room has been terminated by administrator.' }))
+          ws.close(1000, 'Room terminated')
+        } catch {}
+      }
+      this.sockets.clear()
+      this.authenticatedSockets.clear()
+      this.clientMap.clear()
+      this.socketToClient.clear()
+      this.currentText = ''
+      this.currentFiles = []
+      this.roomSecurity = { isProtected: false }
+      try {
+        await this.ctx.storage.deleteAll()
+      } catch {}
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
 
     // ── WebSocket: Real-time Live Pad connection ──────────────────────────
     if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
@@ -177,6 +223,7 @@ export class ClipRoom extends DurableObject<Env> {
           peers: this.sockets.size,
           peerIds: Array.from(this.clientMap.keys()),
         })
+        this.persistLiveState().catch(() => {})
       }
 
       server.addEventListener('close', cleanup)
@@ -191,12 +238,23 @@ export class ClipRoom extends DurableObject<Env> {
     // ── GET /room/:slug/live-state — get current live state ────────────────
     if (request.method === 'GET' && url.pathname.includes('/live-state')) {
       const isProt = !!this.roomSecurity?.isProtected
+      const now = Date.now()
+      const effectiveCreatedAt = this.createdAt || now
+      const effectiveUpdatedAt = this.updatedAt || now
+      const effectiveExpiresAt = this.expiresAt || (now + 24 * 3600 * 1000)
       return new Response(JSON.stringify({
+        slug: this.slug,
         text: isProt ? '' : this.currentText,
         files: isProt ? [] : this.currentFiles,
         peers: this.sockets.size,
         isProtected: isProt,
         salt: this.roomSecurity?.salt,
+        createdAt: effectiveCreatedAt,
+        updatedAt: effectiveUpdatedAt,
+        expiresAt: effectiveExpiresAt,
+        fileCount: this.currentFiles.length,
+        totalFileSize: this.currentFiles.reduce((acc, f) => acc + (f.fileSize || 0), 0),
+        textLength: this.currentText.length,
       }), {
         headers: { 'Content-Type': 'application/json' },
       })
@@ -220,11 +278,23 @@ export class ClipRoom extends DurableObject<Env> {
         }), { status: 401, headers: { 'Content-Type': 'application/json' } })
       }
 
+      const now = Date.now()
+      const effectiveCreatedAt = this.createdAt || now
+      const effectiveUpdatedAt = this.updatedAt || now
+      const effectiveExpiresAt = this.expiresAt || (now + 24 * 3600 * 1000)
+
       return new Response(JSON.stringify({
+        slug: this.slug,
         text: this.currentText,
         files: this.currentFiles,
         peers: this.sockets.size,
         isProtected: !!this.roomSecurity?.isProtected,
+        createdAt: effectiveCreatedAt,
+        updatedAt: effectiveUpdatedAt,
+        expiresAt: effectiveExpiresAt,
+        fileCount: this.currentFiles.length,
+        totalFileSize: this.currentFiles.reduce((acc, f) => acc + (f.fileSize || 0), 0),
+        textLength: this.currentText.length,
       }), {
         headers: { 'Content-Type': 'application/json' },
       })
@@ -444,19 +514,50 @@ export class ClipRoom extends DurableObject<Env> {
   }
 
   private async persistLiveState() {
-    const expiresAt = Date.now() + 24 * 3600 * 1000
+    const now = Date.now()
+    if (!this.createdAt) this.createdAt = now
+    this.updatedAt = now
+    this.expiresAt = now + 24 * 3600 * 1000
+
     try {
       await this.ctx.storage.put('live_state', {
+        slug: this.slug,
         text: this.currentText,
         files: this.currentFiles,
-        expiresAt,
+        createdAt: this.createdAt,
+        updatedAt: this.updatedAt,
+        expiresAt: this.expiresAt,
       })
-      await this.ctx.storage.setAlarm(expiresAt)
+      await this.ctx.storage.setAlarm(this.expiresAt)
+
+      // Sync room index to KV with metadata so admin listing is instant
+      if (this.slug && this.env.PASTE_KV) {
+        const meta = {
+          slug: this.slug,
+          createdAt: this.createdAt,
+          updatedAt: this.updatedAt,
+          expiresAt: this.expiresAt,
+          isProtected: !!this.roomSecurity?.isProtected,
+          fileCount: this.currentFiles.length,
+          totalFileSize: this.currentFiles.reduce((acc, f) => acc + (f.fileSize || 0), 0),
+          textLength: this.currentText.length,
+          peers: this.sockets.size,
+        }
+        const ttlSeconds = Math.max(60, Math.ceil((this.expiresAt - now) / 1000))
+        await this.env.PASTE_KV.put(`live_room:${this.slug}`, JSON.stringify(meta), {
+          expirationTtl: ttlSeconds,
+          metadata: meta,
+        })
+      }
     } catch {}
   }
 
   async alarm(): Promise<void> {
     try {
+      if (this.slug && this.env.PASTE_KV) {
+        await this.env.PASTE_KV.delete(`live_room:${this.slug}`)
+        await this.env.PASTE_KV.delete(`live:reserved:${this.slug}`)
+      }
       await this.ctx.storage.deleteAll()
     } catch {}
     this.currentText = ''

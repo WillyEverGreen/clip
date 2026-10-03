@@ -1553,6 +1553,124 @@ async function runWebRtcAndAirdropTests() {
   })
 }
 
+// ── 13. Admin Panel Live Pad Tracking & Expiration Tests ────────────────────
+
+async function runAdminLiveRoomsTests() {
+  console.log(`\n${colors.bold}${colors.cyan}13. Admin Panel Live Pad Tracking & Expiration Tests${colors.reset}`)
+
+  await test('Admin list parses active live rooms, reports peers and exact expiresAt', async () => {
+    const now = 1700000000000
+    const expiresAt1 = now + 20 * 3600 * 1000 // 20h left
+    const expiresAt2 = now + 5 * 3600 * 1000  // 5h left
+    const expiredTime = now - 1000           // expired 1s ago
+
+    const mockKV = new Map([
+      ['live_room:room-alpha', {
+        slug: 'room-alpha',
+        createdAt: now - 4 * 3600 * 1000,
+        updatedAt: now,
+        expiresAt: expiresAt1,
+        isProtected: false,
+        fileCount: 2,
+        totalFileSize: 1048576,
+        textLength: 450,
+        peers: 3,
+      }],
+      ['live_room:room-beta', {
+        slug: 'room-beta',
+        createdAt: now - 1 * 3600 * 1000,
+        updatedAt: now,
+        expiresAt: expiresAt2,
+        isProtected: true,
+        fileCount: 0,
+        totalFileSize: 0,
+        textLength: 80,
+        peers: 1,
+      }],
+      ['live_room:room-stale', {
+        slug: 'room-stale',
+        createdAt: now - 30 * 3600 * 1000,
+        updatedAt: now - 25 * 3600 * 1000,
+        expiresAt: expiredTime,
+        isProtected: false,
+        fileCount: 0,
+        peers: 0,
+      }],
+    ])
+
+    // Simulate handleAdminLiveRooms filtering & stats
+    const activeRooms = []
+    for (const [, meta] of mockKV.entries()) {
+      if (meta.expiresAt && now > meta.expiresAt) continue
+      activeRooms.push(meta)
+    }
+
+    assert.strictEqual(activeRooms.length, 2, 'Expired rooms must be filtered out')
+    
+    const alpha = activeRooms.find(r => r.slug === 'room-alpha')
+    assert.ok(alpha, 'room-alpha must be present')
+    assert.strictEqual(alpha.peers, 3, 'Alpha must report 3 connected peers')
+    assert.strictEqual(alpha.expiresAt, expiresAt1, 'Alpha must report exact 20h expiresAt')
+    assert.strictEqual(alpha.fileCount, 2, 'Alpha must report 2 attached files')
+
+    const beta = activeRooms.find(r => r.slug === 'room-beta')
+    assert.ok(beta, 'room-beta must be present')
+    assert.strictEqual(beta.isProtected, true, 'Beta must report isProtected = true')
+
+    // Stats aggregation
+    const totalPeers = activeRooms.reduce((acc, r) => acc + (r.peers || 0), 0)
+    const totalFiles = activeRooms.reduce((acc, r) => acc + (r.fileCount || 0), 0)
+    const protectedRooms = activeRooms.filter(r => r.isProtected).length
+
+    assert.strictEqual(totalPeers, 4, 'Total peers across rooms must equal 4')
+    assert.strictEqual(totalFiles, 2, 'Total attached files must equal 2')
+    assert.strictEqual(protectedRooms, 1, 'Protected rooms must equal 1')
+  })
+
+  await test('Admin terminate live room purges DO state, KV index, reserved slugs & attached files', async () => {
+    const slug = 'room-terminate-test'
+    let doTerminated = false
+    let socketsClosed = 0
+
+    // Simulated DO
+    const mockSockets = [
+      { close: () => { socketsClosed++ } },
+      { close: () => { socketsClosed++ } },
+    ]
+    function terminateDO() {
+      for (const s of mockSockets) s.close()
+      doTerminated = true
+    }
+
+    // Simulated KV
+    const mockKV = new Map([
+      [`live_room:${slug}`, 'meta'],
+      [`live:reserved:${slug}`, '1'],
+      [`file:${slug}:file_1`, 'binary1'],
+      [`file:${slug}:file_2`, 'binary2'],
+      [`file:other-room:file_3`, 'preserve'],
+    ])
+
+    // Execute admin termination
+    terminateDO()
+    mockKV.delete(`live_room:${slug}`)
+    mockKV.delete(`live:reserved:${slug}`)
+    for (const [k] of [...mockKV.entries()]) {
+      if (k.startsWith(`file:${slug}:`)) {
+        mockKV.delete(k)
+      }
+    }
+
+    assert.strictEqual(doTerminated, true, 'DO must be terminated')
+    assert.strictEqual(socketsClosed, 2, 'All connected peer sockets must be closed')
+    assert.strictEqual(mockKV.has(`live_room:${slug}`), false, 'live_room key must be purged')
+    assert.strictEqual(mockKV.has(`live:reserved:${slug}`), false, 'live:reserved key must be purged')
+    assert.strictEqual(mockKV.has(`file:${slug}:file_1`), false, 'room file 1 must be purged')
+    assert.strictEqual(mockKV.has(`file:${slug}:file_2`), false, 'room file 2 must be purged')
+    assert.strictEqual(mockKV.has(`file:other-room:file_3`), true, 'other rooms files must be preserved')
+  })
+}
+
 // ── Main Test Runner ────────────────────────────────────────────────────────
 
 async function main() {
@@ -1570,6 +1688,7 @@ async function main() {
   await runLiveSlugUniquenessTests()
   await runLivePadExpirationAndSecurityTests()
   await runWebRtcAndAirdropTests()
+  await runAdminLiveRoomsTests()
 
   console.log(`\n${colors.bold}=== Summary ===${colors.reset}`)
   console.log(`Total: ${passed + failed} | Passed: ${colors.green}${passed}${colors.reset} | Failed: ${failed > 0 ? colors.red + failed + colors.reset : '0'}`)

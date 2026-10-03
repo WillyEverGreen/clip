@@ -10,7 +10,7 @@ import { handleRemove } from './handlers/remove'
 import { generateLiveSlug, isReserved } from './lib/slug'
 import { entryExists, getEntry, putFileKV, getFileKV, deleteFileKV } from './lib/kv'
 
-import { handleAdminList, handleAdminDelete, handleAdminPurgeAll } from './handlers/admin'
+import { handleAdminList, handleAdminDelete, handleAdminPurgeAll, handleAdminLiveRooms, handleAdminDeleteLiveRoom } from './handlers/admin'
 import { handleReadZip } from './handlers/zip'
 import { getMimeType } from './lib/mime'
 import { zipSync, strToU8 } from 'fflate'
@@ -92,6 +92,8 @@ app.delete('/api/entry/:slug',        handleRemove)
 app.get('/api/admin/entries',         handleAdminList)
 app.delete('/api/admin/entry/:slug',  handleAdminDelete)
 app.delete('/api/admin/purge',        handleAdminPurgeAll)
+app.get('/api/admin/live-rooms',      handleAdminLiveRooms)
+app.delete('/api/admin/live/:slug',   handleAdminDeleteLiveRoom)
 
 // ── Live Pad Real-Time Routes ──────────────────────────────────────────────────
 
@@ -115,8 +117,25 @@ app.get('/api/live/new-slug', async (c) => {
     const existing = await c.env.PASTE_KV.get(liveKey)
     if (existing !== null) continue
 
-    // 4. Atomically claim the slug — subsequent random generation will skip it
+    // 4. Atomically claim the slug and register initial live room record
+    const now = Date.now()
+    const expiresAt = now + 86_400 * 1000
+    const meta = {
+      slug: candidate,
+      createdAt: now,
+      updatedAt: now,
+      expiresAt,
+      isProtected: false,
+      fileCount: 0,
+      totalFileSize: 0,
+      textLength: 0,
+      peers: 0,
+    }
     await c.env.PASTE_KV.put(liveKey, '1', { expirationTtl: KV_TTL_30D })
+    await c.env.PASTE_KV.put(`live_room:${candidate}`, JSON.stringify(meta), {
+      expirationTtl: 86_400,
+      metadata: meta,
+    })
 
     return c.json({ slug: candidate }, 200, { 'Cache-Control': 'no-store' })
   }

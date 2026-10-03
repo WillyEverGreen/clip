@@ -28,6 +28,7 @@
 - ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file sharing room with instant WebSocket synchronization powered by Cloudflare Durable Objects (SQLite). Everything synchronizes live across devices as you type.
 - 🎬 **Universal Media & Document Viewer**: Full-screen theater viewer for both LivePad and URL pastes. Generous cinematic video player, uncompromised high-res image lightbox with 25%–500% zoom and pan, line-numbered syntax-highlighted code with search and copy, and embedded PDF / audio playback.
 - 🗜️ **Client-Side ZIP Archive Inspector**: Click on any attached `.zip` to explore its internal directories and files in real-time, search inside the archive, and extract/download individual files without downloading the full archive.
+- 🛡️ **Admin Live Pad & Expiration Monitor**: Dedicated admin section to track all active Live Pad rooms, view exact 24-hour rolling expiration countdowns and timestamps, monitor live connected peers, and terminate rooms.
 - 📱 **Phone Pair via QR Code**: Connect your phone to any Live Pad room in one second by scanning a QR code with your camera.
 - 📋 **Direct Clipboard & Drag-and-Drop Sharing**: Paste images or screenshots directly from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop any file up to 25 MB.
 - 🖥️ **Zero-Scroll Viewport Layout**: Desktop workspace dynamically adapts to 100% viewport height with no vertical page scroll. Seamlessly collapses into dedicated mobile tabs on narrow screens.

@@ -4,6 +4,24 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
+## 🗓️ October 2026 — Admin Panel Live Pad Tracking, Expiration Monitor & Room Lifecycle Controls
+
+### 1. ⚡ Dedicated Admin "Active Live Pads" Dashboard
+* **Feature:** Added a dedicated **Active Live Pads** section in the Admin Dashboard with segmented switcher tabs (`[ Clips & Files ]` and `[ Active Live Pads ]`).
+* **Real-Time Live Discovery:** Lists all active Live Pad rooms across Cloudflare KV (`live_room:*` index) and queries authoritative real-time state directly from Durable Objects (`ClipRoom`).
+* **Authoritative Expiration Timestamps (`expiresAt`):**
+  - Displays dynamic real-time countdown (`<Countdown expiresAt={room.expiresAt} />`) with color-coded urgency styling (<1h red, <6h amber, normal emerald).
+  - Shows exact absolute expiration date/time (`Actual Expiry: DD MMM YYYY HH:mm GMT±X`).
+  - Clarifies the 24-hour rolling inactivity expiration model (timer renews when users type or upload files).
+* **Online Peer Tracking:** Real-time indicator of connected WebSocket peers (`🟢 N online now` with animated pulse glow).
+* **Attached Live Files & Storage:** Reports file counts and total byte volume uploaded per active room.
+* **Room Inspection & Remote Termination:**
+  - **Inspect Modal:** Detailed view of room timestamps (Created At, Last Activity, Exact Expiration, Connected Peers).
+  - **Zero-Knowledge Security Enforcement:** Password-protected / encrypted Live Pads display a `🔒 Protected` badge and hide private text/files from server and admin inspection, keeping Zero-Knowledge guarantees intact.
+  - **Remote Termination:** Admin can terminate a live room immediately (`DELETE /api/admin/live/:slug`), closing all connected WebSockets and permanently purging attached files from Cloudflare KV and DO storage.
+
+---
+
 ## 🗓️ October 2026 — Universal Media & Document Viewer, Client-Side ZIP Inspector & Zero-Knowledge Encryption Expansion
 
 ### 1. 🎬 Universal High-Quality File Previewer (`FilePreviewModal`)

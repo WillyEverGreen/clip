@@ -66,3 +66,29 @@ export interface ErrorResponse {
   error: string
   retryAfter?: number
 }
+
+// ─── Live Room Info ───────────────────────────────────────────────────────────
+
+export interface LiveRoomInfo {
+  slug: string
+  createdAt: number
+  updatedAt: number
+  expiresAt: number
+  isProtected: boolean
+  fileCount: number
+  totalFileSize?: number
+  textLength: number
+  textPreview?: string
+  peers: number
+}
+
+export interface AdminLiveRoomsResponse {
+  total: number
+  stats: {
+    totalActiveRooms: number
+    totalPeers: number
+    totalFiles: number
+    protectedRooms: number
+  }
+  rooms: LiveRoomInfo[]
+}

@@ -322,12 +322,37 @@ export interface AdminStats {
   textCount: number
   fileCount: number
   totalBytes: number
+  liveRoomsCount?: number
 }
 
 export interface AdminListResponse {
   total: number
   stats: AdminStats
   entries: PublicEntry[]
+}
+
+export interface LiveRoomInfo {
+  slug: string
+  createdAt: number
+  updatedAt: number
+  expiresAt: number
+  isProtected: boolean
+  fileCount: number
+  totalFileSize?: number
+  textLength: number
+  textPreview?: string
+  peers: number
+}
+
+export interface AdminLiveRoomsResponse {
+  total: number
+  stats: {
+    totalActiveRooms: number
+    totalPeers: number
+    totalFiles: number
+    protectedRooms: number
+  }
+  rooms: LiveRoomInfo[]
 }
 
 export async function fetchAdminEntries(adminKey: string): Promise<AdminListResponse> {
@@ -339,8 +364,26 @@ export async function fetchAdminEntries(adminKey: string): Promise<AdminListResp
   return json as AdminListResponse
 }
 
+export async function fetchAdminLiveRooms(adminKey: string): Promise<AdminLiveRoomsResponse> {
+  const res = await fetch(`${BASE}/api/admin/live-rooms?key=${encodeURIComponent(adminKey)}`, {
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as AdminLiveRoomsResponse
+}
+
 export async function adminDeleteEntry(slug: string, adminKey: string): Promise<void> {
   const res = await fetch(`${BASE}/api/admin/entry/${slug}?key=${encodeURIComponent(adminKey)}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+}
+
+export async function adminDeleteLiveRoom(slug: string, adminKey: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/admin/live/${slug}?key=${encodeURIComponent(adminKey)}`, {
     method: 'DELETE',
     headers: { 'Authorization': `Bearer ${adminKey}` },
   })
