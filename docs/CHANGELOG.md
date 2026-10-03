@@ -4,6 +4,18 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
+## 🗓️ October 2026 — Hybrid Large File Transfer Architecture (Clip Beam & Vault Spec)
+
+### 1. 🚀 Tri-Tier Hybrid Large File Transfer Plan
+* **Architecture Specification:** Created comprehensive engineering specification [`docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md`](HYBRID_LARGE_FILE_TRANSFER_SPEC.md) detailing superfast file transfers from **100 MB to 100 GB+**.
+* **Tier 1 (Instant KV):** Cloudflare KV for sub-50ms text, pastes, and attachments < 25 MB.
+* **Tier 2 (Clip Vault / Cloudflare R2):** S3 multipart presigned direct-to-R2 uploads with zero egress fees for persistent 25 MB – 5 GB files.
+* **Tier 3 (Clip Beam / WebRTC P2P):** Pure browser-to-browser disk-to-disk streaming via WebRTC DataChannels using `File.stream()` on sender and Chromium **File System Access API** (`window.showSaveFilePicker()`) on receiver.
+* **Zero RAM Crashes:** Capped at < 35 MB browser memory overhead even when transferring 100 GB datasets.
+* **Smart File Router:** Automatic detection of file size recommending instant KV, asynchronous Vault, or line-speed Beam.
+
+---
+
 ## 🗓️ October 2026 — Admin Panel Live Pad Tracking, Expiration Monitor & Room Lifecycle Controls
 
 ### 1. ⚡ Dedicated Admin "Active Live Pads" Dashboard
