@@ -305,10 +305,10 @@ export default function FilePreviewModal({
       } else if (isImg) {
         if (e.key === '+' || e.key === '=') {
           e.preventDefault()
-          setZoom(z => Math.min(5, Number((z + 0.25).toFixed(2))))
+          setZoom(z => Math.min(4, Number((z + 0.1).toFixed(2))))
         } else if (e.key === '-' || e.key === '_') {
           e.preventDefault()
-          setZoom(z => Math.max(0.25, Number((z - 0.25).toFixed(2))))
+          setZoom(z => Math.max(0.25, Number((z - 0.1).toFixed(2))))
         } else if (e.key === '0') {
           e.preventDefault()
           setZoom(1)
@@ -321,13 +321,14 @@ export default function FilePreviewModal({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [file, onClose, hasPrev, hasNext, onNavigatePrev, onNavigateNext, isImg])
 
-  // Mouse wheel zoom for images
+  // Mouse wheel zoom for images (smooth & slow incremental damping)
   const handleImageWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault()
-    const delta = e.deltaY < 0 ? 0.2 : -0.2
+    // Very gentle continuous factor: max ±0.035 per wheel tick to avoid fast jumps
+    const step = Math.max(-0.035, Math.min(0.035, -e.deltaY * 0.0006))
     setZoom(z => {
-      const next = Math.max(0.25, Math.min(5, Number((z + delta).toFixed(2))))
-      if (next === 1) setPan({ x: 0, y: 0 })
+      const next = Math.max(0.25, Math.min(4, Number((z + step).toFixed(3))))
+      if (next <= 1) setPan({ x: 0, y: 0 })
       return next
     })
   }, [])
@@ -426,9 +427,9 @@ export default function FilePreviewModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.92)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        background: isImg ? 'rgba(0, 0, 0, 0.42)' : 'rgba(0, 0, 0, 0.92)',
+        backdropFilter: isImg ? 'none' : 'blur(16px)',
+        WebkitBackdropFilter: isImg ? 'none' : 'blur(16px)',
         zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
@@ -510,15 +511,17 @@ export default function FilePreviewModal({
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
-          width: isFullscreen ? '100vw' : '94vw',
-          maxWidth: isFullscreen ? '100vw' : isVid ? '1240px' : isAud ? '560px' : '1100px',
-          height: isFullscreen ? '100vh' : isAud ? 'auto' : '88vh',
-          maxHeight: isFullscreen ? '100vh' : '92vh',
+          width: isFullscreen ? '100vw' : isImg ? 'min(94vw, 1020px)' : '94vw',
+          maxWidth: isFullscreen ? '100vw' : isImg ? '1020px' : isVid ? '1240px' : isAud ? '560px' : '1100px',
+          height: isFullscreen ? '100vh' : isAud ? 'auto' : isImg ? 'auto' : '88vh',
+          maxHeight: isFullscreen ? '100vh' : '90vh',
           background: '#09090c',
           border: isFullscreen ? 'none' : '1px solid #27272a',
           borderRadius: isFullscreen ? 0 : '14px',
           overflow: 'hidden',
-          boxShadow: '0 30px 80px rgba(0, 0, 0, 0.95)',
+          boxShadow: isImg
+            ? '0 25px 70px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.12)'
+            : '0 30px 80px rgba(0, 0, 0, 0.95)',
           transition: 'width 200ms ease, height 200ms ease, border-radius 200ms ease',
         }}
       >
@@ -602,15 +605,43 @@ export default function FilePreviewModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
             {/* Image zoom controls */}
             {isImg && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#1c1c22', padding: '2px', borderRadius: '6px', border: '1px solid #2e2e36' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#1c1c22', padding: '0.2rem 0.5rem', borderRadius: '6px', border: '1px solid #2e2e36' }}>
                 <button
                   type="button"
-                  onClick={() => setZoom(z => Math.max(0.25, Number((z - 0.25).toFixed(2))))}
+                  onClick={() => setZoom(z => Math.max(0.25, Number((z - 0.1).toFixed(2))))}
                   className="btn btn-ghost"
-                  style={{ padding: '0.3rem', borderRadius: '4px', color: '#a1a1aa' }}
+                  style={{ padding: '0.25rem', borderRadius: '4px', color: '#a1a1aa' }}
                   title="Zoom Out (-)"
                 >
-                  <ZoomOut size={15} />
+                  <ZoomOut size={14} />
+                </button>
+                <input
+                  type="range"
+                  min="0.25"
+                  max="4"
+                  step="0.05"
+                  value={zoom}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value)
+                    setZoom(val)
+                    if (val <= 1) setPan({ x: 0, y: 0 })
+                  }}
+                  style={{
+                    width: '74px',
+                    accentColor: '#38bdf8',
+                    cursor: 'ew-resize',
+                    height: '4px',
+                  }}
+                  title="Drag slider to zoom"
+                />
+                <button
+                  type="button"
+                  onClick={() => setZoom(z => Math.min(4, Number((z + 0.1).toFixed(2))))}
+                  className="btn btn-ghost"
+                  style={{ padding: '0.25rem', borderRadius: '4px', color: '#a1a1aa' }}
+                  title="Zoom In (+)"
+                >
+                  <ZoomIn size={14} />
                 </button>
                 <span
                   onClick={() => {
@@ -618,13 +649,13 @@ export default function FilePreviewModal({
                     setPan({ x: 0, y: 0 })
                   }}
                   style={{
-                    fontSize: '0.75rem',
+                    fontSize: '0.725rem',
                     fontWeight: 600,
                     color: '#ffffff',
-                    padding: '0 0.4rem',
+                    padding: '0 0.25rem',
                     cursor: 'pointer',
                     userSelect: 'none',
-                    minWidth: '42px',
+                    minWidth: '38px',
                     textAlign: 'center',
                   }}
                   title="Click to reset (100%)"
@@ -633,21 +664,12 @@ export default function FilePreviewModal({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setZoom(z => Math.min(5, Number((z + 0.25).toFixed(2))))}
-                  className="btn btn-ghost"
-                  style={{ padding: '0.3rem', borderRadius: '4px', color: '#a1a1aa' }}
-                  title="Zoom In (+)"
-                >
-                  <ZoomIn size={15} />
-                </button>
-                <button
-                  type="button"
                   onClick={() => setRotation(r => (r + 90) % 360)}
                   className="btn btn-ghost"
-                  style={{ padding: '0.3rem', borderRadius: '4px', color: '#a1a1aa' }}
+                  style={{ padding: '0.25rem', borderRadius: '4px', color: '#a1a1aa' }}
                   title="Rotate 90°"
                 >
-                  <RotateCw size={14} />
+                  <RotateCw size={13} />
                 </button>
               </div>
             )}
@@ -769,7 +791,9 @@ export default function FilePreviewModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: '#040406',
+            background: isImg ? '#0a0a0e' : '#040406',
+            minHeight: isImg ? '280px' : undefined,
+            maxHeight: isFullscreen ? 'calc(100vh - 60px)' : isImg ? 'calc(85vh - 60px)' : undefined,
           }}
         >
           {/* ── 1. Image Viewer (High-Res, Pan & Zoom) ─────────────────────── */}
@@ -783,12 +807,15 @@ export default function FilePreviewModal({
               style={{
                 width: '100%',
                 height: '100%',
+                minHeight: '280px',
+                maxHeight: isFullscreen ? 'calc(100vh - 60px)' : 'calc(85vh - 60px)',
                 overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
                 userSelect: 'none',
+                padding: '0.75rem',
               }}
             >
               <img
@@ -802,12 +829,13 @@ export default function FilePreviewModal({
                 }}
                 style={{
                   maxWidth: zoom <= 1 ? '100%' : 'none',
-                  maxHeight: zoom <= 1 ? '100%' : 'none',
+                  maxHeight: zoom <= 1 ? (isFullscreen ? 'calc(100vh - 75px)' : 'calc(80vh - 75px)') : 'none',
                   objectFit: 'contain',
                   imageRendering: 'auto',
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
                   transition: isDragging ? 'none' : 'transform 100ms ease-out',
                   pointerEvents: 'none',
+                  borderRadius: isFullscreen ? 0 : '6px',
                 }}
               />
             </div>
