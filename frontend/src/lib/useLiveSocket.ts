@@ -16,6 +16,7 @@ export function useLiveSocket(slug: string | undefined) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true)
   const [salt, setSalt] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [roomClosedMessage, setRoomClosedMessage] = useState<string | null>(null)
   const currentPasswordRef = useRef<string | null>(null)
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -190,6 +191,15 @@ export function useLiveSocket(slug: string | undefined) {
                 }
                 break
 
+              case 'room_closed':
+                destroyedRef.current = true
+                setStatus('disconnected')
+                setRoomClosedMessage(data.message || 'Room has been terminated by administrator.')
+                if (retryTimer) clearTimeout(retryTimer)
+                if (pingTimer) clearInterval(pingTimer)
+                try { ws.close(1000, 'Room terminated') } catch {}
+                break
+
               case 'pong':
                 break
             }
@@ -198,9 +208,14 @@ export function useLiveSocket(slug: string | undefined) {
           }
         }
 
-        ws.onclose = () => {
+        ws.onclose = (event: CloseEvent) => {
           if (pingTimer) clearInterval(pingTimer)
-          if (destroyedRef.current) return
+          if (destroyedRef.current || (event && event.code === 1000 && event.reason === 'Room terminated')) {
+            destroyedRef.current = true
+            setStatus('disconnected')
+            setRoomClosedMessage(prev => prev || 'Room has been terminated by administrator.')
+            return
+          }
           setStatus('reconnecting')
           retryTimer = setTimeout(() => {
             retryDelay = Math.min(retryDelay * 1.5, 10_000)
@@ -340,6 +355,7 @@ export function useLiveSocket(slug: string | undefined) {
 
   return {
     status,
+    roomClosedMessage,
     text,
     files,
     peers,

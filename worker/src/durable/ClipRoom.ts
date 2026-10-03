@@ -149,6 +149,7 @@ export class ClipRoom extends DurableObject<Env> {
         peers: this.sockets.size,
         peerIds: Array.from(this.clientMap.keys()),
       })
+      this.persistLiveState().catch(() => {})
 
       server.addEventListener('message', (event) => {
         try {

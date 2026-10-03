@@ -173,6 +173,7 @@ export default function LivePage() {
 
   const {
     status,
+    roomClosedMessage,
     text,
     files,
     peers,
@@ -918,6 +919,29 @@ export default function LivePage() {
             </div>
           ) : (
             <>
+              {/* Room Closed or Terminated Notice */}
+              {roomClosedMessage && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                    padding: '0.75rem 1rem',
+                    background: '#18181b',
+                    border: '1px solid #ef4444',
+                    borderRadius: '8px',
+                    color: '#f87171',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    marginBottom: '0.75rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  <AlertCircle size={18} style={{ color: '#ef4444', flexShrink: 0 }} />
+                  <span style={{ color: '#fca5a5' }}>{roomClosedMessage}</span>
+                </div>
+              )}
+
               {/* Room Banner / Notification Bar */}
           <div
             style={{
@@ -1009,6 +1033,7 @@ export default function LivePage() {
                 <textarea
                   ref={textareaRef}
                   className="input"
+                  readOnly={!!roomClosedMessage}
                   value={text}
                   onChange={handleTextChange}
                   onKeyUp={handleCursorTrack}

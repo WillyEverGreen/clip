@@ -336,21 +336,29 @@ export default function FilePreviewModal({
   // Mouse drag-to-pan for images
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (zoom <= 1) return
+    e.preventDefault()
     setIsDragging(true)
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
   }, [zoom, pan])
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  useEffect(() => {
     if (!isDragging) return
-    setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
-    })
+    const handleMove = (e: MouseEvent) => {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      })
+    }
+    const handleUp = () => {
+      setIsDragging(false)
+    }
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
   }, [isDragging, dragStart])
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false)
-  }, [])
 
   // Copy text to clipboard
   const handleCopyText = useCallback(() => {
@@ -801,9 +809,6 @@ export default function FilePreviewModal({
             <div
               onWheel={handleImageWheel}
               onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
               style={{
                 width: '100%',
                 height: '100%',
