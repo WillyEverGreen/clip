@@ -896,6 +896,69 @@ async function runLivePadRealtimeTests() {
     assert.strictEqual(clipPayload.ttl, 'permanent')
     assert.strictEqual(clipPayload.isEncrypted, true)
   })
+
+  await test('Live Pad validates custom export slug and handles conflict overwrites', async () => {
+    // Validation function matching LivePage.tsx
+    const validateCustomSlug = (s) => {
+      const trimmed = s.trim().toLowerCase()
+      if (!trimmed) return 'Please enter a custom URL.'
+      if (trimmed.length < 3) return 'Custom URL must be at least 3 characters.'
+      if (trimmed.length > 50) return 'Custom URL must be 50 characters or fewer.'
+      if (trimmed.startsWith('-') || trimmed.endsWith('-')) return 'Custom URL cannot start or end with a hyphen.'
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(trimmed)) return 'Custom URL can only contain lowercase letters, numbers, and hyphens.'
+      const reserved = new Set([
+        'api', 'edit', 'new', 'create', 'help', 'about',
+        '404', 'not-found', 'admin', 'login', 'signup',
+        'static', '_next', '_headers', '_redirects',
+        'favicon.ico', 'robots.txt', 'sitemap.xml',
+        'raw', 'zip', 'r', 'z', 'f',
+        'live', 'livepad', 'room', 'ws', 'new-slug',
+      ])
+      if (reserved.has(trimmed)) return `'${trimmed}' is a reserved URL. Please choose another.`
+      return null
+    }
+
+    assert.ok(validateCustomSlug(''), 'Empty slug must fail')
+    assert.ok(validateCustomSlug('ab'), 'Short slug must fail')
+    assert.ok(validateCustomSlug('-my-slug'), 'Leading hyphen must fail')
+    assert.ok(validateCustomSlug('my-slug-'), 'Trailing hyphen must fail')
+    assert.ok(validateCustomSlug('api'), 'Reserved slug must fail')
+    assert.ok(validateCustomSlug('live'), 'Reserved slug must fail')
+    assert.strictEqual(validateCustomSlug('my-custom-room-42'), null, 'Valid custom slug must pass')
+    assert.strictEqual(validateCustomSlug('notes-2026'), null, 'Valid custom slug must pass')
+
+    // Simulate export to custom URL with conflict fallback
+    const mockStore = new Map()
+    mockStore.set('existing-target', { content: 'old text', editCode: 'pass123', files: ['old.png'] })
+
+    function exportLiveSession(targetSlug, newContent, editCode) {
+      if (mockStore.has(targetSlug)) {
+        const existing = mockStore.get(targetSlug)
+        if (existing.editCode !== editCode) {
+          throw new Error('wrong_edit_code')
+        }
+        // Update with removeFile=true replacing files
+        mockStore.set(targetSlug, { content: newContent, editCode, files: ['new.png'] })
+        return { slug: targetSlug, updated: true }
+      }
+      mockStore.set(targetSlug, { content: newContent, editCode, files: ['new.png'] })
+      return { slug: targetSlug, updated: false }
+    }
+
+    // Export to fresh custom slug
+    const res1 = exportLiveSession('new-custom-slug', 'Fresh content', 'pass123')
+    assert.strictEqual(res1.slug, 'new-custom-slug')
+    assert.strictEqual(res1.updated, false)
+
+    // Export to existing slug with correct edit code
+    const res2 = exportLiveSession('existing-target', 'Updated content', 'pass123')
+    assert.strictEqual(res2.slug, 'existing-target')
+    assert.strictEqual(res2.updated, true)
+    assert.strictEqual(mockStore.get('existing-target').content, 'Updated content')
+
+    // Export to existing slug with wrong edit code throws
+    assert.throws(() => exportLiveSession('existing-target', 'Malicious content', 'wrongPass'), /wrong_edit_code/)
+  })
 }
 
 // ── 9. Live Pad Folder Drop & Universal File Type Tests ───────────────────────

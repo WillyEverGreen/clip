@@ -14,6 +14,7 @@ import {
   batchDeleteLiveFiles,
   liveZipDownloadUrl,
   createEntryWithProgress,
+  updateEntryWithProgress,
   getUniqueLiveSlug,
   formatBytes,
 } from '../lib/api'
@@ -652,6 +653,26 @@ export default function LivePage() {
     setSelectedFileIds(prev => prev.filter(id => files.some(f => f.id === id)))
   }, [files])
 
+  // Custom slug validation helper
+  const validateCustomSlug = (s: string): string | null => {
+    const trimmed = s.trim().toLowerCase()
+    if (!trimmed) return 'Please enter a custom URL.'
+    if (trimmed.length < 3) return 'Custom URL must be at least 3 characters.'
+    if (trimmed.length > 50) return 'Custom URL must be 50 characters or fewer.'
+    if (trimmed.startsWith('-') || trimmed.endsWith('-')) return 'Custom URL cannot start or end with a hyphen.'
+    if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(trimmed)) return 'Custom URL can only contain lowercase letters, numbers, and hyphens.'
+    const reserved = new Set([
+      'api', 'edit', 'new', 'create', 'help', 'about',
+      '404', 'not-found', 'admin', 'login', 'signup',
+      'static', '_next', '_headers', '_redirects',
+      'favicon.ico', 'robots.txt', 'sitemap.xml',
+      'raw', 'zip', 'r', 'z', 'f',
+      'live', 'livepad', 'room', 'ws', 'new-slug',
+    ])
+    if (reserved.has(trimmed)) return `'${trimmed}' is a reserved URL. Please choose another.`
+    return null
+  }
+
   // Save as permanent / custom clip
   const handleSaveAsClip = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -660,6 +681,31 @@ export default function LivePage() {
     setSaveError(null)
 
     try {
+      if (!text.trim() && files.length === 0) {
+        setSaveError('Cannot save an empty clip. Please add text or files first.')
+        setSaveSaving(false)
+        return
+      }
+
+      if (savePassword && savePassword.length < 4) {
+        setSaveError('Password must be at least 4 characters.')
+        setSaveSaving(false)
+        return
+      }
+
+      let targetSlug = ''
+      if (saveSlugChoice === 'room') {
+        targetSlug = slug
+      } else if (saveSlugChoice === 'custom') {
+        const customErr = validateCustomSlug(saveCustomSlug)
+        if (customErr) {
+          setSaveError(customErr)
+          setSaveSaving(false)
+          return
+        }
+        targetSlug = saveCustomSlug.trim().toLowerCase()
+      }
+
       let finalContent = text
       if (savePassword && savePassword.length >= 4) {
         if (text.trim()) {
@@ -675,12 +721,6 @@ export default function LivePage() {
       form.append('editCode', saveEditCode)
       form.append('ttl', saveTtl)
 
-      let targetSlug = ''
-      if (saveSlugChoice === 'room') {
-        targetSlug = slug
-      } else if (saveSlugChoice === 'custom' && saveCustomSlug.trim()) {
-        targetSlug = saveCustomSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
-      }
       if (targetSlug) {
         form.append('slug', targetSlug)
       }
@@ -688,46 +728,85 @@ export default function LivePage() {
       // Fetch file blobs and attach them to the creation form (encrypting if password is set)
       const livePass = sessionStorage.getItem('clip_live_pass_' + slug) || ''
       for (const f of files) {
-        const url = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
-        try {
-          const res = await fetch(url)
-          if (res.ok) {
-            const buf = await res.arrayBuffer()
-            let rawFile: File
-            if (isEncryptedFileBuffer(buf)) {
-              if (livePass) {
-                const dec = await decryptFileBuffer(buf, livePass)
-                if (dec) {
-                  rawFile = new File([dec.blob], dec.fileName, { type: dec.fileMime })
-                } else {
-                  rawFile = new File([buf], f.fileName, { type: f.fileMime })
-                }
-              } else {
-                rawFile = new File([buf], f.fileName, { type: f.fileMime })
-              }
+        let buf: ArrayBuffer | null = null
+        const p2pBlob = getP2PBlob(f.id)
+        if (p2pBlob) {
+          buf = await p2pBlob.arrayBuffer()
+        } else {
+          const url = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
+          try {
+            const res = await fetch(url)
+            if (res.ok) {
+              buf = await res.arrayBuffer()
+            }
+          } catch (e) {
+            if (import.meta.env.DEV) console.warn('Fetch live file failed:', e)
+          }
+        }
+        if (!buf) continue
+
+        let rawFile: File
+        if (isEncryptedFileBuffer(buf)) {
+          if (livePass) {
+            const dec = await decryptFileBuffer(buf, livePass)
+            if (dec) {
+              rawFile = new File([dec.blob], dec.fileName, { type: dec.fileMime })
             } else {
               rawFile = new File([buf], f.fileName, { type: f.fileMime })
             }
-
-            const fileObj = (savePassword && savePassword.length >= 4)
-              ? await encryptFile(rawFile, savePassword)
-              : rawFile
-
-            form.append('files', fileObj)
-            form.append('file', fileObj)
+          } else {
+            rawFile = new File([buf], f.fileName, { type: f.fileMime })
           }
-        } catch (e) {
-          if (import.meta.env.DEV) {
-            console.warn('Failed to attach file for clip conversion:', e)
+        } else {
+          rawFile = new File([buf], f.fileName, { type: f.fileMime })
+        }
+
+        const fileObj = (savePassword && savePassword.length >= 4)
+          ? await encryptFile(rawFile, savePassword)
+          : rawFile
+
+        form.append('files', fileObj)
+      }
+
+      let createdSlug = targetSlug
+      try {
+        const created = await createEntryWithProgress(form, () => {})
+        createdSlug = created.slug
+      } catch (err: any) {
+        if (err?.error === 'slug_taken' && targetSlug) {
+          // If the entry already exists, update it if the user provided the edit code
+          try {
+            form.append('removeFile', 'true')
+            await updateEntryWithProgress(targetSlug, form, () => {})
+            createdSlug = targetSlug
+          } catch (updateErr: any) {
+            if (updateErr?.error === 'wrong_edit_code') {
+              setSaveError(`The URL '/${targetSlug}' already exists. To update it, provide its existing edit code, or choose a different custom URL.`)
+            } else {
+              setSaveError(`The custom URL '/${targetSlug}' is already taken. Please choose another URL.`)
+            }
+            return
           }
+        } else {
+          const errorMap: Record<string, string> = {
+            slug_taken: `The URL '/${targetSlug}' is already taken. Please choose another URL.`,
+            slug_invalid: 'Custom URL is invalid. Must be 3–50 lowercase alphanumeric characters or hyphens (cannot start or end with a hyphen).',
+            slug_reserved: 'This URL is reserved by the system. Please choose another.',
+            missing_edit_code: 'Edit code must be at least 4 characters.',
+            no_content: 'Please add some text or files before saving a clip.',
+            file_too_large: 'Files exceed maximum upload size (50 MB total).',
+            text_too_large: 'Text exceeds maximum allowable size (2 MB).',
+          }
+          setSaveError(errorMap[err?.error] || err?.error || 'Failed to save clip. Please try again.')
+          return
         }
       }
 
-      const created = await createEntryWithProgress(form, () => {})
-      sessionStorage.setItem('clip_edit_code_' + created.slug, saveEditCode)
-      navigate(`/${created.slug}`)
+      sessionStorage.setItem('clip_edit_code_' + createdSlug, saveEditCode)
+      showToast(`Exported to /${createdSlug}!`, 'success')
+      navigate(`/${createdSlug}`)
     } catch (err: any) {
-      setSaveError(err?.error ?? 'Failed to save clip. Please try again.')
+      setSaveError(err?.message || 'Failed to save clip. Please try again.')
     } finally {
       setSaveSaving(false)
     }
@@ -1761,7 +1840,11 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                 <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
                   <button
                     type="button"
-                    onClick={() => setSaveSlugChoice('room')}
+                    onClick={() => {
+                      setSaveSlugChoice('room')
+                      const cached = sessionStorage.getItem('clip_edit_code_' + slug)
+                      if (cached) setSaveEditCode(cached)
+                    }}
                     className={`btn ${saveSlugChoice === 'room' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ flex: 1, padding: '0.35rem 0.5rem', fontSize: '0.78rem' }}
                   >
@@ -1769,7 +1852,13 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSaveSlugChoice('custom')}
+                    onClick={() => {
+                      setSaveSlugChoice('custom')
+                      if (saveCustomSlug) {
+                        const cached = sessionStorage.getItem('clip_edit_code_' + saveCustomSlug)
+                        if (cached) setSaveEditCode(cached)
+                      }
+                    }}
                     className={`btn ${saveSlugChoice === 'custom' ? 'btn-primary' : 'btn-ghost'}`}
                     style={{ flex: 1, padding: '0.35rem 0.5rem', fontSize: '0.78rem' }}
                   >
@@ -1785,15 +1874,48 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                   </button>
                 </div>
                 {saveSlugChoice === 'custom' && (
-                  <input
-                    type="text"
-                    value={saveCustomSlug}
-                    onChange={e => setSaveCustomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                    className="input"
-                    placeholder="e.g. my-saved-notes"
-                    style={{ fontSize: '0.85rem' }}
-                    maxLength={50}
-                  />
+                  <div style={{ marginTop: '0.35rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                      <span
+                        style={{
+                          padding: '0 0.65rem',
+                          background: '#0a0a0c',
+                          border: '1px solid var(--border)',
+                          borderRight: 'none',
+                          borderRadius: '8px 0 0 8px',
+                          color: 'var(--text-dim)',
+                          fontSize: '0.8rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          userSelect: 'none',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {window.location.host}/
+                      </span>
+                      <input
+                        type="text"
+                        value={saveCustomSlug}
+                        onChange={e => {
+                          const val = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')
+                          setSaveCustomSlug(val)
+                          const cached = sessionStorage.getItem('clip_edit_code_' + val)
+                          if (cached) setSaveEditCode(cached)
+                        }}
+                        className="input"
+                        placeholder="your-custom-slug"
+                        style={{ fontSize: '0.85rem', borderRadius: '0 8px 8px 0', flex: 1 }}
+                        maxLength={50}
+                        spellCheck={false}
+                        autoFocus
+                      />
+                    </div>
+                    {saveCustomSlug.length > 0 && saveCustomSlug.length < 3 && (
+                      <p style={{ margin: '0.35rem 0 0', fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                        Custom slug must be at least 3 characters.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -1847,7 +1969,11 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                 </button>
                 <button
                   type="submit"
-                  disabled={saveSaving || saveEditCode.length < 4}
+                  disabled={
+                    saveSaving ||
+                    saveEditCode.length < 4 ||
+                    (saveSlugChoice === 'custom' && saveCustomSlug.trim().length < 3)
+                  }
                   className="btn btn-primary"
                   style={{ flex: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
                 >
