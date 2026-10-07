@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, Eye, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
-import { getEntry, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry, type FileItem } from '../lib/api'
-import { isEncrypted, decryptContent, computeAuthHash, generateSalt, isEncryptedFileBuffer, decryptFileBuffer } from '../lib/crypto'
+import { ArrowLeft, Copy, Check, Edit3, Download, Eye, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap, Paperclip } from 'lucide-react'
+import { getEntry, getLiveState, updateEntryWithProgress, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry, type FileItem } from '../lib/api'
+import { isEncrypted, decryptContent, computeAuthHash, generateSalt, isEncryptedFileBuffer, decryptFileBuffer, encryptFile } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
 import { useEntrySSE } from '../lib/useEntrySSE'
@@ -48,6 +48,20 @@ export default function ViewPage() {
   const [hostLiveLoading, setHostLiveLoading] = useState(false)
   const [hostLiveError, setHostLiveError] = useState<string | null>(null)
   const [pastedFiles, setPastedFiles] = useState<File[] | null>(null)
+  const [attachingFiles, setAttachingFiles] = useState(false)
+  const [attachEditCode, setAttachEditCode] = useState(() => {
+    return (typeof window !== 'undefined' && slug ? sessionStorage.getItem('clip_edit_code_' + slug) : null) || ''
+  })
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 3500)
+    return () => clearTimeout(t)
+  }, [toast])
+
+  const handleAttachRef = useRef<((files: File[]) => Promise<void>) | null>(null)
 
   // Clipboard paste listener on ViewPage: paste screenshot/file to quick-share
   useEffect(() => {
@@ -66,14 +80,20 @@ export default function ViewPage() {
               : file.name
             return new File([file], name, { type: file.type || getMimeType(name) })
           })
-          setPastedFiles(renamed)
+
+          const knownCode = (slug ? sessionStorage.getItem('clip_edit_code_' + slug) : null) || attachEditCode
+          if (knownCode && handleAttachRef.current) {
+            handleAttachRef.current(renamed)
+          } else {
+            setPastedFiles(renamed)
+          }
         }
       }
     }
 
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
-  }, [])
+  }, [slug, attachEditCode])
 
   // Dynamic SEO Title & Description
   const rawText = decryptedContent || entry?.content || ''
@@ -108,7 +128,16 @@ export default function ViewPage() {
       const cacheBust = !isAutoPoll ? `${Date.now()}` : undefined
       const e = await getEntry(slug, cacheBust, isAutoPoll)
       if (!e || (!e.isPermanent && Date.now() > e.expiresAt)) {
-        if (!loadedRef.current) navigate('/404')
+        if (!loadedRef.current) {
+          try {
+            const liveState = await getLiveState(slug)
+            if (liveState && (liveState.peers > 0 || liveState.text || (liveState.files && liveState.files.length > 0) || liveState.isProtected)) {
+              navigate(`/live/${slug}`, { replace: true })
+              return
+            }
+          } catch {}
+          navigate('/404')
+        }
         return
       }
       
@@ -137,7 +166,16 @@ export default function ViewPage() {
       }
     } catch {
       // Only navigate away if we've never successfully loaded data
-      if (!loadedRef.current) navigate('/404')
+      if (!loadedRef.current) {
+        try {
+          const liveState = await getLiveState(slug)
+          if (liveState && (liveState.peers > 0 || liveState.text || (liveState.files && liveState.files.length > 0) || liveState.isProtected)) {
+            navigate(`/live/${slug}`, { replace: true })
+            return
+          }
+        } catch {}
+        navigate('/404')
+      }
     } finally {
       setLoading(false)
       if (isManual) setRefreshing(false)
@@ -146,6 +184,65 @@ export default function ViewPage() {
 
   // Keep a ref to the latest fetchEntry so the interval always calls the current version
   fetchEntryRef.current = fetchEntry
+
+  const handleAttachPastedFiles = useCallback(async (filesToAttach?: File[], codeOverride?: string) => {
+    const list = filesToAttach || pastedFiles
+    if (!list || list.length === 0 || !slug) return
+
+    const code = codeOverride || attachEditCode || (slug ? sessionStorage.getItem('clip_edit_code_' + slug) : null) || ''
+    if (!code) {
+      setPastedFiles(list)
+      return
+    }
+
+    setAttachingFiles(true)
+    setAttachError(null)
+
+    try {
+      const form = new FormData()
+      form.append('editCode', code)
+
+      if (entry?.content) {
+        form.append('content', entry.content)
+      }
+
+      if (entry?.files && entry.files.length > 0) {
+        entry.files.forEach(f => {
+          if (f.id) form.append('keepFileIds', f.id)
+        })
+      }
+
+      const sessionPass = (slug ? sessionStorage.getItem('clip_decrypt_' + slug) : null) || decryptPassword
+      const isEnc = entry?.content ? isEncrypted(entry.content) : false
+
+      for (const f of list) {
+        let fileObj = f
+        if (isEnc && sessionPass) {
+          fileObj = await encryptFile(f, sessionPass)
+        }
+        form.append('files', fileObj)
+        form.append('file', fileObj)
+      }
+
+      await updateEntryWithProgress(slug, form, () => {})
+      sessionStorage.setItem('clip_edit_code_' + slug, code)
+
+      await fetchEntry(true)
+      setPastedFiles(null)
+      setToast({ message: `Attached ${list.length} file(s) to this clip!`, type: 'success' })
+    } catch (err: any) {
+      const msg = err?.error === 'wrong_edit_code'
+        ? 'Incorrect edit code.'
+        : (err?.error || 'Failed to attach file.')
+      setAttachError(msg)
+    } finally {
+      setAttachingFiles(false)
+    }
+  }, [slug, entry, attachEditCode, decryptPassword, pastedFiles, fetchEntry])
+
+  useEffect(() => {
+    handleAttachRef.current = (f: File[]) => handleAttachPastedFiles(f)
+  }, [handleAttachPastedFiles])
 
   // Initial fetch
   useEffect(() => {
@@ -332,6 +429,31 @@ export default function ViewPage() {
   return (
     <div className="page-wrapper" style={{ justifyContent:'flex-start', paddingTop:'2.5rem' }}>
       <div className="content-box animate-fade-up">
+
+        {/* ── Toast Notification ───────────────────────────────────────────── */}
+        {toast && (
+          <div style={{
+            position: 'fixed',
+            top: '1.5rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: '#18181b',
+            border: '1px solid #3f3f46',
+            color: '#ffffff',
+            padding: '0.6rem 1.25rem',
+            borderRadius: '10px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
+          }}>
+            <Check size={14} color="#10b981" />
+            <span>{toast.message}</span>
+          </div>
+        )}
 
         {/* ── Top bar ────────────────────────────────────────────────────── */}
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'1rem', marginBottom:'1.5rem', flexWrap:'wrap' }}>
@@ -901,9 +1023,43 @@ export default function ViewPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ background: '#121214', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.75rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.35rem' }}>
+                    Attach Directly to /{slug}
+                  </label>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0 0 0.5rem' }}>
+                    Enter your secret edit code to add this file to the current clip.
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder="Enter edit code…"
+                      value={attachEditCode}
+                      onChange={e => { setAttachEditCode(e.target.value); setAttachError(null) }}
+                      onKeyDown={e => e.key === 'Enter' && handleAttachPastedFiles()}
+                      style={{ fontSize: '0.8rem', height: '36px' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => handleAttachPastedFiles()}
+                      disabled={attachingFiles || !attachEditCode}
+                      style={{ padding: '0 0.85rem', fontSize: '0.785rem', height: '36px', flexShrink: 0 }}
+                    >
+                      {attachingFiles ? <div className="spinner" style={{ width: 12, height: 12 }} /> : 'Attach'}
+                    </button>
+                  </div>
+                  {attachError && (
+                    <p style={{ margin: '0.4rem 0 0', fontSize: '0.75rem', color: '#ef4444' }}>
+                      {attachError}
+                    </p>
+                  )}
+                </div>
+
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-secondary"
                   onClick={() => {
                     const isEnc = entry?.content ? isEncrypted(entry.content) : false
                     setHostLiveChoice(isEnc ? 'existing' : 'none')
@@ -916,11 +1072,11 @@ export default function ViewPage() {
                 <button
                   className="btn btn-ghost"
                   onClick={() => {
-                    navigate(`/edit/${slug}`)
+                    navigate(`/${slug}/edit`)
                   }}
                   style={{ width: '100%', justifyContent: 'center', gap: '0.4rem' }}
                 >
-                  <Edit3 size={14} /> Edit Existing Clip
+                  <Edit3 size={14} /> Edit Existing Clip in Full Editor
                 </button>
               </div>
             </div>

@@ -184,6 +184,7 @@ export default function LivePage() {
     removeLocalFiles,
     isProtected,
     isAuthenticated,
+    isProtectionChecked,
     authError,
     authenticate,
     isP2PActive,
@@ -282,6 +283,10 @@ export default function LivePage() {
   // Handle uploading files to this Live Pad (with concurrency and folder path support)
   const handleUpload = useCallback(async (fileList: FileList | File[]) => {
     if (!slug) return
+    if (isProtected && !isAuthenticated) {
+      showToast('Please unlock room to upload files.', 'error')
+      return
+    }
     const queue = normalizeFileInputFiles(fileList)
     if (queue.length === 0) return
 
@@ -420,6 +425,10 @@ export default function LivePage() {
 
       if (fileItems.length > 0) {
         e.preventDefault()
+        if (isProtected && !isAuthenticated) {
+          showToast('Please unlock room to attach files.', 'error')
+          return
+        }
 
         try {
           const extracted = await extractFilesFromDataTransfer(e.clipboardData)
@@ -431,6 +440,8 @@ export default function LivePage() {
                 : file.name
               return new File([file], name, { type: file.type || getMimeType(name) })
             })
+            setShowFilesPanel(true)
+            if (isMobile) setMobileTab('files')
             handleUpload(filesToUpload)
           } else {
             // Check if user attempted to paste a folder from clipboard that the browser blocked
@@ -651,7 +662,11 @@ export default function LivePage() {
     try {
       let finalContent = text
       if (savePassword && savePassword.length >= 4) {
-        finalContent = await encryptContent(text, savePassword)
+        if (text.trim()) {
+          finalContent = await encryptContent(text, savePassword)
+        } else if (files.length > 0) {
+          finalContent = await encryptContent('{"file_lock":true}', savePassword)
+        }
       }
 
       const form = new FormData()
@@ -670,14 +685,34 @@ export default function LivePage() {
         form.append('slug', targetSlug)
       }
 
-      // Fetch file blobs and attach them to the creation form
+      // Fetch file blobs and attach them to the creation form (encrypting if password is set)
+      const livePass = sessionStorage.getItem('clip_live_pass_' + slug) || ''
       for (const f of files) {
         const url = liveFileDownloadUrl(slug, f.id, f.fileMime, f.fileName)
         try {
           const res = await fetch(url)
           if (res.ok) {
-            const blob = await res.blob()
-            const fileObj = new File([blob], f.fileName, { type: f.fileMime })
+            const buf = await res.arrayBuffer()
+            let rawFile: File
+            if (isEncryptedFileBuffer(buf)) {
+              if (livePass) {
+                const dec = await decryptFileBuffer(buf, livePass)
+                if (dec) {
+                  rawFile = new File([dec.blob], dec.fileName, { type: dec.fileMime })
+                } else {
+                  rawFile = new File([buf], f.fileName, { type: f.fileMime })
+                }
+              } else {
+                rawFile = new File([buf], f.fileName, { type: f.fileMime })
+              }
+            } else {
+              rawFile = new File([buf], f.fileName, { type: f.fileMime })
+            }
+
+            const fileObj = (savePassword && savePassword.length >= 4)
+              ? await encryptFile(rawFile, savePassword)
+              : rawFile
+
             form.append('files', fileObj)
             form.append('file', fileObj)
           }
@@ -689,6 +724,7 @@ export default function LivePage() {
       }
 
       const created = await createEntryWithProgress(form, () => {})
+      sessionStorage.setItem('clip_edit_code_' + created.slug, saveEditCode)
       navigate(`/${created.slug}`)
     } catch (err: any) {
       setSaveError(err?.error ?? 'Failed to save clip. Please try again.')
@@ -837,12 +873,12 @@ export default function LivePage() {
                     boxShadow: '0 0 6px rgba(255, 255, 255, 0.8)',
                   }}
                 />
-                <span>⚡ LAN Direct</span>
+                <span>LAN Direct</span>
               </div>
             )}
 
             {/* QR Code Button (Desktop/Tablet only) */}
-            {!isMobile && (
+            {!isMobile && isAuthenticated && (
               <button
                 type="button"
                 onClick={() => setShowQrModal(true)}
@@ -866,21 +902,28 @@ export default function LivePage() {
             </button>
 
             {/* Save as Clip Button */}
-            <button
-              type="button"
-              onClick={() => setShowSaveModal(true)}
-              className="btn btn-primary"
-              style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
-              title="Save as permanent clip (Ctrl+S)"
-            >
-              <Lock size={14} /> <span>{isMobile ? 'Save' : 'Save as Clip'}</span>
-            </button>
+            {isAuthenticated && (
+              <button
+                type="button"
+                onClick={() => setShowSaveModal(true)}
+                className="btn btn-primary"
+                style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+                title="Save as permanent clip (Ctrl+S)"
+              >
+                <Lock size={14} /> <span>{isMobile ? 'Save' : 'Save as Clip'}</span>
+              </button>
+            )}
           </div>
         </div>
 
         {/* ── Main Workspace Card ──────────────────────────────────────────── */}
         <div className="card card-glow" style={{ padding: '0.9rem 1.15rem', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          {isProtected && !isAuthenticated ? (
+          {!isProtectionChecked ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3.5rem 1rem', textAlign: 'center' }}>
+              <div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, marginBottom: '0.85rem' }} />
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Connecting to LivePad…</p>
+            </div>
+          ) : isProtected && !isAuthenticated ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2.5rem 1rem', textAlign: 'center' }}>
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#141414', border: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1.25rem' }}>
                 <Lock size={26} color="#ffffff" />

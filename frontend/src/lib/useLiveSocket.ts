@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { BASE, type FileItem } from './api'
+import { BASE, getLiveState, type FileItem } from './api'
 import { computeAuthHash } from './crypto'
 import { useWebRtcPeer } from './useWebRtcPeer'
 
@@ -14,6 +14,7 @@ export function useLiveSocket(slug: string | undefined) {
   // Authentication states
   const [isProtected, setIsProtected] = useState<boolean>(false)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true)
+  const [isProtectionChecked, setIsProtectionChecked] = useState<boolean>(false)
   const [salt, setSalt] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const [roomClosedMessage, setRoomClosedMessage] = useState<string | null>(null)
@@ -47,6 +48,22 @@ export function useLiveSocket(slug: string | undefined) {
     let retryDelay = 1000
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let pingTimer: ReturnType<typeof setInterval> | null = null
+
+    // Pre-check room protection state so UI never flashes unprotected content
+    getLiveState(slug).then(st => {
+      if (destroyedRef.current) return
+      if (st?.isProtected) {
+        setIsProtected(true)
+        if (st.salt) setSalt(st.salt)
+        const cachedPass = currentPasswordRef.current || sessionStorage.getItem('clip_live_pass_' + slug)
+        if (!cachedPass) {
+          setIsAuthenticated(false)
+        }
+      }
+      setIsProtectionChecked(true)
+    }).catch(() => {
+      if (!destroyedRef.current) setIsProtectionChecked(true)
+    })
 
     const connect = () => {
       if (destroyedRef.current) return
@@ -90,6 +107,7 @@ export function useLiveSocket(slug: string | undefined) {
               case 'auth_challenge':
                 setIsProtected(true)
                 setIsAuthenticated(false)
+                setIsProtectionChecked(true)
                 if (data.salt) {
                   setSalt(data.salt)
                   const cachedPass = currentPasswordRef.current || sessionStorage.getItem('clip_live_pass_' + slug)
@@ -117,6 +135,7 @@ export function useLiveSocket(slug: string | undefined) {
 
               case 'init':
                 setIsAuthenticated(true)
+                setIsProtectionChecked(true)
                 setAuthError(null)
                 if (typeof data.text === 'string') {
                   if (isDirtyRef.current && localTextRef.current !== data.text) {
@@ -362,6 +381,7 @@ export function useLiveSocket(slug: string | undefined) {
     clientId,
     isProtected,
     isAuthenticated,
+    isProtectionChecked,
     authError,
     authenticate,
     remoteUpdateTrigger,

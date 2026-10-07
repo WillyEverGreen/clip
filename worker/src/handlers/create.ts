@@ -197,6 +197,12 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     entry.fileSize = totalSize
     entry.files    = processedFiles
 
+    if (content && content.trim()) {
+      const byteLength = new TextEncoder().encode(content).length
+      if (byteLength > MAX_TEXT_BYTES) return c.json({ error: 'text_too_large' }, 400)
+      entry.content = content
+    }
+
     await putEntry(c.env.PASTE_KV, entry)
 
     c.executionCtx?.waitUntil(notifyRoom(c.env, slug))

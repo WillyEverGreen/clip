@@ -106,7 +106,8 @@ export default function CreatePage() {
           const salt = generateSalt()
           const authHash = await computeAuthHash(viewPassword, salt)
           await setLiveSecurity(targetSlug, true, authHash, salt)
-          sessionStorage.setItem('clip_live_pass_' + targetSlug, viewPassword)
+          // Explicitly clear any stale cached session password so password prompt always appears
+          sessionStorage.removeItem('clip_live_pass_' + targetSlug)
         }
         if (content.trim()) {
           await seedLiveRoom(targetSlug, content.trim())
@@ -175,6 +176,8 @@ export default function CreatePage() {
         setUploadProgress(100)
         await new Promise((r) => setTimeout(r, 800))
       }
+      sessionStorage.setItem('clip_edit_code_' + newSlug, editCode)
+      sessionStorage.removeItem('clip_decrypt_' + newSlug)
       navigate(`/${newSlug}`)
     } catch (err) {
       const e = err as ApiError
