@@ -237,7 +237,9 @@ export default function LivePage() {
     return Array.from(bytes).map(b => b.toString(36)).join('').slice(0, 8)
   })
   const [saveTtl, setSaveTtl] = useState('21600')
-  const [savePassword, setSavePassword] = useState('')
+  const [savePassword, setSavePassword] = useState(() => {
+    return (typeof window !== 'undefined' && slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || ''
+  })
   const [saveSlugChoice, setSaveSlugChoice] = useState<'room' | 'custom' | 'random'>('room')
   const [saveCustomSlug, setSaveCustomSlug] = useState('')
   const [saveSaving, setSaveSaving] = useState(false)
@@ -466,12 +468,24 @@ export default function LivePage() {
     return () => window.removeEventListener('paste', handlePaste)
   }, [handleUpload, showToast])
 
+  const handleOpenSaveModal = useCallback(() => {
+    const livePass = (slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || ''
+    if (livePass) {
+      setSavePassword(livePass)
+    }
+    const cachedCode = (slug ? sessionStorage.getItem('clip_edit_code_' + slug) : null) || ''
+    if (cachedCode && saveSlugChoice === 'room') {
+      setSaveEditCode(cachedCode)
+    }
+    setShowSaveModal(true)
+  }, [slug, saveSlugChoice])
+
   // Global keyboard shortcuts (Ctrl+S to save clip, Escape to close modals)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
-        setShowSaveModal(true)
+        handleOpenSaveModal()
       } else if (e.key === 'Escape') {
         setShowQrModal(false)
         setShowSaveModal(false)
@@ -480,7 +494,7 @@ export default function LivePage() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [handleOpenSaveModal])
 
   // Delete live file
   const handleDeleteFile = async (fileId: string) => {
@@ -803,6 +817,7 @@ export default function LivePage() {
       }
 
       sessionStorage.setItem('clip_edit_code_' + createdSlug, saveEditCode)
+      sessionStorage.removeItem('clip_decrypt_' + createdSlug)
       showToast(`Exported to /${createdSlug}!`, 'success')
       navigate(`/${createdSlug}`)
     } catch (err: any) {
@@ -984,7 +999,7 @@ export default function LivePage() {
             {isAuthenticated && (
               <button
                 type="button"
-                onClick={() => setShowSaveModal(true)}
+                onClick={handleOpenSaveModal}
                 className="btn btn-primary"
                 style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}
                 title="Save as permanent clip (Ctrl+S)"
@@ -1948,7 +1963,12 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
               </div>
 
               <div>
-                <label className="label">Password Encryption <span style={{ color: 'var(--text-dim)' }}>(Optional)</span></label>
+                <label className="label">
+                  Password Encryption{' '}
+                  <span style={{ color: 'var(--text-dim)' }}>
+                    {sessionStorage.getItem('clip_live_pass_' + slug) ? '(Pre-filled from room password)' : '(Optional)'}
+                  </span>
+                </label>
                 <input
                   type="password"
                   value={savePassword}
