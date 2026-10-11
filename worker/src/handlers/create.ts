@@ -71,8 +71,15 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     }
 
     // ── Uniqueness check ─────────────────────────────────────────────────────
+    const fromLiveRoom = form.get('fromLiveRoom') === 'true'
+    const isLiveReserved = (await c.env.PASTE_KV.get(`live:reserved:${slug}`)) !== null
+
     if (await entryExists(c.env.PASTE_KV, slug)) {
       return c.json({ error: 'slug_taken' }, 409)
+    }
+
+    if (isLiveReserved && !fromLiveRoom) {
+      return c.json({ error: 'slug_reserved' }, 409)
     }
 
     // ── Build entry ──────────────────────────────────────────────────────────

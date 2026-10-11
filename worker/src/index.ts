@@ -12,7 +12,7 @@ import { entryExists, getEntry, putFileKV, getFileKV, deleteFileKV } from './lib
 
 import { handleAdminList, handleAdminDelete, handleAdminPurgeAll, handleAdminLiveRooms, handleAdminDeleteLiveRoom } from './handlers/admin'
 import { handleReadZip } from './handlers/zip'
-import { getMimeType } from './lib/mime'
+import { getMimeType, validateMime } from './lib/mime'
 import { zipSync, strToU8 } from 'fflate'
 
 // Re-export Durable Object so wrangler can register it
@@ -94,6 +94,42 @@ app.delete('/api/admin/entry/:slug',  handleAdminDelete)
 app.delete('/api/admin/purge',        handleAdminPurgeAll)
 app.get('/api/admin/live-rooms',      handleAdminLiveRooms)
 app.delete('/api/admin/live/:slug',   handleAdminDeleteLiveRoom)
+
+// ── Live Pad Authentication Helper ───────────────────────────────────────────
+async function verifyLiveRoomAuth(c: any, slug: string): Promise<{ authorized: boolean; state?: any }> {
+  if (!c.env.CLIP_DO) return { authorized: true }
+  const id = c.env.CLIP_DO.idFromName(slug)
+  const obj = c.env.CLIP_DO.get(id)
+  const res = await obj.fetch(`https://clip-do/room/${slug}/live-state`)
+  if (!res.ok) return { authorized: true }
+  const data = await res.json() as { isProtected?: boolean; salt?: string; totalFileSize?: number; fileCount?: number }
+  if (!data?.isProtected) return { authorized: true, state: data }
+
+  const authHeader = c.req.header('x-auth-hash')
+  const pass = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
+  
+  if (authHeader) {
+    const authRes = await obj.fetch(`https://clip-do/room/${slug}/live-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hash: authHeader }),
+    })
+    return { authorized: authRes.ok, state: data }
+  }
+
+  if (pass && data.salt) {
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data.salt + pass))
+    const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+    const authRes = await obj.fetch(`https://clip-do/room/${slug}/live-state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hash }),
+    })
+    return { authorized: authRes.ok, state: data }
+  }
+
+  return { authorized: false, state: data }
+}
 
 // ── Live Pad Real-Time Routes ──────────────────────────────────────────────────
 
@@ -247,6 +283,11 @@ app.post('/api/live/:slug/upload', async (c) => {
   const slug = c.req.param('slug') ?? ''
   if (!slug) return c.json({ error: 'not_found' }, 404)
 
+  const authCheck = await verifyLiveRoomAuth(c, slug)
+  if (!authCheck.authorized) {
+    return c.json({ error: 'unauthorized', message: 'Password required to upload files to this private room.' }, 401)
+  }
+
   let form: FormData
   try {
     form = await c.req.formData()
@@ -263,6 +304,21 @@ app.post('/api/live/:slug/upload', async (c) => {
     return c.json({ error: 'file_too_large' }, 400)
   }
 
+  // Enforce room-level cumulative storage ceiling (100 MB or 30 files)
+  const currentTotal = authCheck.state?.totalFileSize || 0
+  const currentCount = authCheck.state?.fileCount || 0
+  if (currentCount >= 30 || currentTotal + rawFile.size > 100 * 1024 * 1024) {
+    return c.json({ error: 'room_storage_limit_exceeded', message: 'Room has reached maximum storage limit (100 MB or 30 files).' }, 400)
+  }
+
+  // Validate MIME magic bytes (skip if client-side encrypted)
+  if (!(await validateMime(rawFile))) {
+    return c.json({ error: 'mime_mismatch', message: 'File contents do not match declared MIME type.' }, 400)
+  }
+
+  const cleanBase = (rawFile.name || 'file').split(/[/\\]/).pop() || 'file'
+  const safeName = cleanBase.replace(/["\r\n]/g, '_').slice(0, 128)
+
   const fileId = `live_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`
   const fileBuffer = await rawFile.arrayBuffer()
   const TTL_24H = 86_400
@@ -270,12 +326,12 @@ app.post('/api/live/:slug/upload', async (c) => {
   await putFileKV(c.env.PASTE_KV, slug, fileBuffer, TTL_24H, fileId)
 
   const inferredMime = (!rawFile.type || rawFile.type === 'application/octet-stream')
-    ? getMimeType(rawFile.name)
+    ? getMimeType(safeName)
     : rawFile.type
 
   const fileItem = {
     id: fileId,
-    fileName: rawFile.name || 'file',
+    fileName: safeName,
     fileMime: inferredMime || 'application/octet-stream',
     fileSize: rawFile.size,
   }
@@ -300,6 +356,11 @@ app.delete('/api/live/:slug/file/:fileId', async (c) => {
   const fileId = c.req.param('fileId') ?? ''
   if (!slug || !fileId) return c.json({ error: 'not_found' }, 404)
 
+  const authCheck = await verifyLiveRoomAuth(c, slug)
+  if (!authCheck.authorized) {
+    return c.json({ error: 'unauthorized', message: 'Password required to delete files from this private room.' }, 401)
+  }
+
   await deleteFileKV(c.env.PASTE_KV, slug, fileId)
 
   const id = c.env.CLIP_DO.idFromName(slug)
@@ -316,6 +377,11 @@ app.post('/api/live/:slug/files/delete', async (c) => {
   if (!c.env.CLIP_DO) return c.json({ error: 'live_unavailable' }, 503)
   const slug = c.req.param('slug') ?? ''
   if (!slug) return c.json({ error: 'not_found' }, 404)
+
+  const authCheck = await verifyLiveRoomAuth(c, slug)
+  if (!authCheck.authorized) {
+    return c.json({ error: 'unauthorized', message: 'Password required to delete files from this private room.' }, 401)
+  }
 
   const body = await c.req.json().catch(() => ({})) as { fileIds?: string[] }
   const fileIds = body?.fileIds
@@ -345,6 +411,11 @@ app.get('/api/live/:slug/file/:fileId', async (c) => {
   const slug   = c.req.param('slug') ?? ''
   const fileId = c.req.param('fileId') ?? ''
   if (!slug || !fileId) return c.json({ error: 'not_found' }, 404)
+
+  const authCheck = await verifyLiveRoomAuth(c, slug)
+  if (!authCheck.authorized) {
+    return c.text('Error: This file belongs to a protected Live Pad. Please authenticate or provide ?pass=<password>.\n', 401)
+  }
 
   const fileData = await getFileKV(c.env.PASTE_KV, slug, fileId)
   if (!fileData) return c.json({ error: 'not_found' }, 404)
@@ -411,7 +482,8 @@ app.get('/api/live/:slug/zip', async (c) => {
         if (totalFileSize > MAX_ZIP_SIZE_MB * 1024 * 1024) {
           return c.json({ error: 'zip_too_large' }, 413)
         }
-        let name = file.fileName || file.id
+        const cleanBase = (file.fileName || file.id).split(/[/\\]/).pop() || file.id
+        let name = cleanBase.replace(/[^a-zA-Z0-9_.-]/g, '_')
         if (zipFiles[name]) {
           const parts = name.split('.')
           const ext = parts.length > 1 ? `.${parts.pop()}` : ''

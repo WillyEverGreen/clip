@@ -151,13 +151,26 @@ export class ClipRoom extends DurableObject<Env> {
       })
       this.persistLiveState().catch(() => {})
 
+      let failedAuthAttempts = 0
+      let lastAuthAttemptTime = 0
+
       server.addEventListener('message', (event) => {
         try {
           const raw = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data)
           const data = JSON.parse(raw)
 
           if (data.type === 'auth') {
+            const now = Date.now()
+            if (failedAuthAttempts >= 5 && now - lastAuthAttemptTime < 5000) {
+              server.send(JSON.stringify({
+                type: 'auth_error',
+                message: 'Too many failed attempts. Please wait 5 seconds.',
+              }))
+              return
+            }
+
             if (this.roomSecurity.isProtected && data.hash && data.hash === this.roomSecurity.authHash) {
+              failedAuthAttempts = 0
               this.authenticatedSockets.add(server)
               server.send(JSON.stringify({
                 type: 'init',
@@ -168,6 +181,16 @@ export class ClipRoom extends DurableObject<Env> {
                 clientId,
               }))
             } else {
+              failedAuthAttempts++
+              lastAuthAttemptTime = now
+              if (failedAuthAttempts >= 10) {
+                server.send(JSON.stringify({
+                  type: 'auth_error',
+                  message: 'Connection closed due to excessive failed attempts.',
+                }))
+                try { server.close(4001, 'Too many failed attempts') } catch {}
+                return
+              }
               server.send(JSON.stringify({
                 type: 'auth_error',
                 message: 'Incorrect password',
@@ -304,7 +327,17 @@ export class ClipRoom extends DurableObject<Env> {
     // ── POST /room/:slug/security — update room password protection ───────
     if (request.method === 'POST' && url.pathname.includes('/security')) {
       try {
-        const body = await request.json() as RoomSecurity
+        const body = await request.json() as RoomSecurity & { currentHash?: string }
+        // If room is currently protected, verify the existing password hash before allowing modifications
+        if (this.roomSecurity?.isProtected && this.roomSecurity.authHash) {
+          if (!body.currentHash || body.currentHash !== this.roomSecurity.authHash) {
+            return new Response(JSON.stringify({ error: 'unauthorized', message: 'Current room password required to modify protection' }), {
+              status: 403,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+        }
+
         this.roomSecurity = {
           isProtected: !!body.isProtected,
           salt: body.salt,

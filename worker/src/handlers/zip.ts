@@ -84,6 +84,10 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
             }
           }
 
+          // Sanitize filename to prevent Zip Slip path traversal
+          const cleanBase = (name || file.id).split(/[/\\]/).pop() || file.id
+          name = cleanBase.replace(/[^a-zA-Z0-9_.-]/g, '_')
+
           // Check size as we load files
           totalFileSize += fileBytes.byteLength
           if (totalFileSize > MAX_ZIP_SIZE_MB * 1024 * 1024) {
@@ -128,6 +132,9 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
             name = dec.fileName
           }
         }
+
+        const cleanBase = (name || 'file').split(/[/\\]/).pop() || 'file'
+        name = cleanBase.replace(/[^a-zA-Z0-9_.-]/g, '_')
 
         totalFileSize = fileBytes.byteLength
         if (totalFileSize > MAX_ZIP_SIZE_MB * 1024 * 1024) {

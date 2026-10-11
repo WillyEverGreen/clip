@@ -720,12 +720,23 @@ export default function LivePage() {
         targetSlug = saveCustomSlug.trim().toLowerCase()
       }
 
+      // Check total aggregate file size before attempting download & upload
+      const totalFileSize = files.reduce((acc, f) => acc + (f.fileSize || 0), 0)
+      if (totalFileSize > 50 * 1024 * 1024) {
+        setSaveError(`Attached files (${formatBytes(totalFileSize)}) exceed the maximum clip export limit (50 MB). Please remove some files before saving.`)
+        setSaveSaving(false)
+        return
+      }
+
+      const livePass = (slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || ''
+      const effectiveSavePass = savePassword || (isProtected ? livePass : '')
+
       let finalContent = text
-      if (savePassword && savePassword.length >= 4) {
+      if (effectiveSavePass && effectiveSavePass.length >= 4) {
         if (text.trim()) {
-          finalContent = await encryptContent(text, savePassword)
+          finalContent = await encryptContent(text, effectiveSavePass)
         } else if (files.length > 0) {
-          finalContent = await encryptContent('{"file_lock":true}', savePassword)
+          finalContent = await encryptContent('{"file_lock":true}', effectiveSavePass)
         }
       }
 
@@ -734,13 +745,13 @@ export default function LivePage() {
       form.append('content', finalContent)
       form.append('editCode', saveEditCode)
       form.append('ttl', saveTtl)
+      form.append('fromLiveRoom', 'true')
 
       if (targetSlug) {
         form.append('slug', targetSlug)
       }
 
       // Fetch file blobs and attach them to the creation form (encrypting if password is set)
-      const livePass = sessionStorage.getItem('clip_live_pass_' + slug) || ''
       for (const f of files) {
         let buf: ArrayBuffer | null = null
         const p2pBlob = getP2PBlob(f.id)
@@ -760,6 +771,7 @@ export default function LivePage() {
         if (!buf) continue
 
         let rawFile: File
+        let isAlreadyEncrypted = false
         if (isEncryptedFileBuffer(buf)) {
           if (livePass) {
             const dec = await decryptFileBuffer(buf, livePass)
@@ -767,16 +779,19 @@ export default function LivePage() {
               rawFile = new File([dec.blob], dec.fileName, { type: dec.fileMime })
             } else {
               rawFile = new File([buf], f.fileName, { type: f.fileMime })
+              isAlreadyEncrypted = true
             }
           } else {
             rawFile = new File([buf], f.fileName, { type: f.fileMime })
+            isAlreadyEncrypted = true
           }
         } else {
           rawFile = new File([buf], f.fileName, { type: f.fileMime })
         }
 
-        const fileObj = (savePassword && savePassword.length >= 4)
-          ? await encryptFile(rawFile, savePassword)
+        // Avoid double-encrypting already encrypted blobs
+        const fileObj = (effectiveSavePass && effectiveSavePass.length >= 4 && !isAlreadyEncrypted)
+          ? await encryptFile(rawFile, effectiveSavePass)
           : rawFile
 
         form.append('files', fileObj)

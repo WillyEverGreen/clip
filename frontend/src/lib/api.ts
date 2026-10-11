@@ -142,6 +142,8 @@ export function liveFileDownloadUrl(slug: string, fileId: string, mime?: string,
   const q = new URLSearchParams()
   if (mime) q.set('mime', mime)
   if (name) q.set('name', name)
+  const pass = typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null
+  if (pass) q.set('pass', pass)
   const query = q.toString() ? `?${q.toString()}` : ''
   return `${BASE}/api/live/${slug}/file/${fileId}${query}`
 }
@@ -157,6 +159,11 @@ export async function uploadLiveFile(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${BASE}/api/live/${slug}/upload`)
+
+    const pass = typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null
+    if (pass) {
+      xhr.setRequestHeader('x-password', pass)
+    }
 
     xhr.upload.addEventListener('progress', (e) => {
       if (e.lengthComputable && onProgress) {
@@ -204,8 +211,13 @@ export function liveZipDownloadUrl(slug: string): string {
 }
 
 export async function deleteLiveFile(slug: string, fileId: string): Promise<void> {
+  const pass = typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null
+  const headers: Record<string, string> = {}
+  if (pass) headers['x-password'] = pass
+
   const res = await fetch(`${BASE}/api/live/${slug}/file/${fileId}`, {
     method: 'DELETE',
+    headers,
   })
   if (!res.ok) {
     const json = await res.json().catch(() => ({}))
@@ -214,9 +226,13 @@ export async function deleteLiveFile(slug: string, fileId: string): Promise<void
 }
 
 export async function batchDeleteLiveFiles(slug: string, fileIds: string[]): Promise<void> {
+  const pass = typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (pass) headers['x-password'] = pass
+
   const res = await fetch(`${BASE}/api/live/${slug}/files/delete`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ fileIds }),
   })
   if (!res.ok) {
@@ -230,11 +246,12 @@ export async function setLiveSecurity(
   isProtected: boolean,
   authHash?: string,
   salt?: string,
+  currentHash?: string,
 ): Promise<{ ok: boolean; isProtected: boolean }> {
   const res = await fetch(`${BASE}/api/live/${slug}/security`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isProtected, authHash, salt }),
+    body: JSON.stringify({ isProtected, authHash, salt, currentHash }),
   })
   if (!res.ok) throw await res.json().catch(() => ({ error: 'security_failed' }))
   return res.json()
