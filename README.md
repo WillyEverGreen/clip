@@ -135,3 +135,14 @@ npm run deploy
 ### 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+
+## Screenshots
+
+**Share text, files or a live pad**
+
+![Share text, files or a live pad](docs/screenshots/clip-home.png)
+
+**Mobile view**
+
+![Mobile view](docs/screenshots/clip-mobile.png)
+
