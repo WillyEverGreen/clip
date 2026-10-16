@@ -1,14 +1,16 @@
 <div align="center">
 
-  <a href="https://clip.foo.ng">
-    <img src="frontend/public/clip-header.png" height="50" alt="clip" />
-  </a>
+<img src="frontend/public/icon-512.png" width="110" alt="Clip logo" />
 
-  <p><b>Instant free file sharing, text sharing, and real-time collaborative Live Pad. Zero accounts, zero tracking, end-to-end encrypted.</b></p>
+# Clip
 
-  <p>
-    <a href="https://clip.foo.ng"><b>🌐 Live Demo: clip.foo.ng</b></a> • <a href="https://clip.foo.ng/live"><b>⚡ Live Pad: clip.foo.ng/live</b></a>
-  </p>
+**Temporary text and file sharing with custom links, optional encryption and a live pad.**
+
+<a href="https://clip.foo.ng"><img src="https://img.shields.io/badge/Live_Demo-Open_the_app-2ea44f?style=for-the-badge" alt="Live demo" /></a>
+
+<br/>
+
+<img src="docs/screenshot.png" width="860" alt="Clip screenshot" />
 
 </div>
 
@@ -135,14 +137,4 @@ npm run deploy
 ### 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
-## Screenshots
-
-**Share text, files or a live pad**
-
-![Share text, files or a live pad](docs/screenshots/clip-home.png)
-
-**Mobile view**
-
-![Mobile view](docs/screenshots/clip-mobile.png)
 
