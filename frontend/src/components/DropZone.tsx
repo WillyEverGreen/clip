@@ -109,6 +109,13 @@ export default function DropZone({
     })
   }
 
+  const clearAll = () => {
+    setSelectedFiles([])
+    if (onFiles) onFiles([])
+    if (onFile) onFile(null)
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
   // ── Upload progress overlay ───────────────────────────────────────────────
   if (uploadProgress !== null) {
     const isDone = uploadProgress >= 100
@@ -217,36 +224,48 @@ export default function DropZone({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div
-        className={`dropzone${dragging ? ' dropzone--over' : ''}`}
-        style={{ flex: 1, height, minHeight: height === '100%' ? '180px' : height, boxSizing: 'border-box' }}
+        className={`dropzone${dragging ? ' dropzone--over' : ''}${selectedFiles.length > 0 ? ' dropzone--filled' : ''}`}
+        style={{ flex: 1, height, minHeight: height === '100%' ? '180px' : height, maxHeight: height !== '100%' && selectedFiles.length > 0 ? '440px' : undefined, boxSizing: 'border-box' }}
         onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         onPaste={onPaste}
-        onClick={() => inputRef.current?.click()}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
+        onClick={() => { if (selectedFiles.length === 0) inputRef.current?.click() }}
+        role={selectedFiles.length === 0 ? 'button' : undefined}
+        tabIndex={selectedFiles.length === 0 ? 0 : undefined}
+        onKeyDown={(e) => { if (selectedFiles.length === 0 && e.key === 'Enter') inputRef.current?.click() }}
       >
         <input ref={inputRef} type="file" multiple style={{ display: 'none' }} onChange={onInput} />
 
         {selectedFiles.length > 0 ? (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1, minHeight: 0, maxHeight: height === '100%' ? '100%' : '170px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', paddingBottom: '0.4rem', borderBottom: '1px solid #262626' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ width: '100%', height: height === '100%' ? '100%' : undefined, maxHeight: height === '100%' ? undefined : '408px', display: 'flex', flexDirection: 'column', gap: '0.6rem', minHeight: 0, textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '0.8rem', color: '#ffffff', fontWeight: 600 }}>
-                  {selectedFiles.length} FILE{selectedFiles.length > 1 ? 'S' : ''} SELECTED (
-                  {formatBytes(selectedFiles.reduce((a, f) => a + f.size, 0))} / {formatBytes(maxBytes)})
+                  {selectedFiles.length} file{selectedFiles.length > 1 ? 's' : ''} selected
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>
+                    {' '}· {formatBytes(selectedFiles.reduce((a, f) => a + f.size, 0))} of {formatBytes(maxBytes)}
+                  </span>
                 </span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); inputRef.current?.click() }}
-                  className="btn btn-ghost"
-                  style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
-                >
-                  <Plus size={12} /> Add more
-                </button>
+                <span style={{ display: 'inline-flex', gap: '0.25rem' }}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); inputRef.current?.click() }}
+                    className="btn btn-ghost"
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', gap: '0.25rem' }}
+                  >
+                    <Plus size={12} /> Add more
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); clearAll() }}
+                    className="btn btn-ghost"
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}
+                  >
+                    Clear all
+                  </button>
+                </span>
               </div>
 
               {(() => {
@@ -260,6 +279,7 @@ export default function DropZone({
               })()}
             </div>
 
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingRight: '2px' }}>
             {selectedFiles.map((file, idx) => (
               <div
                 key={`${file.name}-${idx}`}
@@ -281,6 +301,7 @@ export default function DropZone({
                 </button>
               </div>
             ))}
+            </div>
           </div>
         ) : (
           <div className="dropzone__empty">
@@ -311,6 +332,9 @@ export default function DropZone({
           border-color: #ffffff;
           background: #0d0d0d;
         }
+        .dropzone--filled { align-items: stretch; justify-content: flex-start; cursor: default; text-align: left; }
+        .dropzone--filled:hover { border-color: #3f3f46; background: #050505; }
+        .dropzone--filled.dropzone--over { border-color: #ffffff; background: #0d0d0d; }
         .dropzone__empty { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
         .dropzone__empty p { color: #a1a1aa; font-size: 0.875rem; }
         .dropzone__link { color: #ffffff; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
