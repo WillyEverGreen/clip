@@ -18,6 +18,10 @@ const CHECK_DELAY_MS = 1500
 /** Clients ping every 20s, but hidden browser tabs can be throttled to about once a minute. */
 const STALE_SOCKET_MS = 150_000
 const STALE_SWEEP_MS = 30_000
+/** Typing is saved at most this often; one write covers every edit made in the window. */
+const PERSIST_DELAY_MS = 500
+/** A viewer that cannot take a message within this long is dropped instead of holding up the rest. */
+const SSE_WRITE_TIMEOUT_MS = 3000
 
 interface PresenceInfo {
   name: string
@@ -30,6 +34,16 @@ function cleanName(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const name = value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_CHARS)
   return name || null
+}
+
+/** Keep names unique in a room: if `base` is taken, "Mochi" becomes "Mochi 2", "Mochi 3", ... */
+function uniqueName(base: string, taken: Set<string>): string {
+  if (!taken.has(base.toLowerCase())) return base
+  for (let n = 2; ; n++) {
+    const suffix = ` ${n}`
+    const candidate = base.slice(0, MAX_NAME_CHARS - suffix.length) + suffix
+    if (!taken.has(candidate.toLowerCase())) return candidate
+  }
 }
 
 function clampIndex(value: unknown, max: number): number {
@@ -67,6 +81,7 @@ export class ClipRoom extends DurableObject<Env> {
   // Multi-cursor presence, only for clients that opted in
   private presence: Map<string, PresenceInfo> = new Map()
   private checkTimer: ReturnType<typeof setTimeout> | null = null
+  private persistTimer: ReturnType<typeof setTimeout> | null = null
   // Last time each socket said anything, so connections that died silently can be dropped
   private lastSeen: Map<WebSocket, number> = new Map()
   private staleTimer: ReturnType<typeof setInterval> | null = null
@@ -287,6 +302,10 @@ export class ClipRoom extends DurableObject<Env> {
           clearInterval(this.staleTimer)
           this.staleTimer = null
         }
+        if (this.sockets.size === 0 && this.persistTimer) {
+          clearTimeout(this.persistTimer)
+          this.persistTimer = null
+        }
         if (this.presence.delete(clientId)) {
           this.broadcastWebsocket({ type: 'cursor_off', id: clientId }, undefined, ws => this.hasPresence(ws))
         }
@@ -432,7 +451,7 @@ export class ClipRoom extends DurableObject<Env> {
     }
 
     // ── POST /room/:slug/live-file — file added to Live Pad ────────────────
-    if (request.method === 'POST' && url.pathname.includes('/live-file')) {
+    if (request.method === 'POST' && url.pathname.endsWith('/live-file')) {
       try {
         const body = await request.json() as { file: FileItem }
         if (body?.file) {
@@ -502,21 +521,13 @@ export class ClipRoom extends DurableObject<Env> {
       this.clients.set(clientId, writer)
       this.ensureHeartbeat()
 
-      try {
-        await writer.write(this.encode('event: connected\ndata: {}\n\n'))
-      } catch {
-        this.clients.delete(clientId)
-      }
+      // Do not await: a stream write only completes once the response is being read, and the
+      // response is not returned yet. Awaiting here made the stream hang with no headers.
+      writer.write(this.encode('event: connected\ndata: {}\n\n')).catch(() => this.clients.delete(clientId))
 
-      const cleanup = () => {
-        this.clients.delete(clientId)
-        if (this.clients.size === 0) {
-          this.stopHeartbeat()
-        }
-      }
-
-      readable.pipeTo(new WritableStream({ close: cleanup, abort: cleanup })).catch(cleanup)
-
+      // The readable goes straight to the client. Viewers that disconnect are dropped when a write
+      // to them fails (the next update or the 25s heartbeat), which also stops the heartbeat once
+      // nobody is left.
       return new Response(readable, {
         headers: {
           'Content-Type':      'text/event-stream',
@@ -593,8 +604,7 @@ export class ClipRoom extends DurableObject<Env> {
         info.end = mapPos(info.end, op)
       }
     }
-    // Persist with 24-hour rolling TTL
-    this.persistLiveState()
+    this.schedulePersist()
     for (const { op, version } of applied) {
       this.broadcastWebsocket(
         { type: 'op', v: version, s: op.s, e: op.e, x: op.x, from: clientId },
@@ -609,6 +619,18 @@ export class ClipRoom extends DurableObject<Env> {
       ws => !this.otSockets.has(ws),
     )
     this.scheduleCheck()
+  }
+
+  /**
+   * Save with the 24-hour rolling TTL, but not on every keystroke: the first edit starts a short
+   * timer and the write at its end covers everything typed meanwhile.
+   */
+  private schedulePersist() {
+    if (this.persistTimer) return
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null
+      this.persistLiveState().catch(() => {})
+    }, PERSIST_DELAY_MS)
   }
 
   /** Drop connections that stopped talking (dead networks never send a close), so ghosts disappear. */
@@ -654,12 +676,18 @@ export class ClipRoom extends DurableObject<Env> {
       }
       return
     }
-    const name = cleanName(data.name)
-    if (!name) return
+    const requested = cleanName(data.name)
+    if (!requested) return
+    const taken = new Set<string>()
+    for (const [id, p] of this.presence) {
+      if (id !== clientId) taken.add(p.name.toLowerCase())
+    }
+    const name = uniqueName(requested, taken)
     const len = this.currentText.length
     const info: PresenceInfo = { name, start: clampIndex(data.start, len), end: clampIndex(data.end, len) }
     this.presence.set(clientId, info)
-    // The newcomer learns who is here; everyone who also opted in learns about the newcomer
+    // The newcomer learns the name it was given and who is here; the others learn about the newcomer
+    sender.send(JSON.stringify({ type: 'you', name }))
     sender.send(JSON.stringify({ type: 'cursors', list: this.cursorList(clientId) }))
     this.broadcastWebsocket({ type: 'cursor', id: clientId, ...info }, sender, ws => this.hasPresence(ws))
   }
@@ -701,34 +729,31 @@ export class ClipRoom extends DurableObject<Env> {
     const data: { slug: string; updatedAt?: number } = { slug }
     if (updatedAt) data.updatedAt = updatedAt
     
-    const msg = this.encode(`event: update\ndata: ${JSON.stringify(data)}\n\n`)
-    const dead: string[] = []
+    await this.writeToViewers(this.encode(`event: update\ndata: ${JSON.stringify(data)}\n\n`))
+  }
 
-    for (const [id, writer] of this.clients) {
+  /** Send to every open viewer at once; anyone who errors or stalls is dropped. */
+  private async writeToViewers(chunk: Uint8Array) {
+    const entries = Array.from(this.clients)
+    const results = await Promise.all(entries.map(async ([id, writer]) => {
       try {
-        await writer.write(msg)
+        await Promise.race([
+          writer.write(chunk),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('slow viewer')), SSE_WRITE_TIMEOUT_MS)),
+        ])
+        return null
       } catch {
-        dead.push(id)
+        return id
       }
-    }
-
-    for (const id of dead) this.clients.delete(id)
+    }))
+    for (const id of results) if (id) this.clients.delete(id)
   }
 
   // ── Heartbeat every 25s for SSE clients ───────────────────────────────────
   private ensureHeartbeat() {
     if (this.heartbeatTimer) return
     this.heartbeatTimer = setInterval(async () => {
-      const ping = this.encode(': ping\n\n')
-      const dead: string[] = []
-      for (const [id, writer] of this.clients) {
-        try {
-          await writer.write(ping)
-        } catch {
-          dead.push(id)
-        }
-      }
-      for (const id of dead) this.clients.delete(id)
+      await this.writeToViewers(this.encode(': ping\n\n'))
       if (this.clients.size === 0) this.stopHeartbeat()
     }, 25_000)
   }

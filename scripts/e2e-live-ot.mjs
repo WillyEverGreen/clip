@@ -97,6 +97,7 @@ class Editor {
       case 'check':
         if (this.ot.version === data.v && this.ot.isSynced() && hashText(this.ot.base) !== data.h) this.send({ type: 'resync' })
         break
+      case 'you': this.myName = data.name; break
       case 'cursors': this.cursors = new Map(data.list.map(c => [c.id, c])); break
       case 'cursor': this.cursors.set(data.id, data); break
       case 'cursor_off': this.cursors.delete(data.id); break
@@ -237,6 +238,26 @@ await test('presence: opt-in only, names are cleaned, positions are clamped', as
   await sleep(300)
   assert.ok(!b.cursors.has(a.clientId), 'cursor disappears when its owner leaves')
   b.disconnect(); quiet.disconnect(); evil.disconnect()
+})
+
+await test('names are unique in a room: the server adds a number when one is taken', async () => {
+  const slug = roomSlug('names')
+  const a = await new Editor(slug, 'a').connect({ presence: { name: 'Mochi', start: 0, end: 0 } })
+  const b = await new Editor(slug, 'b').connect({ presence: { name: 'Mochi', start: 0, end: 0 } })
+  const c = await new Editor(slug, 'c').connect({ presence: { name: 'mochi', start: 0, end: 0 } })   // case-insensitive
+  await sleep(400)
+  assert.equal(a.myName, 'Mochi')
+  assert.equal(b.myName, 'Mochi 2')
+  assert.equal(c.myName, 'mochi 3')
+  const seenByA = [...a.cursors.values()].map(x => x.name).sort()
+  assert.deepEqual(seenByA, ['Mochi 2', 'mochi 3'])
+  // a name frees up when its owner leaves
+  a.disconnect()
+  await sleep(300)
+  const d = await new Editor(slug, 'd').connect({ presence: { name: 'Mochi', start: 0, end: 0 } })
+  await sleep(300)
+  assert.equal(d.myName, 'Mochi')
+  b.disconnect(); c.disconnect(); d.disconnect()
 })
 
 await test('turning presence off removes the cursor for everyone', async () => {

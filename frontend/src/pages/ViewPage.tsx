@@ -11,6 +11,7 @@ import Countdown from '../components/Countdown'
 import Logo      from '../components/Logo'
 import QuoteWidget from '../components/QuoteWidget'
 import { useSeo } from '../lib/useSeo'
+import { copyToClipboard } from '../lib/clipboard'
 import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
 
 // Heavy components lazy-loaded: their library chunks are only downloaded when needed
@@ -56,6 +57,19 @@ export default function ViewPage() {
   const [attachError, setAttachError] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null)
 
+  // Escape closes whichever dialog is open (unless a request is mid-flight)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setShowCliModal(false)
+      setShowQrModal(false)
+      if (!hostLiveLoading) setShowHostLiveModal(false)
+      if (!attachingFiles) setPastedFiles(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hostLiveLoading, attachingFiles])
+
   useEffect(() => {
     if (!toast) return
     const t = setTimeout(() => setToast(null), 3500)
@@ -97,21 +111,28 @@ export default function ViewPage() {
   }, [slug, attachEditCode])
 
   // Dynamic SEO Title & Description
-  const rawText = decryptedContent || entry?.content || ''
+  // Password-protected text never reaches the tab title or description: before unlocking it would be
+  // raw ciphertext, and after unlocking it would put the secret into browser history.
+  const isLockedText = !!entry?.content && isEncrypted(entry.content)
+  const rawText = isLockedText ? '' : (decryptedContent || entry?.content || '')
   const firstLine = rawText.trim().split('\n')[0]?.replace(/[#*`_~]/g, '').trim()
   const snippet = firstLine ? firstLine.slice(0, 60) : ''
   const pageTitle = entry
     ? entry.type === 'file'
       ? `${entry.fileName || (entry.files && entry.files.length > 0 ? `${entry.files.length} Shared Files` : 'Shared Files')} - Clip`
-      : snippet
-        ? `${snippet} - Clip /${slug}`
-        : `Clip /${slug} - Shared Text`
+      : isLockedText
+        ? `Locked clip - Clip /${slug}`
+        : snippet
+          ? `${snippet} - Clip /${slug}`
+          : `Clip /${slug} - Shared Text`
     : `Clip /${slug} - Shared Link`
 
   const pageDescription = entry
     ? entry.type === 'file'
       ? `View and download ${entry.fileName || 'shared files'} securely on Clip. Zero accounts, instant transfer.`
-      : rawText.slice(0, 160).replace(/\n/g, ' ') || 'View shared markdown, code, and text on Clip.'
+      : isLockedText
+        ? 'This clip is password protected. Enter the password to read it.'
+        : rawText.slice(0, 160).replace(/\n/g, ' ') || 'View shared markdown, code, and text on Clip.'
     : 'View shared text and files securely on Clip.'
 
   useSeo({
@@ -270,21 +291,35 @@ export default function ViewPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug])
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href)
+  const copyLink = async () => {
+    if (!(await copyToClipboard(window.location.href))) {
+      setToast({ message: 'Could not copy automatically. Copy the link from the address bar.', type: 'error' })
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const copyTextContent = () => {
-    if (!entry?.content) return
-    navigator.clipboard.writeText(entry.content)
+  const copyTextContent = async () => {
+    // Never copy ciphertext: a locked clip must be unlocked first
+    const text = decryptedContent ?? (entry?.content && !isEncrypted(entry.content) ? entry.content : null)
+    if (!text) {
+      setToast({ message: 'Unlock this clip first to copy its text.', type: 'info' })
+      return
+    }
+    if (!(await copyToClipboard(text))) {
+      setToast({ message: 'Could not copy automatically. Select the text and copy it manually.', type: 'error' })
+      return
+    }
     setTextCopied(true)
     setTimeout(() => setTextCopied(false), 2000)
   }
 
-  const copyCliCommand = (cmd: string, id: string) => {
-    navigator.clipboard.writeText(cmd)
+  const copyCliCommand = async (cmd: string, id: string) => {
+    if (!(await copyToClipboard(cmd))) {
+      setToast({ message: 'Could not copy automatically. Select the command and copy it manually.', type: 'error' })
+      return
+    }
     setCliCmdCopied(id)
     setTimeout(() => setCliCmdCopied(null), 2000)
   }
@@ -538,7 +573,7 @@ export default function ViewPage() {
                   <Terminal size={18} color="#10b981" />
                   <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#ffffff', margin: 0 }}>Terminal CLI</h3>
                 </div>
-                <button onClick={() => setShowCliModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}>
+                <button onClick={() => setShowCliModal(false)} className="btn btn-ghost" aria-label="Close" title="Close" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}>
                   <X size={16} />
                 </button>
               </div>
@@ -714,7 +749,7 @@ export default function ViewPage() {
                   <QrCode size={18} />
                   <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#ffffff' }}>Scan to Open</h3>
                 </div>
-                <button onClick={() => setShowQrModal(false)} className="btn btn-ghost" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}><X size={16} /></button>
+                <button onClick={() => setShowQrModal(false)} className="btn btn-ghost" aria-label="Close" title="Close" style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}><X size={16} /></button>
               </div>
               <div style={{ background: '#ffffff', borderRadius: '12px', padding: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', boxShadow: '0 8px 30px rgba(0,0,0,0.5)', width: 'fit-content' }}>
                 <Suspense fallback={<div style={{ width: 190, height: 190, background: '#f4f4f5', borderRadius: 8 }} />}>
@@ -1110,6 +1145,8 @@ export default function ViewPage() {
                   className="btn btn-primary"
                   onClick={handleDecrypt}
                   disabled={decrypting}
+                  aria-label="Unlock"
+                  title="Unlock"
                   style={{ flexShrink:0, padding:'0 1.25rem' }}
                 >
                   {decrypting ? <div className="spinner" /> : <Unlock size={15} />}

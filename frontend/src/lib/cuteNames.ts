@@ -23,11 +23,9 @@ function randomInt(max: number): number {
   return buf[0]! % max
 }
 
-/** A random one-word name, avoiding any in `taken` (names already in the room or our own). */
-export function randomCuteName(taken: ReadonlySet<string> = new Set()): string {
-  const free = NAMES.filter(n => !taken.has(n))
-  const pool = free.length > 0 ? free : NAMES
-  return pool[randomInt(pool.length)]!
+/** A random one-word name. */
+export function randomCuteName(): string {
+  return NAMES[randomInt(NAMES.length)]!
 }
 
 /** Stable color for a participant, derived from their id so every client agrees. */
@@ -37,23 +35,21 @@ export function colorForId(id: string): string {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]!
 }
 
-const ENABLED_KEY = 'clip_live_cursors'
 const NAME_KEY = 'clip_live_name'
 
-export function loadCursorPrefs(): { enabled: boolean; name: string } {
-  let enabled = false
-  let name = ''
+/**
+ * This browser's display name: picked at random the first time and remembered after that.
+ * There is deliberately no way to change it; the server only adds a number if two people in one
+ * room end up with the same name.
+ */
+export function loadMyName(): string {
   try {
-    enabled = localStorage.getItem(ENABLED_KEY) === '1'
-    name = localStorage.getItem(NAME_KEY) ?? ''
+    const saved = localStorage.getItem(NAME_KEY)
+    if (saved && NAMES.includes(saved)) return saved
   } catch { /* storage unavailable */ }
-  // Only keep a remembered name that is still one of ours (older builds used two-word names)
-  return { enabled, name: NAMES.includes(name) ? name : randomCuteName() }
-}
-
-export function saveCursorPrefs(enabled: boolean, name: string): void {
+  const name = randomCuteName()
   try {
-    localStorage.setItem(ENABLED_KEY, enabled ? '1' : '0')
     localStorage.setItem(NAME_KEY, name)
   } catch { /* storage unavailable */ }
+  return name
 }

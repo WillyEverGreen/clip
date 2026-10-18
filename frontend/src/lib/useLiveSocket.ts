@@ -2,16 +2,14 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { BASE, getLiveState, type FileItem } from './api'
 import { computeAuthHash } from './crypto'
 import { useWebRtcPeer } from './useWebRtcPeer'
-import { OtClient, diffOps, hashText, mapPos, type ClientStep, type Op, type ReplayOp } from './ot'
+import { OtClient, diffOps, hashText, type ClientStep, type Op, type ReplayOp } from './ot'
+import { CursorStore, isRemoteCursor } from './cursorStore'
 
-export interface RemoteCursor {
-  id: string
-  name: string
-  start: number
-  end: number
-}
+export type { RemoteCursor } from './cursorStore'
 
 interface LiveSocketOptions {
+  /** Our display name; the server may add a number if someone in the room already has it. */
+  name?: string
   /**
    * Called synchronously whenever the network changes the editor text, with the edit that was
    * applied when it was a single op. The editor must put `text` into the textarea right away
@@ -21,12 +19,6 @@ interface LiveSocketOptions {
   syncEditor?: (text: string, op?: Op) => void
 }
 
-function isRemoteCursor(v: unknown): v is RemoteCursor {
-  if (typeof v !== 'object' || v === null) return false
-  const c = v as RemoteCursor
-  return typeof c.id === 'string' && typeof c.name === 'string' && Number.isFinite(c.start) && Number.isFinite(c.end)
-}
-
 export function useLiveSocket(slug: string | undefined, options: LiveSocketOptions = {}) {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>('connecting')
   const [text, setText] = useState<string>('')
@@ -34,7 +26,6 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
   const [peers, setPeers] = useState<number>(1)
   const [clientId, setClientId] = useState<string | null>(null)
   const [peerIds, setPeerIds] = useState<string[]>([])
-  const [cursors, setCursors] = useState<RemoteCursor[]>([])
 
   // Authentication states
   const [isProtected, setIsProtected] = useState<boolean>(false)
@@ -54,8 +45,14 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
   // True once we hold server state; decides between replaying missed ops and a fresh start
   const hasStateRef = useRef(false)
   const resyncTimesRef = useRef<number[]>([])
-  const cursorsRef = useRef<Map<string, RemoteCursor>>(new Map())
-  const presenceRef = useRef<{ on: boolean; name: string }>({ on: false, name: '' })
+  // Other people's cursors live in their own store so cursor traffic never re-renders the page
+  const cursorStoreRef = useRef<CursorStore | null>(null)
+  if (cursorStoreRef.current === null) cursorStoreRef.current = new CursorStore()
+  const cursorStore = cursorStoreRef.current
+  const nameRef = useRef(options.name ?? '')
+  useEffect(() => {
+    nameRef.current = options.name ?? ''
+  })
   const selectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
   const syncEditorRef = useRef(options.syncEditor)
   useEffect(() => {
@@ -97,24 +94,13 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
     }
   }, [sendJson])
 
-  const commitCursors = useCallback(() => {
-    setCursors(Array.from(cursorsRef.current.values()))
-  }, [])
-
   // Keep other people's carets on the same words when the text shifts
-  const shiftCursors = useCallback((op: Op) => {
-    if (cursorsRef.current.size === 0) return
-    for (const c of cursorsRef.current.values()) {
-      c.start = mapPos(c.start, op)
-      c.end = mapPos(c.end, op)
-    }
-    commitCursors()
-  }, [commitCursors])
+  const shiftCursors = useCallback((op: Op) => cursorStore.shift(op), [cursorStore])
 
+  // Everyone shows a cursor: say who we are as soon as we hold the document
   const announcePresence = useCallback(() => {
-    const p = presenceRef.current
-    if (!p.on) return
-    sendJson({ type: 'presence', on: true, name: p.name, start: selectionRef.current.start, end: selectionRef.current.end })
+    if (!nameRef.current) return
+    sendJson({ type: 'presence', on: true, name: nameRef.current, start: selectionRef.current.start, end: selectionRef.current.end })
   }, [sendJson])
 
   useEffect(() => {
@@ -123,8 +109,7 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
     otRef.current = new OtClient(sidRef.current!)
     hasStateRef.current = false
     resyncTimesRef.current = []
-    cursorsRef.current = new Map()
-    setCursors([])
+    cursorStore.clear()
     let retryDelay = 1000
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let pingTimer: ReturnType<typeof setInterval> | null = null
@@ -290,22 +275,21 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
                 break
               }
 
+              // The name the server settled on for us (unique within the room)
+              case 'you':
+                if (typeof data.name === 'string') cursorStore.setMe(data.name)
+                break
+
               case 'cursors':
-                cursorsRef.current = new Map(
-                  (Array.isArray(data.list) ? data.list : []).filter(isRemoteCursor).map((c: RemoteCursor) => [c.id, c]),
-                )
-                commitCursors()
+                cursorStore.replaceAll((Array.isArray(data.list) ? data.list : []).filter(isRemoteCursor))
                 break
 
               case 'cursor':
-                if (isRemoteCursor(data)) {
-                  cursorsRef.current.set(data.id, { id: data.id, name: data.name, start: data.start, end: data.end })
-                  commitCursors()
-                }
+                if (isRemoteCursor(data)) cursorStore.upsert(data)
                 break
 
               case 'cursor_off':
-                if (typeof data.id === 'string' && cursorsRef.current.delete(data.id)) commitCursors()
+                if (typeof data.id === 'string') cursorStore.remove(data.id)
                 break
 
               case 'peers':
@@ -314,12 +298,7 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
                 }
                 if (Array.isArray(data.peerIds)) {
                   setPeerIds(data.peerIds)
-                  const present = new Set<string>(data.peerIds)
-                  let pruned = false
-                  for (const id of Array.from(cursorsRef.current.keys())) {
-                    if (!present.has(id)) { cursorsRef.current.delete(id); pruned = true }
-                  }
-                  if (pruned) commitCursors()
+                  cursorStore.prune(new Set<string>(data.peerIds))
                 }
                 break
 
@@ -377,8 +356,7 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
             return
           }
           otRef.current?.setOnline(false)
-          cursorsRef.current.clear()
-          setCursors([])
+          cursorStore.clear()
           setStatus('reconnecting')
           retryTimer = setTimeout(() => {
             retryDelay = Math.min(retryDelay * 1.5, 10_000)
@@ -407,7 +385,7 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
         wsRef.current = null
       }
     }
-  }, [slug, getWsUrl, flushStep, sendJson, shiftCursors, commitCursors, announcePresence])
+  }, [slug, getWsUrl, flushStep, sendJson, shiftCursors, cursorStore, announcePresence])
 
   // WebRTC P2P DataChannel setup
   const sendWsSignal = useCallback((targetId: string, payload: any) => {
@@ -470,28 +448,16 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
     const before = ot.local
     const step = ot.edit(newText)
     setText(newText)
-    if (cursorsRef.current.size > 0) {
+    if (cursorStore.size > 0) {
       for (const op of diffOps(before, newText)) shiftCursors(op)
     }
     flushStep(step)
-  }, [flushStep, shiftCursors])
-
-  // Turn multi-cursor on or off for this tab (the choice is the caller's to persist)
-  const setPresence = useCallback((on: boolean, name: string) => {
-    presenceRef.current = { on, name }
-    if (on) {
-      announcePresence()
-      return
-    }
-    cursorsRef.current.clear()
-    setCursors([])
-    sendJson({ type: 'presence', on: false })
-  }, [announcePresence, sendJson])
+  }, [flushStep, shiftCursors, cursorStore])
 
   // Report where our caret is
   const sendCursor = useCallback((start: number, end: number) => {
     selectionRef.current = { start, end }
-    if (presenceRef.current.on) sendJson({ type: 'cursor', start, end })
+    sendJson({ type: 'cursor', start, end })
   }, [sendJson])
 
   // Method to update local files after an upload
@@ -530,8 +496,7 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
     files,
     peers,
     clientId,
-    cursors,
-    setPresence,
+    cursorStore,
     sendCursor,
     isProtected,
     isAuthenticated,

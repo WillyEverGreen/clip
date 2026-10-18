@@ -39,6 +39,7 @@ import {
   getMimeType,
 } from '../lib/fileTypes'
 import { formatBytes } from '../lib/api'
+import { copyToClipboard } from '../lib/clipboard'
 
 // Mapping of file extensions to Prism grammar keys
 const EXT_TO_PRISM: Record<string, string> = {
@@ -361,12 +362,12 @@ export default function FilePreviewModal({
   }, [isDragging, dragStart])
 
   // Copy text to clipboard
-  const handleCopyText = useCallback(() => {
+  const handleCopyText = useCallback(async () => {
     if (!textContent) return
-    navigator.clipboard.writeText(textContent).then(() => {
+    if (await copyToClipboard(textContent)) {
       setTextCopied(true)
       setTimeout(() => setTextCopied(false), 2000)
-    })
+    }
   }, [textContent])
 
   // Download individual file from inside ZIP

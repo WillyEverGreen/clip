@@ -1,10 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 .lp {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
   background: #000;
   color: #fff;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
 }
 
 .hero-cubes {
@@ -74,10 +76,11 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: clamp(60px, 14vh, 140px) 24px 40px;
+  /* Centered left-to-right only; the text starts in the upper part of the screen
+     instead of floating in the middle of it */
+  justify-content: flex-start;
+  padding: clamp(72px, 17vh, 190px) 24px 40px;
   min-height: calc(100vh - 80px);
-  justify-content: center;
-  padding-bottom: 120px;
 }
 
 .lp-chip {
@@ -99,8 +102,9 @@
 .lp-hero h1 {
   font-size: clamp(2.4rem, 6.2vw, 4.6rem);
   line-height: 1.05;
-  font-weight: 700;
-  letter-spacing: -0.035em;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  word-spacing: 0.08em;
 }
 .lp-hero h1 span {
   background: linear-gradient(90deg, #fff 30%, #71717a);

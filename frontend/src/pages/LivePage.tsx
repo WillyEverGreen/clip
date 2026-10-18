@@ -7,9 +7,10 @@ import {
   FolderPlus, Code, Play, Clock
 } from 'lucide-react'
 import { useLiveSocket } from '../lib/useLiveSocket'
-import { loadCursorPrefs, saveCursorPrefs, randomCuteName } from '../lib/cuteNames'
+import { loadMyName } from '../lib/cuteNames'
+import { copyToClipboard } from '../lib/clipboard'
 import { mapPos, type Op } from '../lib/ot'
-import { CursorControls, RemoteCursorsOverlay } from '../components/LiveCursors'
+import { CursorBar, RemoteCursorsOverlay } from '../components/LiveCursors'
 import {
   liveFileDownloadUrl,
   uploadLiveFile,
@@ -178,6 +179,8 @@ export default function LivePage() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cursorRef = useRef<{ start: number; end: number } | null>(null)
+  // Our display name never changes once picked; every pad shows everyone's cursor
+  const [myName] = useState(loadMyName)
 
   // Remote changes go straight into the textarea, in the same tick they arrive. React would only
   // catch up on its next render, and a keystroke before that would be based on stale text.
@@ -210,8 +213,7 @@ export default function LivePage() {
     text,
     files,
     peers,
-    cursors,
-    setPresence,
+    cursorStore,
     sendCursor,
     remoteUpdateTrigger,
     sendText,
@@ -228,7 +230,7 @@ export default function LivePage() {
     sendP2PFile,
     getP2PBlob,
     setLocalP2PBlob,
-  } = useLiveSocket(slug, { syncEditor })
+  } = useLiveSocket(slug, { syncEditor, name: myName })
 
   const [enterPass, setEnterPass] = useState('')
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -282,19 +284,6 @@ export default function LivePage() {
 
   const dragCounterRef = useRef(0)
 
-  // Multi-cursor is opt-in per browser; the random name is remembered so it stays stable
-  const [cursorPrefs, setCursorPrefs] = useState(loadCursorPrefs)
-  useEffect(() => {
-    setPresence(cursorPrefs.enabled, cursorPrefs.name)
-    saveCursorPrefs(cursorPrefs.enabled, cursorPrefs.name)
-  }, [cursorPrefs, setPresence])
-
-  // Two people in one room should never share a name: if someone already has ours, pick another
-  useEffect(() => {
-    if (!cursorPrefs.enabled || !cursors.some(c => c.name === cursorPrefs.name)) return
-    setCursorPrefs(p => ({ ...p, name: randomCuteName(new Set([p.name, ...cursors.map(c => c.name)])) }))
-  }, [cursors, cursorPrefs.enabled, cursorPrefs.name])
-
   const cursorSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
     if (cursorSendTimer.current) clearTimeout(cursorSendTimer.current)
@@ -333,8 +322,11 @@ export default function LivePage() {
   }
 
   // Copy link
-  const copyLiveLink = () => {
-    navigator.clipboard.writeText(window.location.href)
+  const copyLiveLink = async () => {
+    if (!(await copyToClipboard(window.location.href))) {
+      showToast('Could not copy automatically. Copy the link from the address bar.', 'error')
+      return
+    }
     setCopiedLink(true)
     showToast('Live Pad URL copied to clipboard!', 'success')
     setTimeout(() => setCopiedLink(false), 2000)
@@ -1240,16 +1232,7 @@ export default function LivePage() {
             {/* Real-time Synchronized Textarea Column */}
             {(!isMobile || mobileTab === 'editor') && (
               <div style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <CursorControls
-                  enabled={cursorPrefs.enabled}
-                  name={cursorPrefs.name}
-                  others={cursors}
-                  onToggle={enabled => setCursorPrefs(p => ({ ...p, enabled }))}
-                  onReroll={() => setCursorPrefs(p => ({
-                    ...p,
-                    name: randomCuteName(new Set([p.name, ...cursors.map(c => c.name)])),
-                  }))}
-                />
+                <CursorBar store={cursorStore} />
                 <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
                 <textarea
                   ref={textareaRef}
@@ -1278,7 +1261,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     boxSizing: 'border-box',
                   }}
                 />
-                <RemoteCursorsOverlay textareaRef={textareaRef} text={text} cursors={cursors} />
+                <RemoteCursorsOverlay textareaRef={textareaRef} text={text} store={cursorStore} />
                 </div>
               </div>
             )}

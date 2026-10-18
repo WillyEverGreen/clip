@@ -117,7 +117,7 @@ export default function CreatePage() {
             const fileToUpload = (lockContent && viewPassword)
               ? await encryptFile(f, viewPassword)
               : f
-            await uploadLiveFile(targetSlug, fileToUpload)
+            await uploadLiveFile(targetSlug, fileToUpload, undefined, lockContent && viewPassword ? viewPassword : undefined)
           }
         }
         navigate(`/live/${targetSlug}`)

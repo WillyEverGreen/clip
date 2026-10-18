@@ -6,6 +6,7 @@ import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { validateMime } from '../lib/mime'
 import { log } from '../lib/logger'
 import { notifyRoom } from '../lib/notify'
+import { normalizeNewlines } from '../lib/text'
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
 const MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -71,7 +72,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
 
     // 1. Text Content update
     if (form.has('content')) {
-      const content = form.get('content') as string | null
+      const content = normalizeNewlines(form.get('content') as string | null)
       if (content !== null) {
         const byteLength = new TextEncoder().encode(content).length
         if (byteLength > MAX_TEXT_BYTES) return c.json({ error: 'text_too_large' }, 400)

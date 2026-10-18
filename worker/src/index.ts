@@ -136,7 +136,7 @@ async function verifyLiveRoomAuth(c: any, slug: string): Promise<{ authorized: b
   }
 
   if (pass && data.salt) {
-    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data.salt + pass))
+    const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${pass}:${data.salt}`))
     const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
     const authRes = await obj.fetch(`https://clip-do/room/${slug}/live-state`, {
       method: 'POST',
@@ -468,7 +468,7 @@ app.get('/api/live/:slug/zip', async (c) => {
   if (data.isProtected) {
     const password = c.req.header('x-password') || c.req.header('x-pass') || c.req.query('password') || c.req.query('pass') || c.req.query('p')
     if (password && data.salt) {
-      const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data.salt + password))
+      const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${password}:${data.salt}`))
       const hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
       const authedRes = await obj.fetch(`https://clip-do/room/${slug}/live-state`, {
         method: 'POST',

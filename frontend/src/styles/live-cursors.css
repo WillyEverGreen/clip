@@ -54,21 +54,6 @@
   color: var(--text-muted);
 }
 
-.lc-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font: inherit;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.lc-toggle:hover { color: #fff; border-color: var(--border-active); }
-.lc-toggle.is-on { color: #fff; border-color: var(--border-active); background: rgba(255, 255, 255, 0.06); }
 
 .lc-you,
 .lc-peer {
@@ -92,19 +77,6 @@
   border-radius: 50%;
 }
 
-.lc-reroll {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.lc-reroll:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
 
 @media (prefers-reduced-motion: reduce) {
   .lc-caret { transition: none; }

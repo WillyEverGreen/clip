@@ -1,7 +1,14 @@
 import { Link } from 'react-router-dom'
 import { Link2Off, Plus } from 'lucide-react'
+import { useSeo } from '../lib/useSeo'
 
 export default function ExpiredPage() {
+  useSeo({
+    title: 'Link not found - Clip',
+    description: 'This link has expired or never existed.',
+    canonicalUrl: 'https://clip.foo.ng/',
+  })
+
   return (
     <div className="page-wrapper">
       <div className="animate-fade-up" style={{ textAlign:'center', maxWidth:'480px' }}>
@@ -15,7 +22,7 @@ export default function ExpiredPage() {
         </h1>
         <p style={{ color:'var(--text-muted)', fontSize:'0.9375rem', lineHeight:1.65, marginBottom:'2rem' }}>
           This link has expired or never existed.<br/>
-          Links are active for <strong style={{color:'#ffffff'}}>6 hours</strong> after creation.
+          Links stay active for <strong style={{color:'#ffffff'}}>10 minutes to 30 days</strong>, depending on how they were created.
         </p>
 
         <Link to="/" className="btn btn-primary" style={{ padding:'0.875rem 2rem', fontSize:'1rem', gap:'0.5rem' }}>

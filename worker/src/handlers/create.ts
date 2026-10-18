@@ -7,6 +7,7 @@ import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { validateMime } from '../lib/mime'
 import { log } from '../lib/logger'
 import { notifyRoom } from '../lib/notify'
+import { normalizeNewlines } from '../lib/text'
 import type { Entry, FileItem } from '../lib/types'
 
 
@@ -104,7 +105,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     let expiresAt: number
     let fileExpiresAt: number | undefined = undefined
 
-    const content = form.get('content') as string | null
+    const content = normalizeNewlines(form.get('content') as string | null)
     const hasContent = content !== null && content.trim().length > 0
 
     if (ttlSeconds !== null) {
@@ -147,7 +148,7 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
 
     // ── Handle TEXT entry ─────────────────────────────────────────────────────
     if (entry.type === 'text') {
-      const content = form.get('content') as string | null
+      const content = normalizeNewlines(form.get('content') as string | null)
       if (!content?.trim()) return c.json({ error: 'no_content' }, 400)
 
       const byteLength = new TextEncoder().encode(content).length

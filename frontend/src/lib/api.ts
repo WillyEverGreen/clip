@@ -152,6 +152,8 @@ export async function uploadLiveFile(
   slug: string,
   file: File,
   onProgress?: (pct: number) => void,
+  /** Room password, when the caller has it but has not stored it for the session (room creation). */
+  password?: string,
 ): Promise<FileItem> {
   const form = new FormData()
   form.append('file', file, file.name)
@@ -160,7 +162,7 @@ export async function uploadLiveFile(
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${BASE}/api/live/${slug}/upload`)
 
-    const pass = typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null
+    const pass = password ?? (typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null)
     if (pass) {
       xhr.setRequestHeader('x-password', pass)
     }
