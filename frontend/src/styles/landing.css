@@ -79,7 +79,7 @@
   /* Centered left-to-right only; the text starts in the upper part of the screen
      instead of floating in the middle of it */
   justify-content: flex-start;
-  padding: clamp(36px, 8vh, 84px) 24px 40px;
+  padding: clamp(56px, 12vh, 130px) 24px 40px;
   min-height: calc(100vh - 80px);
 }
 
@@ -178,7 +178,7 @@
 .glow-img {
   position: absolute;
   height: auto;
-  width: clamp(120px, 15vw, 230px);
+  width: clamp(150px, 20vw, 250px);
   mix-blend-mode: screen; /* black background of the image melts into the page */
   will-change: transform;
 }
