@@ -11,6 +11,7 @@
     "test": "node scripts/run-tests.js && node scripts/test-ot.mjs",
     "test:e2e": "node scripts/e2e-site-api.mjs && node scripts/e2e-live-ot.mjs",
     "test:browser": "node scripts/e2e-browser.mjs",
+    "test:all": "npm test && npm run test:e2e && npm run test:browser",
     "postinstall": "node scripts/postinstall.js",
     "lint": "node \"%npm_execpath%\" --prefix frontend run lint && node \"%npm_execpath%\" --prefix worker run lint",
     "lint:fix": "node \"%npm_execpath%\" --prefix frontend run lint:fix && node \"%npm_execpath%\" --prefix worker run lint:fix",

@@ -285,6 +285,106 @@ await test('landing page has no horizontal scroll on a phone width', async (page
   if (overflow > 1) throw new Error(`page is ${overflow}px wider than the screen`)
 })
 
+console.log('\nRemaining flows')
+await test('wrong view password shows the exact message, right one unlocks', async (page) => {
+  const slug = await createTextClip(page, 'exact msg ' + rand(), { password: 'pw5678' })
+  const { ctx, page: viewer } = await newPage()
+  try {
+    await viewer.goto(`${UI}/${slug}`)
+    await viewer.getByPlaceholder(/password/i).first().fill('nope0000')
+    await viewer.getByRole('button', { name: 'Unlock' }).click()
+    await expectText(viewer, 'Wrong password - please try again.', 8000)
+    await viewer.getByPlaceholder(/password/i).first().fill('pw5678')
+    await viewer.getByRole('button', { name: 'Unlock' }).click()
+    await expectText(viewer, 'exact msg')
+  } finally {
+    await ctx.close()
+  }
+})
+
+await test('expiry: a 10 minute clip shows a countdown on its page', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByPlaceholder(/Paste your text/).fill('expires soon ' + rand())
+  await page.getByPlaceholder('Secret edit code').fill('code1234')
+  await page.getByRole('combobox').filter({ has: page.locator('option[value="600"]') }).selectOption('600')
+  await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+  const slug = await waitForSlug(page)
+  await page.goto(`${UI}/${slug}`)
+  await expectText(page, /\d{2}:\d{2}(:\d{2})? remaining/, 10000)
+  const text = await page.locator('body').innerText()
+  const m = text.match(/(\d{2}):(\d{2})(?::(\d{2}))? remaining/)
+  const mins = m[3] ? Number(m[1]) * 60 + Number(m[2]) : Number(m[1])
+  if (mins > 10 || mins < 8) throw new Error(`10 minute clip shows ${m[0]}`)
+})
+
+await test('drag and drop a file onto the drop zone attaches it', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await page.locator('.dropzone').first().waitFor()
+  const b64 = PNG.toString('base64')
+  await page.locator('.dropzone').first().evaluate((el, data) => {
+    const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0))
+    const dt = new DataTransfer()
+    dt.items.add(new File([bytes], 'dropped.png', { type: 'image/png' }))
+    el.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    el.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }))
+    el.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  }, b64)
+  await expectText(page, 'dropped.png', 10000)
+  await expectText(page, '1 file selected')
+})
+
+await test('Live Pad: delete a file asks first; cancel keeps it, confirm removes it for everyone', async (page) => {
+  await page.goto(UI + '/live')
+  await page.waitForFunction(() => /^\/live\/[a-z0-9-]+$/.test(location.pathname), null, { timeout: 20000 })
+  const liveUrl = page.url()
+  const { ctx, page: other } = await newPage()
+  try {
+    await other.goto(liveUrl)
+    await page.locator('input[type=file]').first().setInputFiles(PNG_PATH)
+    await expectText(other, 'photo.png', 15000)
+    // cancel the confirm: file must stay
+    other.once('dialog', (d) => d.dismiss())
+    await other.getByText('photo.png').first().click()
+    await other.getByTitle('Delete file').click()
+    await sleep(800)
+    await expectText(other, 'photo.png')
+    // confirm: file must go for both viewers
+    other.once('dialog', (d) => d.accept())
+    await other.getByTitle('Delete file').click()
+    await page.getByText('photo.png').first().waitFor({ state: 'detached', timeout: 15000 })
+    await other.getByText('photo.png').first().waitFor({ state: 'detached', timeout: 15000 })
+  } finally {
+    await ctx.close()
+  }
+})
+
+await test('creating clips past the limit shows the rate-limit message', async (page) => {
+  // one context keeps one client IP, so the 11th create in a row is limited
+  await page.goto(UI + '/')
+  let limited = false
+  for (let i = 0; i < 12 && !limited; i++) {
+    await page.goto(UI + '/')
+    await page.getByPlaceholder(/Paste your text/).fill('burst ' + i)
+    await page.getByPlaceholder('Secret edit code').fill('code1234')
+    await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+    await sleep(700)
+    limited = await page.getByText('Too many clips created from this network').isVisible()
+  }
+  if (!limited) throw new Error('no rate-limit message after 12 rapid creates')
+})
+
+console.log('\nPhone width')
+for (const [name, url] of [['create page', '/'], ['live pad', '/live'], ['about page', '/about']]) {
+  await test(`${name} has no horizontal scroll at 375px`, async (page) => {
+    await page.setViewportSize({ width: 375, height: 800 })
+    await page.goto(UI + url)
+    await sleep(700)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    if (overflow > 1) throw new Error(`${overflow}px wider than the screen`)
+  })
+}
+
 if (process.env.ADMIN_KEY) {
   await test('admin panel opens with the admin key', async (page) => {
     await page.goto(UI + '/admin')
