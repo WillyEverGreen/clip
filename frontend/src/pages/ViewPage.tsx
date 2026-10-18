@@ -49,6 +49,9 @@ export default function ViewPage() {
   const [hostLivePassword, setHostLivePassword] = useState('')
   const [hostLiveLoading, setHostLiveLoading] = useState(false)
   const [hostLiveError, setHostLiveError] = useState<string | null>(null)
+  // Set when the LivePad already has a password we do not hold, so the dialog asks for it
+  const [hostLiveNeedsCurrent, setHostLiveNeedsCurrent] = useState(false)
+  const [hostLiveCurrentPass, setHostLiveCurrentPass] = useState('')
   const [pastedFiles, setPastedFiles] = useState<File[] | null>(null)
   const [attachingFiles, setAttachingFiles] = useState(false)
   const [attachEditCode, setAttachEditCode] = useState(() => {
@@ -374,15 +377,65 @@ export default function ViewPage() {
         }
       }
 
-      // Configure room security
-      if (effectivePassword) {
-        const salt = generateSalt()
-        const authHash = await computeAuthHash(effectivePassword, salt)
-        await setLiveSecurity(slug, true, authHash, salt)
-        sessionStorage.setItem('clip_live_pass_' + slug, effectivePassword)
-      } else {
-        await setLiveSecurity(slug, false)
+      // Configure room security. A LivePad that is already protected can only be changed by
+      // presenting its current password, so work that out instead of always failing.
+      const live = await getLiveState(slug).catch(() => null)
+      const roomProtected = !!live?.isProtected && !!live.salt
+      const wantedPass = effectivePassword
+      const alreadyHave = wantedPass && roomProtected
+        && sessionStorage.getItem('clip_live_pass_' + slug) === wantedPass
+
+      if (roomProtected && alreadyHave) {
+        // Same password as this tab already uses: nothing to change
+      } else if (wantedPass) {
+        if (roomProtected) {
+          const candidates = [hostLiveCurrentPass, sessionStorage.getItem('clip_live_pass_' + slug), wantedPass]
+            .filter((p, i, all): p is string => !!p && all.indexOf(p) === i)
+          let changed = false
+          for (const current of candidates) {
+            try {
+              const salt = generateSalt()
+              const authHash = await computeAuthHash(wantedPass, salt)
+              const currentHash = await computeAuthHash(current, live!.salt!)
+              await setLiveSecurity(slug, true, authHash, salt, currentHash)
+              changed = true
+              break
+            } catch (err: any) {
+              if (err?.error !== 'unauthorized') throw err
+            }
+          }
+          if (!changed) {
+            setHostLiveNeedsCurrent(true)
+            throw Object.assign(new Error('This LivePad already has a password. Enter its current password to continue.'), { needsCurrent: true })
+          }
+        } else {
+          const salt = generateSalt()
+          const authHash = await computeAuthHash(wantedPass, salt)
+          await setLiveSecurity(slug, true, authHash, salt)
+        }
+        sessionStorage.setItem('clip_live_pass_' + slug, wantedPass)
+      } else if (roomProtected) {
+        // Make public: the current password is needed to remove protection
+        const candidates = [hostLiveCurrentPass, sessionStorage.getItem('clip_live_pass_' + slug)]
+          .filter((p, i, all): p is string => !!p && all.indexOf(p) === i)
+        let removed = false
+        for (const current of candidates) {
+          try {
+            const currentHash = await computeAuthHash(current, live!.salt!)
+            await setLiveSecurity(slug, false, undefined, undefined, currentHash)
+            removed = true
+            break
+          } catch (err: any) {
+            if (err?.error !== 'unauthorized') throw err
+          }
+        }
+        if (!removed) {
+          setHostLiveNeedsCurrent(true)
+          throw Object.assign(new Error('This LivePad is password protected. Enter its current password to make it public.'), { needsCurrent: true })
+        }
+        sessionStorage.removeItem('clip_live_pass_' + slug)
       }
+      setHostLiveNeedsCurrent(false)
 
       // Seed room with current content & files (normalizing single-file clips if needed)
       const entryFiles: FileItem[] = entry?.files && entry.files.length > 0
@@ -410,7 +463,12 @@ export default function ViewPage() {
 
       navigate(`/live/${slug}`)
     } catch (err: any) {
-      setHostLiveError(err?.message || 'Failed to start LivePad.')
+      if (err?.error === 'unauthorized' || err?.needsCurrent) {
+        setHostLiveNeedsCurrent(true)
+        setHostLiveError(err?.message && !err?.error ? err.message : 'This LivePad already has a password. Enter its current password to continue.')
+      } else {
+        setHostLiveError(err?.message || 'Failed to start LivePad. Please try again.')
+      }
     } finally {
       setHostLiveLoading(false)
     }
@@ -783,14 +841,14 @@ export default function ViewPage() {
             <div
               className="card animate-fade-up"
               onClick={e => e.stopPropagation()}
-              style={{ maxWidth: 480, width: '92%', padding: '1.75rem', border: '1px solid #3f3f46', background: '#0a0a0a' }}
+              style={{ maxWidth: 480, width: 'min(480px, calc(100vw - 2rem))', maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto', boxSizing: 'border-box', padding: 'clamp(1rem, 4vw, 1.75rem)', border: '1px solid #3f3f46', background: '#0a0a0a' }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 8, background: '#18181b', border: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', minWidth: 0 }}>
+                  <div style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 8, background: '#18181b', border: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Zap size={18} color="#ffffff" />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>Host LivePad</h3>
                     <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Synchronized real-time session for /{slug}</p>
                   </div>
@@ -991,18 +1049,35 @@ export default function ViewPage() {
                 </div>
               )}
 
+              {hostLiveNeedsCurrent && (
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Current LivePad Password
+                  </label>
+                  <input
+                    className="input"
+                    type="password"
+                    placeholder="The password this LivePad already has…"
+                    value={hostLiveCurrentPass}
+                    onChange={e => { setHostLiveCurrentPass(e.target.value); setHostLiveError(null) }}
+                    autoFocus
+                  />
+                </div>
+              )}
+
               {hostLiveError && (
-                <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: '#ef4444', display: 'flex', alignItems: 'flex-start', gap: '0.4rem', lineHeight: 1.45 }}>
                   <AlertCircle size={14} />
                   <span>{hostLiveError}</span>
                 </p>
               )}
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <button
                   className="btn btn-ghost"
                   onClick={() => setShowHostLiveModal(false)}
                   disabled={hostLiveLoading}
+                  style={{ flex: '1 1 120px' }}
                 >
                   Cancel
                 </button>
@@ -1010,7 +1085,7 @@ export default function ViewPage() {
                   className="btn btn-primary"
                   onClick={handleLaunchLivePad}
                   disabled={hostLiveLoading}
-                  style={{ gap: '0.5rem', fontWeight: 600 }}
+                  style={{ gap: '0.5rem', fontWeight: 600, flex: '1 1 160px', justifyContent: 'center' }}
                 >
                   {hostLiveLoading ? <div className="spinner" style={{ borderColor: '#000000', borderTopColor: 'transparent' }} /> : <Zap size={15} />}
                   Launch LivePad
