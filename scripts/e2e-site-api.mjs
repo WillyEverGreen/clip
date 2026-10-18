@@ -20,7 +20,9 @@ const realFetch = globalThis.fetch
 let ipCounter = 1
 globalThis.fetch = (url, init = {}) => {
   const headers = new Headers(init.headers || {})
-  if (!headers.has('CF-Connecting-IP')) {
+  // Production sits behind Cloudflare, which sets this header itself and rejects client-supplied ones
+  const local = /^https?:\/\/(127\.0\.0\.1|localhost)/.test(String(url))
+  if (local && !headers.has('CF-Connecting-IP')) {
     ipCounter++
     headers.set('CF-Connecting-IP', `10.${(ipCounter >> 16) & 255}.${(ipCounter >> 8) & 255}.${ipCounter & 255}`)
   }
