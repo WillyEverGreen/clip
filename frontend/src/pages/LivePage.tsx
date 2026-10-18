@@ -289,6 +289,12 @@ export default function LivePage() {
     saveCursorPrefs(cursorPrefs.enabled, cursorPrefs.name)
   }, [cursorPrefs, setPresence])
 
+  // Two people in one room should never share a name: if someone already has ours, pick another
+  useEffect(() => {
+    if (!cursorPrefs.enabled || !cursors.some(c => c.name === cursorPrefs.name)) return
+    setCursorPrefs(p => ({ ...p, name: randomCuteName(new Set([p.name, ...cursors.map(c => c.name)])) }))
+  }, [cursors, cursorPrefs.enabled, cursorPrefs.name])
+
   const cursorSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
     if (cursorSendTimer.current) clearTimeout(cursorSendTimer.current)
@@ -1239,7 +1245,10 @@ export default function LivePage() {
                   name={cursorPrefs.name}
                   others={cursors}
                   onToggle={enabled => setCursorPrefs(p => ({ ...p, enabled }))}
-                  onReroll={() => setCursorPrefs(p => ({ ...p, name: randomCuteName() }))}
+                  onReroll={() => setCursorPrefs(p => ({
+                    ...p,
+                    name: randomCuteName(new Set([p.name, ...cursors.map(c => c.name)])),
+                  }))}
                 />
                 <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
                 <textarea

@@ -204,14 +204,14 @@ await test('an old client that sends whole-text updates still works alongside ne
 
 await test('presence: opt-in only, names are cleaned, positions are clamped', async () => {
   const slug = roomSlug('presence')
-  const a = await new Editor(slug, 'a').connect({ presence: { name: 'Fluffy Otter', start: 0, end: 0 } })
-  const b = await new Editor(slug, 'b').connect({ presence: { name: 'Sleepy Panda', start: 0, end: 0 } })
+  const a = await new Editor(slug, 'a').connect({ presence: { name: 'Mochi', start: 0, end: 0 } })
+  const b = await new Editor(slug, 'b').connect({ presence: { name: 'Biscuit', start: 0, end: 0 } })
   const quiet = await new Editor(slug, 'quiet').connect()           // did not opt in
   a.type('some shared words')
   await settle([a, b, quiet])
   await sleep(300)
   assert.equal(b.cursors.size, 1)
-  assert.equal([...b.cursors.values()][0].name, 'Fluffy Otter')
+  assert.equal([...b.cursors.values()][0].name, 'Mochi')
 
   a.send({ type: 'cursor', start: 5, end: 5 })
   await sleep(300)
@@ -241,8 +241,8 @@ await test('presence: opt-in only, names are cleaned, positions are clamped', as
 
 await test('turning presence off removes the cursor for everyone', async () => {
   const slug = roomSlug('off')
-  const a = await new Editor(slug, 'a').connect({ presence: { name: 'Cozy Fox', start: 0, end: 0 } })
-  const b = await new Editor(slug, 'b').connect({ presence: { name: 'Jolly Seal', start: 0, end: 0 } })
+  const a = await new Editor(slug, 'a').connect({ presence: { name: 'Pudding', start: 0, end: 0 } })
+  const b = await new Editor(slug, 'b').connect({ presence: { name: 'Waffles', start: 0, end: 0 } })
   await sleep(300)
   assert.equal(b.cursors.size, 1)
   a.send({ type: 'presence', on: false })
@@ -291,8 +291,8 @@ await test('password-protected rooms: replay works after auth, strangers are ign
   })
   assert.equal(res.status, 200)
 
-  const a = await new Editor(slug, 'a').connect({ password: 'hunter2', presence: { name: 'Cozy Fox', start: 0, end: 0 } })
-  const b = await new Editor(slug, 'b').connect({ password: 'hunter2', presence: { name: 'Jolly Seal', start: 0, end: 0 } })
+  const a = await new Editor(slug, 'a').connect({ password: 'hunter2', presence: { name: 'Pudding', start: 0, end: 0 } })
+  const b = await new Editor(slug, 'b').connect({ password: 'hunter2', presence: { name: 'Waffles', start: 0, end: 0 } })
   a.type('private notes')
   await settle([a, b])
   assert.equal(b.text, 'private notes')

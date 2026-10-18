@@ -1,15 +1,14 @@
-// Friendly display names and colors for Live Pad multi-cursor.
+// Friendly one-word display names and colors for Live Pad multi-cursor.
 
-const ADJECTIVES = [
-  'Fluffy', 'Sleepy', 'Bouncy', 'Cozy', 'Sparkly', 'Giggly', 'Snuggly', 'Mellow',
-  'Peppy', 'Dizzy', 'Toasty', 'Wiggly', 'Breezy', 'Jolly', 'Fuzzy', 'Zippy',
-  'Dreamy', 'Cheery', 'Bubbly', 'Tiny', 'Sunny', 'Mighty', 'Gentle', 'Silly',
-]
-
-const ANIMALS = [
-  'Otter', 'Panda', 'Fox', 'Bunny', 'Koala', 'Penguin', 'Hedgehog', 'Duckling',
-  'Kitten', 'Puppy', 'Llama', 'Quokka', 'Axolotl', 'Capybara', 'Owl', 'Hamster',
-  'Seal', 'Narwhal', 'Sloth', 'Corgi', 'Lamb', 'Chick', 'Dolphin', 'Squirrel',
+const NAMES = [
+  'Mochi', 'Biscuit', 'Pudding', 'Waffles', 'Pebble', 'Noodle', 'Bubbles', 'Peanut',
+  'Cupcake', 'Muffin', 'Sprout', 'Marshmallow', 'Pixel', 'Button', 'Cookie', 'Nugget',
+  'Pickles', 'Tofu', 'Boba', 'Sesame', 'Jellybean', 'Pumpkin', 'Cocoa', 'Daisy',
+  'Poppy', 'Clover', 'Maple', 'Honey', 'Ziggy', 'Fudge', 'Cinnamon', 'Truffle',
+  'Gizmo', 'Pancake', 'Sunny', 'Twinkle', 'Dumpling', 'Bean', 'Toast', 'Pretzel',
+  'Sprinkles', 'Jelly', 'Brownie', 'Cashew', 'Olive', 'Peaches', 'Kiwi', 'Mango',
+  'Lemon', 'Ginger', 'Willow', 'Pip', 'Bumble', 'Fizz', 'Wobble', 'Snickers',
+  'Taffy', 'Butterscotch', 'Gumdrop', 'Marzipan', 'Biscotti', 'Churro', 'Pepper', 'Ember',
 ]
 
 // Pastel-bright colors that stay readable on the pad's near-black background
@@ -24,8 +23,11 @@ function randomInt(max: number): number {
   return buf[0]! % max
 }
 
-export function randomCuteName(): string {
-  return `${ADJECTIVES[randomInt(ADJECTIVES.length)]} ${ANIMALS[randomInt(ANIMALS.length)]}`
+/** A random one-word name, avoiding any in `taken` (names already in the room or our own). */
+export function randomCuteName(taken: ReadonlySet<string> = new Set()): string {
+  const free = NAMES.filter(n => !taken.has(n))
+  const pool = free.length > 0 ? free : NAMES
+  return pool[randomInt(pool.length)]!
 }
 
 /** Stable color for a participant, derived from their id so every client agrees. */
@@ -45,7 +47,8 @@ export function loadCursorPrefs(): { enabled: boolean; name: string } {
     enabled = localStorage.getItem(ENABLED_KEY) === '1'
     name = localStorage.getItem(NAME_KEY) ?? ''
   } catch { /* storage unavailable */ }
-  return { enabled, name: name || randomCuteName() }
+  // Only keep a remembered name that is still one of ours (older builds used two-word names)
+  return { enabled, name: NAMES.includes(name) ? name : randomCuteName() }
 }
 
 export function saveCursorPrefs(enabled: boolean, name: string): void {
