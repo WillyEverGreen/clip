@@ -22,6 +22,7 @@ import {
   getUniqueLiveSlug,
   formatBytes,
   setLiveSecurity,
+  getLiveState,
 } from '../lib/api'
 import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
 import {
@@ -110,7 +111,9 @@ function LiveImageThumbnail({
           blobUrlToRevoke = u
           setSrc(u)
         }
-      } catch {}
+      } catch {
+        // ignore: a failed optional step should not block the page
+      }
     }
 
     resolve()
@@ -633,9 +636,11 @@ export default function LivePage() {
     setSecurityError(null)
     try {
       const currentPass = (slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || enterPass || ''
+      // Use the room's current salt: it changes every time the password is set
+      const live = await getLiveState(slug).catch(() => null)
       let currentHash: string | undefined = undefined
-      if (salt && currentPass) {
-        currentHash = await computeAuthHash(currentPass, salt)
+      if (live?.salt && currentPass) {
+        currentHash = await computeAuthHash(currentPass, live.salt)
       }
       await setLiveSecurity(slug, false, undefined, undefined, currentHash)
       sessionStorage.removeItem('clip_live_pass_' + slug)
@@ -660,9 +665,10 @@ export default function LivePage() {
     setSecurityError(null)
     try {
       const currentPass = isProtected ? ((slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || enterPass || '') : ''
+      const live = await getLiveState(slug).catch(() => null)
       let currentHash: string | undefined = undefined
-      if (isProtected && salt && currentPass) {
-        currentHash = await computeAuthHash(currentPass, salt)
+      if (isProtected && live?.salt && currentPass) {
+        currentHash = await computeAuthHash(currentPass, live.salt)
       }
       const newSalt = generateSalt()
       const newAuthHash = await computeAuthHash(newRoomPassword, newSalt)
@@ -774,7 +780,9 @@ export default function LivePage() {
           })
           return
         }
-      } catch {}
+      } catch {
+        // ignore: a failed optional step should not block the page
+      }
     }
 
     setPreviewFile({
@@ -1513,7 +1521,6 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                         type="file"
                         // @ts-expect-error webkitdirectory is standard in HTML5 directory picker
                         webkitdirectory=""
-                        directory=""
                         multiple
                         style={{ display: 'none' }}
                         onChange={e => {
@@ -1947,7 +1954,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
             </div>
 
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              Scan this code with your phone's camera to immediately join and type into this room live.
+              Scan this code with your phone&apos;s camera to immediately join and type into this room live.
             </p>
 
             <div
