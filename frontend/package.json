@@ -32,6 +32,7 @@
     "@types/prismjs": "^1.26.6",
     "dompurify": "^3.4.12",
     "fflate": "^0.8.3",
+    "gsap": "^3.15.0",
     "katex": "^0.18.4",
     "lucide-react": "^1.28.0",
     "marked": "^18.0.7",
