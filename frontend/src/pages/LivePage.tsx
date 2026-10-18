@@ -31,6 +31,7 @@ import {
 } from '../lib/fileTypes'
 import { encryptContent, encryptFile, decryptFileBuffer, isEncryptedFileBuffer } from '../lib/crypto'
 import Logo from '../components/Logo'
+import QuoteWidget from '../components/QuoteWidget'
 import { useSeo } from '../lib/useSeo'
 import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
 
@@ -860,6 +861,7 @@ export default function LivePage() {
 
   return (
     <div className="page-wrapper" style={{ height: isMobile ? '100dvh' : '100vh', maxHeight: isMobile ? '100dvh' : '100vh', overflow: 'hidden', padding: isMobile ? '0.5rem 0.6rem' : '1rem 1.5rem', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <QuoteWidget />
       {/* ── Drag & Drop Screen Overlay ────────────────────────────────────── */}
       {isDragging && (
         <div

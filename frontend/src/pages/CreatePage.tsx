@@ -647,6 +647,12 @@ export default function CreatePage() {
             <Info size={13} /> About Clip
           </Link>
         </aside>
+        <footer style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-dim)', paddingBottom: '0.5rem', flexShrink: 0 }}>
+          Quotes powered by{' '}
+          <a href="https://github.com/Chronos778/quotes_api" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-muted)' }}>
+            Quotes API
+          </a>
+        </footer>
       </main>
     </div>
   )

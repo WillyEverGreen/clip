@@ -9,6 +9,7 @@ import { getMimeType } from '../lib/fileTypes'
 import { useEntrySSE } from '../lib/useEntrySSE'
 import Countdown from '../components/Countdown'
 import Logo      from '../components/Logo'
+import QuoteWidget from '../components/QuoteWidget'
 import { useSeo } from '../lib/useSeo'
 import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
 
@@ -428,6 +429,7 @@ export default function ViewPage() {
 
   return (
     <div className="page-wrapper" style={{ justifyContent:'flex-start', paddingTop:'2.5rem' }}>
+      <QuoteWidget />
       <div className="content-box animate-fade-up">
 
         {/* ── Toast Notification ───────────────────────────────────────────── */}

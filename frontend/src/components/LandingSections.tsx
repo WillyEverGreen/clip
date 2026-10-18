@@ -4,7 +4,7 @@ import { gsap } from 'gsap'
 import Logo from './Logo'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
-  Link2, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
+  Link2, Quote, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
   ClipboardPaste, Share2, Flame, Code2, QrCode,
 } from 'lucide-react'
 
@@ -257,7 +257,8 @@ export default function LandingSections() {
         <nav aria-label="Footer">
           <Link to="/">App</Link>
           <Link to="/live">Live Pad</Link>
-          <a href="https://github.com/WilyEverGreen/Clip" target="_blank" rel="noreferrer"><Code2 size={15} /> GitHub</a>
+          <a href="https://github.com/WillyEverGreen/clip" target="_blank" rel="noreferrer"><Code2 size={15} /> GitHub</a>
+          <a href="https://github.com/Chronos778/quotes_api" target="_blank" rel="noreferrer"><Quote size={15} /> Quotes API</a>
         </nav>
       </footer>
     </div>
