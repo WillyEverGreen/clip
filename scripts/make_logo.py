@@ -19,7 +19,7 @@ FONT = "C:/Windows/Fonts/segoeuib.ttf"   # bold humanist sans; the app's wordmar
 
 MARK_HEIGHT = 360        # rendered height of the C mark (source is 192px; upscaled smoothly)
 WORD_HEIGHT_RATIO = 0.50 # "lip" ascender height relative to the mark height (≈ three quarters of the C)
-GAP_RATIO = 0.16         # space between mark and wordmark, relative to the mark height
+GAP_RATIO = 0.05         # space between mark and wordmark, relative to the mark height
 MARGIN = 24              # equal padding around the final logo
 
 
@@ -41,7 +41,8 @@ def mark_with_alpha(ink_for_ring):
             else:
                 color = (r, g, b)
             dst[x, y] = (*color, alpha)
-    return out
+    # drop the transparent padding so the gap is measured from the ring itself, not the canvas edge
+    return out.crop(out.getbbox())
 
 
 def compose(variant):
