@@ -10,6 +10,8 @@
  */
 import { DurableObject } from 'cloudflare:workers'
 import type { Env, FileItem } from '../lib/types'
+import { getEntry } from '../lib/kv'
+import { hashCode } from '../lib/crypto'
 import { OtServerDoc, mapPos, hashText, type Op } from '../lib/ot'
 
 const MAX_NAME_CHARS = 24
@@ -380,6 +382,7 @@ export class ClipRoom extends DurableObject<Env> {
         files: this.currentFiles,
         peers: this.sockets.size,
         isProtected: !!this.roomSecurity?.isProtected,
+        salt: this.roomSecurity?.salt,
         createdAt: effectiveCreatedAt,
         updatedAt: effectiveUpdatedAt,
         expiresAt: effectiveExpiresAt,
@@ -394,10 +397,31 @@ export class ClipRoom extends DurableObject<Env> {
     // ── POST /room/:slug/security — update room password protection ───────
     if (request.method === 'POST' && url.pathname.includes('/security')) {
       try {
-        const body = await request.json() as RoomSecurity & { currentHash?: string }
-        // If room is currently protected, verify the existing password hash before allowing modifications
+        const body = await request.json() as RoomSecurity & { currentHash?: string; editCode?: string; newHash?: string }
+        // If room is currently protected, verify the existing password hash or owner edit code before allowing modifications
         if (this.roomSecurity?.isProtected && this.roomSecurity.authHash) {
-          if (!body.currentHash || body.currentHash !== this.roomSecurity.authHash) {
+          let authorized = false
+          if (body.currentHash && body.currentHash === this.roomSecurity.authHash) {
+            authorized = true
+          }
+          if (!authorized && body.editCode && this.slug && this.env.PASTE_KV) {
+            try {
+              const entry = await getEntry(this.env.PASTE_KV, this.slug)
+              if (entry && entry.editCodeHash && entry.editCodeSalt) {
+                const pepper = this.env.APP_PEPPER || 'clip_default_pepper'
+                const hashed = await hashCode(body.editCode, entry.editCodeSalt, pepper)
+                if (hashed === entry.editCodeHash) {
+                  authorized = true
+                }
+              }
+            } catch {}
+          }
+          // If the room has 0 text, 0 files, and 0 active sockets, allow reset
+          if (!authorized && !this.currentText && this.currentFiles.length === 0 && this.sockets.size === 0) {
+            authorized = true
+          }
+
+          if (!authorized) {
             return new Response(JSON.stringify({ error: 'unauthorized', message: 'Current room password required to modify protection' }), {
               status: 403,
               headers: { 'Content-Type': 'application/json' },
@@ -405,15 +429,34 @@ export class ClipRoom extends DurableObject<Env> {
           }
         }
 
+        const effectiveSalt = body.salt || this.roomSecurity?.salt || crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+        const effectiveAuthHash = body.authHash || body.newHash
+
         this.roomSecurity = {
           isProtected: !!body.isProtected,
-          salt: body.salt,
-          authHash: body.authHash,
+          salt: effectiveSalt,
+          authHash: effectiveAuthHash,
         }
         await this.ctx.storage.put('room_security', this.roomSecurity)
         await this.persistLiveState()
-        this.authenticatedSockets.clear()
-        return new Response(JSON.stringify({ ok: true, isProtected: this.roomSecurity.isProtected }), {
+
+        if (!this.roomSecurity.isProtected) {
+          // Room made public: authorize all active sockets so viewers can collaborate immediately
+          for (const s of this.sockets) {
+            this.authenticatedSockets.add(s)
+          }
+        } else {
+          this.authenticatedSockets.clear()
+        }
+
+        // Notify all active WebSocket peers immediately
+        this.broadcastWebsocket({
+          type: 'security_updated',
+          isProtected: this.roomSecurity.isProtected,
+          salt: this.roomSecurity.salt,
+        })
+
+        return new Response(JSON.stringify({ ok: true, isProtected: this.roomSecurity.isProtected, salt: this.roomSecurity.salt }), {
           headers: { 'Content-Type': 'application/json' },
         })
       } catch {

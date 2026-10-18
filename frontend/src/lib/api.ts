@@ -209,7 +209,9 @@ export interface LiveStateResponse {
 }
 
 export function liveZipDownloadUrl(slug: string): string {
-  return `${BASE}/api/live/${slug}/zip`
+  const pass = typeof window !== 'undefined' ? sessionStorage.getItem('clip_live_pass_' + slug) : null
+  const query = pass ? `?pass=${encodeURIComponent(pass)}` : ''
+  return `${BASE}/api/live/${slug}/zip${query}`
 }
 
 export async function deleteLiveFile(slug: string, fileId: string): Promise<void> {
@@ -249,11 +251,12 @@ export async function setLiveSecurity(
   authHash?: string,
   salt?: string,
   currentHash?: string,
+  editCode?: string,
 ): Promise<{ ok: boolean; isProtected: boolean }> {
   const res = await fetch(`${BASE}/api/live/${slug}/security`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isProtected, authHash, salt, currentHash }),
+    body: JSON.stringify({ isProtected, authHash, salt, currentHash, editCode }),
   })
   if (!res.ok) throw await res.json().catch(() => ({ error: 'security_failed' }))
   return res.json()

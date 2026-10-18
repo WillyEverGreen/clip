@@ -456,7 +456,10 @@ export default function ViewPage() {
       // If user had pasted files, upload them directly to the LivePad
       if (pastedFiles && pastedFiles.length > 0) {
         for (const file of pastedFiles) {
-          await uploadLiveFile(slug, file)
+          const fileToUpload = effectivePassword
+            ? await encryptFile(file, effectivePassword)
+            : file
+          await uploadLiveFile(slug, fileToUpload)
         }
         setPastedFiles(null)
       }

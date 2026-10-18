@@ -23,6 +23,7 @@ export function strictCors(configuredOrigin?: string) {
       'Authorization',
       'x-password',
       'x-pass',
+      'x-auth-hash',
       'If-None-Match',
       'Cache-Control',
       'Pragma',

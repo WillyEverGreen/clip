@@ -124,6 +124,10 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
         if (!cachedPass) {
           setIsAuthenticated(false)
         }
+      } else {
+        setIsProtected(false)
+        setIsAuthenticated(true)
+        setAuthError(null)
       }
       setIsProtectionChecked(true)
     }).catch(() => {
@@ -189,6 +193,21 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
                 currentPasswordRef.current = null
                 if (slug) {
                   sessionStorage.removeItem('clip_live_pass_' + slug)
+                }
+                break
+
+              case 'security_updated':
+                if (data.isProtected) {
+                  setIsProtected(true)
+                  if (data.salt) setSalt(data.salt)
+                  const cachedPass = currentPasswordRef.current || sessionStorage.getItem('clip_live_pass_' + slug)
+                  if (!cachedPass) {
+                    setIsAuthenticated(false)
+                  }
+                } else {
+                  setIsProtected(false)
+                  setIsAuthenticated(true)
+                  setAuthError(null)
                 }
                 break
 
@@ -499,8 +518,11 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
     cursorStore,
     sendCursor,
     isProtected,
+    setIsProtected,
     isAuthenticated,
+    setIsAuthenticated,
     isProtectionChecked,
+    salt,
     authError,
     authenticate,
     remoteUpdateTrigger,

@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   Zap, ArrowLeft, ArrowRight, Copy, Check, QrCode, Upload, Download, Trash2,
   File as FileIcon, FileText, Image as ImageIcon, Film, Music, FileArchive,
-  Eye, X, Lock, AlertCircle, Folder,
+  Eye, X, Lock, Unlock, AlertCircle, Folder,
   FolderPlus, Code, Play, Clock
 } from 'lucide-react'
 import { useLiveSocket } from '../lib/useLiveSocket'
@@ -21,6 +21,7 @@ import {
   updateEntryWithProgress,
   getUniqueLiveSlug,
   formatBytes,
+  setLiveSecurity,
 } from '../lib/api'
 import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
 import {
@@ -33,7 +34,7 @@ import {
   getFileTypeBadge,
   getMimeType
 } from '../lib/fileTypes'
-import { encryptContent, encryptFile, decryptFileBuffer, isEncryptedFileBuffer } from '../lib/crypto'
+import { encryptContent, encryptFile, decryptFileBuffer, isEncryptedFileBuffer, generateSalt, computeAuthHash } from '../lib/crypto'
 import Logo from '../components/Logo'
 import QuoteWidget from '../components/QuoteWidget'
 import { useSeo } from '../lib/useSeo'
@@ -46,11 +47,15 @@ const QRCodeSVG = lazy(() =>
 function LiveImageThumbnail({
   slug,
   file,
+  isProtected,
+  isAuthenticated,
   getP2PBlob,
   onClick,
 }: {
   slug: string
   file: { id: string; fileName: string; fileMime: string }
+  isProtected?: boolean
+  isAuthenticated?: boolean
   getP2PBlob: (id: string) => Blob | undefined
   onClick: () => void
 }) {
@@ -86,22 +91,26 @@ function LiveImageThumbnail({
         }
       }
 
-      if (livePass) {
-        try {
-          const url = liveFileDownloadUrl(slug, file.id, file.fileMime, file.fileName)
-          const res = await fetch(url)
-          if (!res.ok) return
-          const buf = await res.arrayBuffer()
-          if (isEncryptedFileBuffer(buf)) {
-            const dec = await decryptFileBuffer(buf, livePass)
-            if (dec && active) {
-              const u = URL.createObjectURL(dec.blob)
-              blobUrlToRevoke = u
-              setSrc(u)
-            }
+      try {
+        const url = liveFileDownloadUrl(slug, file.id, file.fileMime, file.fileName)
+        const res = await fetch(url)
+        if (!res.ok) return
+        const buf = await res.arrayBuffer()
+        if (isEncryptedFileBuffer(buf) && livePass) {
+          const dec = await decryptFileBuffer(buf, livePass)
+          if (dec && active) {
+            const u = URL.createObjectURL(dec.blob)
+            blobUrlToRevoke = u
+            setSrc(u)
+            return
           }
-        } catch {}
-      }
+        } else if (active) {
+          const blob = new Blob([buf], { type: file.fileMime || 'application/octet-stream' })
+          const u = URL.createObjectURL(blob)
+          blobUrlToRevoke = u
+          setSrc(u)
+        }
+      } catch {}
     }
 
     resolve()
@@ -109,7 +118,7 @@ function LiveImageThumbnail({
       active = false
       if (blobUrlToRevoke) URL.revokeObjectURL(blobUrlToRevoke)
     }
-  }, [file.id, slug, getP2PBlob])
+  }, [file.id, slug, getP2PBlob, isProtected, isAuthenticated])
 
   return (
     <div
@@ -221,8 +230,11 @@ export default function LivePage() {
     removeLocalFile,
     removeLocalFiles,
     isProtected,
+    setIsProtected,
     isAuthenticated,
+    setIsAuthenticated,
     isProtectionChecked,
+    salt,
     authError,
     authenticate,
     isP2PActive,
@@ -234,6 +246,10 @@ export default function LivePage() {
 
   const [enterPass, setEnterPass] = useState('')
   const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [showSecurityModal, setShowSecurityModal] = useState(false)
+  const [newRoomPassword, setNewRoomPassword] = useState('')
+  const [securityLoading, setSecurityLoading] = useState(false)
+  const [securityError, setSecurityError] = useState<string | null>(null)
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
   const [isBatchDeleting, setIsBatchDeleting] = useState(false)
 
@@ -371,9 +387,9 @@ export default function LivePage() {
         setUploadingFiles(prev => [...prev, { id: tempId, name: f.name, pct: 0 }])
 
         try {
-          const livePass = sessionStorage.getItem('clip_live_pass_' + slug)
+          const livePass = isProtected ? (sessionStorage.getItem('clip_live_pass_' + slug) || '') : ''
           let fileToUpload = f
-          if (livePass && livePass.length >= 4) {
+          if (isProtected && livePass && livePass.length >= 4) {
             fileToUpload = await encryptFile(f, livePass)
           }
 
@@ -416,7 +432,7 @@ export default function LivePage() {
     } else if (failedNames.length > 0) {
       showToast(`Failed to upload ${failedNames[0]}. Please try again.`, 'error')
     }
-  }, [slug, addLocalFile, showToast])
+  }, [slug, addLocalFile, showToast, isProtected, isAuthenticated, isP2PActive, sendP2PFile, setLocalP2PBlob])
 
   // Drag & drop listener across the entire window
   useEffect(() => {
@@ -607,6 +623,60 @@ export default function LivePage() {
       console.error('Auth error:', err)
     } finally {
       setIsAuthenticating(false)
+    }
+  }
+
+  // Make Room Public handler
+  const handleMakePublic = async () => {
+    if (!slug) return
+    setSecurityLoading(true)
+    setSecurityError(null)
+    try {
+      const currentPass = (slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || enterPass || ''
+      let currentHash: string | undefined = undefined
+      if (salt && currentPass) {
+        currentHash = await computeAuthHash(currentPass, salt)
+      }
+      await setLiveSecurity(slug, false, undefined, undefined, currentHash)
+      sessionStorage.removeItem('clip_live_pass_' + slug)
+      setIsProtected(false)
+      setIsAuthenticated(true)
+      setShowSecurityModal(false)
+      showToast('LivePad is now public! Anyone with the link can join.', 'success')
+    } catch (err: any) {
+      setSecurityError(err?.message || 'Failed to make room public.')
+    } finally {
+      setSecurityLoading(false)
+    }
+  }
+
+  // Update / Set Room Password handler
+  const handleSetRoomPassword = async () => {
+    if (!slug || newRoomPassword.length < 4) {
+      setSecurityError('Password must be at least 4 characters.')
+      return
+    }
+    setSecurityLoading(true)
+    setSecurityError(null)
+    try {
+      const currentPass = isProtected ? ((slug ? sessionStorage.getItem('clip_live_pass_' + slug) : null) || enterPass || '') : ''
+      let currentHash: string | undefined = undefined
+      if (isProtected && salt && currentPass) {
+        currentHash = await computeAuthHash(currentPass, salt)
+      }
+      const newSalt = generateSalt()
+      const newAuthHash = await computeAuthHash(newRoomPassword, newSalt)
+      await setLiveSecurity(slug, true, newAuthHash, newSalt, currentHash)
+      sessionStorage.setItem('clip_live_pass_' + slug, newRoomPassword)
+      setIsProtected(true)
+      setIsAuthenticated(true)
+      setNewRoomPassword('')
+      setShowSecurityModal(false)
+      showToast('Room password successfully updated!', 'success')
+    } catch (err: any) {
+      setSecurityError(err?.message || 'Failed to update room password.')
+    } finally {
+      setSecurityLoading(false)
     }
   }
 
@@ -1064,6 +1134,34 @@ export default function LivePage() {
               {copiedLink ? <Check size={15} style={{ color: '#ffffff' }} /> : <Copy size={15} />}
               <span>{copiedLink ? 'Copied' : (isMobile ? 'URL' : 'Share URL')}</span>
             </button>
+
+            {/* Room Security / Public Status Toggle */}
+            {isAuthenticated && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSecurityError(null)
+                  setNewRoomPassword('')
+                  setShowSecurityModal(true)
+                }}
+                className="btn btn-secondary"
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  borderColor: isProtected ? 'rgba(16, 185, 129, 0.4)' : undefined,
+                }}
+                title={isProtected ? 'Room is password protected. Click to manage or make public.' : 'Room is public. Click to add password.'}
+              >
+                {isProtected ? (
+                  <><Lock size={14} color="#10b981" /> <span>Protected</span></>
+                ) : (
+                  <><Unlock size={14} style={{ color: 'var(--text-muted)' }} /> <span>Public</span></>
+                )}
+              </button>
+            )}
 
             {/* Save as Clip Button */}
             {isAuthenticated && (
@@ -1575,6 +1673,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                             <LiveImageThumbnail
                               slug={slug}
                               file={f}
+                              isProtected={isProtected}
+                              isAuthenticated={isAuthenticated}
                               getP2PBlob={getP2PBlob}
                               onClick={() => handleTriggerPreview(f)}
                             />
@@ -1793,11 +1893,17 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
           })()}
           onNavigatePrev={() => {
             const idx = files.findIndex(f => f.fileName === previewFile.name || f.id === previewFile.id)
-            if (idx > 0) handleTriggerPreview(files[idx - 1])
+            if (idx > 0) {
+              if (previewFile.blob) URL.revokeObjectURL(previewFile.url)
+              handleTriggerPreview(files[idx - 1])
+            }
           }}
           onNavigateNext={() => {
             const idx = files.findIndex(f => f.fileName === previewFile.name || f.id === previewFile.id)
-            if (idx >= 0 && idx < files.length - 1) handleTriggerPreview(files[idx + 1])
+            if (idx >= 0 && idx < files.length - 1) {
+              if (previewFile.blob) URL.revokeObjectURL(previewFile.url)
+              handleTriggerPreview(files[idx + 1])
+            }
           }}
         />
       )}
@@ -2086,6 +2192,131 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Room Security Modal ─────────────────────────────────────────── */}
+      {showSecurityModal && (
+        <div className="modal-backdrop" onClick={() => !securityLoading && setShowSecurityModal(false)}>
+          <div
+            className="card animate-fade-up"
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 440, width: '92%', padding: '1.75rem', border: '1px solid #3f3f46', background: '#0a0a0a' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: '#18181b', border: '1px solid #27272a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {isProtected ? <Lock size={18} color="#10b981" /> : <Unlock size={18} color="#ffffff" />}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#ffffff' }}>LivePad Security</h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Room: /{slug}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSecurityModal(false)}
+                disabled={securityLoading}
+                className="btn btn-ghost"
+                style={{ padding: '0.35rem 0.5rem', color: '#a1a1aa' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {isProtected ? (
+              <div>
+                <div style={{ padding: '0.75rem', background: '#121214', border: '1px solid #27272a', borderRadius: 8, marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#10b981', fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>
+                    <Check size={14} /> Password Protection Active
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    Visitors must enter the room password to join and decrypt content.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <button
+                    type="button"
+                    onClick={handleMakePublic}
+                    disabled={securityLoading}
+                    className="btn btn-secondary"
+                    style={{ width: '100%', justifyContent: 'center', gap: '0.45rem', padding: '0.6rem 1rem', fontWeight: 600 }}
+                  >
+                    {securityLoading ? <div className="spinner" /> : <><Unlock size={15} /> Make Room Public (Remove Password)</>}
+                  </button>
+
+                  <div style={{ borderTop: '1px solid var(--border)', paddingTop: '0.85rem', marginTop: '0.25rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                      Or Change Room Password
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input
+                        type="password"
+                        className="input"
+                        placeholder="New password (min 4 chars)…"
+                        value={newRoomPassword}
+                        onChange={e => setNewRoomPassword(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSetRoomPassword}
+                        disabled={securityLoading || newRoomPassword.length < 4}
+                        className="btn btn-primary"
+                        style={{ padding: '0 1rem', fontWeight: 600 }}
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ padding: '0.75rem', background: '#121214', border: '1px solid #27272a', borderRadius: 8, marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#ffffff', fontWeight: 600, fontSize: '0.85rem', marginBottom: 4 }}>
+                    <Unlock size={14} /> Public Room
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                    Anyone with the link can currently view, edit text, and send files without entering a password.
+                  </p>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    Set Password Protection
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="password"
+                      className="input"
+                      placeholder="Enter password (min 4 chars)…"
+                      value={newRoomPassword}
+                      onChange={e => setNewRoomPassword(e.target.value)}
+                      style={{ flex: 1 }}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSetRoomPassword}
+                      disabled={securityLoading || newRoomPassword.length < 4}
+                      className="btn btn-primary"
+                      style={{ padding: '0 1.25rem', fontWeight: 600 }}
+                    >
+                      {securityLoading ? <div className="spinner" /> : 'Set Password'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {securityError && (
+              <p style={{ marginTop: '0.85rem', marginBottom: 0, fontSize: '0.8rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <AlertCircle size={14} />
+                <span>{securityError}</span>
+              </p>
+            )}
           </div>
         </div>
       )}

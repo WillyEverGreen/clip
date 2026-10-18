@@ -116,8 +116,14 @@ export default function CreatePage() {
           const salt = generateSalt()
           const authHash = await computeAuthHash(viewPassword, salt)
           await setLiveSecurity(targetSlug, true, authHash, salt)
-          // Explicitly clear any stale cached session password so password prompt always appears
+          // Store session password so host is immediately authenticated and can upload files
+          sessionStorage.setItem('clip_live_pass_' + targetSlug, viewPassword)
+        } else {
+          // Public LivePad — clear any stale cached session password and ensure room is public
           sessionStorage.removeItem('clip_live_pass_' + targetSlug)
+          try {
+            await setLiveSecurity(targetSlug, false)
+          } catch {}
         }
         if (content.trim()) {
           await seedLiveRoom(targetSlug, content.trim())
