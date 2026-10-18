@@ -491,5 +491,40 @@ await test('garbage requests get clean errors, not crashes', async () => {
   assert.equal((await fetch(`${API}/api/health`)).status, 200, 'worker still healthy afterwards')
 })
 
+console.log('\n\x1b[1mAdmin and live-pad passwords\x1b[0m')
+await test('admin list is locked without the key and open with it', async () => {
+  const key = process.env.ADMIN_KEY
+  const none = await fetch(`${API}/api/admin/entries`)
+  assert.equal(none.status, 401)
+  const wrong = await fetch(`${API}/api/admin/entries`, { headers: { Authorization: 'Bearer definitely-wrong' } })
+  assert.equal(wrong.status, 401)
+  if (!key) {
+    console.log('    (set ADMIN_KEY to also check the right key; skipped)')
+    return
+  }
+  const ok = await fetch(`${API}/api/admin/entries`, { headers: { Authorization: `Bearer ${key}` } })
+  assert.equal(ok.status, 200)
+})
+
+await test('live pad password: set, change with the current hash, refuse without it', async () => {
+  const { createHash } = await import('node:crypto')
+  const h = (pw, salt) => createHash('sha256').update(`${pw}:${salt}`).digest('hex')
+  const { slug } = await (await fetch(`${API}/api/live/new-slug`)).json()
+  const set = (body) => fetch(`${API}/api/live/${slug}/security`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  assert.equal((await set({ isProtected: true, salt: 'salt-a', authHash: h('first-pass', 'salt-a') })).status, 200)
+  const salt = (await (await fetch(`${API}/api/live/${slug}`)).json()).salt
+  assert.equal(salt, 'salt-a')
+  // The worker lets an empty room be reset without a password, so put content in it first
+  await fetch(`${API}/api/live/${slug}/seed`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'locked content' }) })
+  const refused = await set({ isProtected: true, salt: 'salt-b', authHash: h('second-pass', 'salt-b'), currentHash: h('not-the-pass', 'salt-a') })
+  assert.equal(refused.status, 403)
+  const changed = await set({ isProtected: true, salt: 'salt-b', authHash: h('second-pass', 'salt-b'), currentHash: h('first-pass', 'salt-a') })
+  assert.equal(changed.status, 200)
+  assert.equal((await (await fetch(`${API}/api/live/${slug}`)).json()).salt, 'salt-b')
+  const removed = await set({ isProtected: false, currentHash: h('second-pass', 'salt-b') })
+  assert.equal(removed.status, 200)
+  assert.equal((await (await fetch(`${API}/api/live/${slug}`)).json()).isProtected, false)
+})
+
 console.log(`\n  ${passed} passed, ${failed} failed`)
 process.exit(failed ? 1 : 0)

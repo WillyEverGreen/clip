@@ -9,6 +9,7 @@
     "deploy:frontend": "node \"%npm_execpath%\" --prefix frontend run build && npx wrangler pages deploy frontend/dist --project-name=clip",
     "deploy": "node \"%npm_execpath%\" --prefix frontend run build && node \"%npm_execpath%\" --prefix worker run deploy && npx wrangler pages deploy frontend/dist --project-name=clip",
     "test": "node scripts/run-tests.js && node scripts/test-ot.mjs",
+    "test:e2e": "node scripts/e2e-site-api.mjs && node scripts/e2e-live-ot.mjs",
     "postinstall": "node scripts/postinstall.js",
     "lint": "node \"%npm_execpath%\" --prefix frontend run lint && node \"%npm_execpath%\" --prefix worker run lint",
     "lint:fix": "node \"%npm_execpath%\" --prefix frontend run lint:fix && node \"%npm_execpath%\" --prefix worker run lint:fix",
