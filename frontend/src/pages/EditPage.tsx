@@ -551,7 +551,8 @@ export default function EditPage() {
                         </div>
                       )}
                       <DropZone
-                        onFiles={fs => setNewFiles(fs)}
+                        files={newFiles}
+                        onFiles={setNewFiles}
                         height="320px"
                         uploadProgress={uploadProgress}
                         uploadingFileNames={newFiles.map(f => f.name)}
