@@ -546,18 +546,21 @@ export default function LivePage() {
   }, [handleOpenSaveModal])
 
   // Delete live file
-  const handleDeleteFile = async (fileId: string) => {
-    if (!slug) return
+  // Resolves true only when the file was actually removed (false if cancelled or it failed)
+  const handleDeleteFile = async (fileId: string): Promise<boolean> => {
+    if (!slug) return false
     const file = files.find(f => f.id === fileId)
-    if (!window.confirm(`Remove "${file?.fileName ?? 'this file'}" for everyone in this LivePad? This cannot be undone.`)) return
+    if (!window.confirm(`Remove "${file?.fileName ?? 'this file'}" for everyone in this LivePad? This cannot be undone.`)) return false
     try {
       removeLocalFile(fileId)
       await deleteLiveFile(slug, fileId)
       setSelectedFileIds(prev => prev.filter(id => id !== fileId))
       showToast('File removed', 'info')
+      return true
     } catch (err) {
       console.error('Delete failed:', err)
       showToast('Failed to delete file', 'error')
+      return false
     }
   }
 
@@ -1771,10 +1774,11 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
               document.body.removeChild(a)
             }
           }}
-          onDelete={(item) => {
+          onDelete={async (item) => {
             const f = files.find(item2 => item2.id === item.id || item2.fileName === item.name)
-            if (f) {
-              handleDeleteFile(f.id)
+            if (!f) return
+            // Keep the preview open if the person cancels the confirmation
+            if (await handleDeleteFile(f.id)) {
               if (previewFile.blob) URL.revokeObjectURL(previewFile.url)
               setPreviewFile(null)
             }

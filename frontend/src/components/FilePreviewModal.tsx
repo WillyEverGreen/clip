@@ -540,15 +540,16 @@ export default function FilePreviewModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
             padding: '0.75rem 1.15rem',
             background: '#121217',
             borderBottom: '1px solid #27272a',
-            gap: '1rem',
+            gap: '0.6rem 1rem',
             flexShrink: 0,
           }}
         >
           {/* File identity & badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: '1 1 220px' }}>
             <div
               style={{
                 display: 'flex',
@@ -611,7 +612,7 @@ export default function FilePreviewModal({
           </div>
 
           {/* Context Controls & Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: '100%' }}>
             {/* Image zoom controls */}
             {isImg && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#1c1c22', padding: '0.2rem 0.5rem', borderRadius: '6px', border: '1px solid #2e2e36' }}>
@@ -812,9 +813,8 @@ export default function FilePreviewModal({
               onMouseDown={handleMouseDown}
               style={{
                 width: '100%',
-                height: '100%',
+                height: isFullscreen ? 'calc(100vh - 60px)' : 'min(calc(85vh - 60px), 640px)',
                 minHeight: '280px',
-                maxHeight: isFullscreen ? 'calc(100vh - 60px)' : 'calc(85vh - 60px)',
                 overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
@@ -834,8 +834,8 @@ export default function FilePreviewModal({
                   })
                 }}
                 style={{
-                  maxWidth: zoom <= 1 ? '100%' : 'none',
-                  maxHeight: zoom <= 1 ? (isFullscreen ? 'calc(100vh - 75px)' : 'calc(80vh - 75px)') : 'none',
+                  width: '100%',
+                  height: '100%',
                   objectFit: 'contain',
                   imageRendering: 'auto',
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom}) rotate(${rotation}deg)`,
