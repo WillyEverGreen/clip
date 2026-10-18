@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
+import Logo from '../components/Logo'
 import HeroCubes from '../components/HeroCubes'
 import LandingSections from '../components/LandingSections'
 import { useSeo } from '../lib/useSeo'
@@ -42,10 +43,7 @@ export default function AboutPage() {
       <HeroCubes />
 
       <nav className="lp-nav" aria-label="Main">
-        <Link to="/about" className="lp-brand">
-          <img src="/icon-512.png" alt="" width={22} height={22} />
-          Clip
-        </Link>
+        <Link to="/about" className="lp-brand"><Logo size="sm" linkable={false} /></Link>
         <a href="#features">Features</a>
         <Link to="/live">Live Pad</Link>
         <a href="https://github.com/WilyEverGreen/Clip" target="_blank" rel="noreferrer">GitHub</a>

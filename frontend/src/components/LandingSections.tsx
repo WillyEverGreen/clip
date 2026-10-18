@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
+import Logo from './Logo'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   Link2, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
@@ -250,7 +251,7 @@ export default function LandingSections() {
       {/* ── Footer ──────────────────────────────────────────────── */}
       <footer className="sx-footer">
         <div>
-          <Link to="/about" className="lp-brand"><img src="/icon-512.png" alt="" width={22} height={22} /> Clip</Link>
+          <Link to="/about" className="lp-brand"><Logo size="sm" linkable={false} /></Link>
           <span>Temporary text and file sharing.</span>
         </div>
         <nav aria-label="Footer">
