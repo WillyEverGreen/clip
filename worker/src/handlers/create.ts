@@ -131,7 +131,8 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     }
 
     const salt      = generateSalt()
-    const pepper    = c.env.APP_PEPPER || 'clip_default_pepper'
+    const pepper = c.env.APP_PEPPER
+    if (!pepper) return c.json({ error: 'server_misconfigured' }, 500)
     const editCodeHash = await hashCode(editCode, salt, pepper)
 
     const entry: Entry = {

@@ -34,7 +34,8 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.json({ error: 'not_found' }, 404)
   if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
 
-  const pepper = c.env.APP_PEPPER || 'clip_default_pepper'
+  const pepper = c.env.APP_PEPPER
+  if (!pepper) return c.json({ error: 'server_misconfigured' }, 500)
   const valid  = await verifyCode(
     editCode,
     entry.editCodeSalt,

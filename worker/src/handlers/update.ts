@@ -54,7 +54,8 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
     // ── Verify edit code ──────────────────────────────────────────────────────
     if (!editCode) return c.json({ error: 'wrong_edit_code' }, 403)
 
-    const pepper = c.env.APP_PEPPER || 'clip_default_pepper'
+    const pepper = c.env.APP_PEPPER
+    if (!pepper) return c.json({ error: 'server_misconfigured' }, 500)
     const valid  = await verifyCode(
       editCode,
       entry.editCodeSalt,
