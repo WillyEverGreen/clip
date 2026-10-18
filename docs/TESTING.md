@@ -8,7 +8,7 @@ Four suites. Run the first two anywhere; the last two need the site and worker r
 | OT | `npm test` (part 2) | Text merge correctness, randomized multi-client runs (16 checks) | nothing |
 | Site API | `npm run test:e2e` (part 1) | Every HTTP route: create, edit, expiry, verify, delete, uploads, zip, live passwords (31 checks) | worker on `127.0.0.1:8787` |
 | Live pad | `npm run test:e2e` (part 2) | Real-time sync against the worker (8 checks) | worker on `8787`, `BASE=ws://127.0.0.1:8787` |
-| Browser | `npm run test:browser` | Real Chrome, driving the UI (26 checks) | Vite on `5199` and worker on `8787` |
+| Browser | `npm run test:browser` | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
 
 ## Running everything locally
 
@@ -29,4 +29,6 @@ The browser suite uses the installed Chrome at `C:/Program Files/Google/Chrome/A
 - **Empty rooms reset:** a Live Pad with no text and no files can have its password changed without the current one. The password test seeds text first so the refusal is actually tested.
 - **Dev proxy:** `frontend/vite.config.ts` keys for `/r/`, `/z/`, `/f/`, `/raw/`, `/zip/` must keep the trailing slash, or clips with slugs starting with those letters 404 in dev.
 - **Screenshots:** a failing browser test writes a full-page screenshot to `%TEMP%/clip-e2e-browser/`.
-- **Not covered by any suite:** real phones, real OS clipboard photos, PDF rendering in real Chrome, Live Pad on mobile, production admin.
+- **Preview checks** look for a decoded image inside a fixed-position overlay, not any image on the page (the header logo would otherwise pass).
+- **Validation checks** assert the field is flagged `tooShort` and the form did not submit. The browser shows its own bubble, not app text.
+- **Not covered by any suite:** real phones, real OS clipboard photos, PDF rendering in real Chrome, Live Pad on mobile, production admin, Cloudflare-specific behaviour, load or stress, accessibility audits, other browsers (Firefox, Safari), and dark/light OS theme switching.

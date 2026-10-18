@@ -72,6 +72,16 @@ async function waitForSlug(page, timeout = 20000) {
   return new URL(page.url()).pathname.replace(/^\//, '')
 }
 
+// True when a fixed-position overlay (the file preview) is showing a decoded image.
+// Plain page images such as the header logo are not in a fixed overlay, so they do not count.
+const PREVIEW_OPEN = () => [...document.querySelectorAll('img')].some((i) => {
+  if (!i.complete || i.naturalWidth === 0) return false
+  for (let el = i; el; el = el.parentElement) {
+    if (getComputedStyle(el).position === 'fixed') return i.offsetParent !== null
+  }
+  return false
+})
+
 // Create a text clip on the home page and return its slug (the path after the origin).
 // The edit code is required by the form, so every clip gets one.
 async function createTextClip(page, text, { slug, password, editCode = 'code1234' } = {}) {
@@ -151,11 +161,9 @@ await test('file clip: upload, see it, open the image preview', async (page) => 
   await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
   await waitForSlug(page)
   await expectText(page, 'photo.png')
-  await page.getByText('photo.png').first().click()
+  await page.getByRole('button', { name: 'Preview' }).first().click()
   // the preview must actually decode the image, not just open an empty frame
-  await page.waitForFunction(
-    () => [...document.querySelectorAll('img')].some((i) => i.offsetParent !== null && i.complete && i.naturalWidth > 0),
-    null, { timeout: 10000 })
+  await page.waitForFunction(PREVIEW_OPEN, null, { timeout: 10000 })
 })
 
 await test('paste a photo on the home page switches to File and lists it', async (page) => {
@@ -384,6 +392,122 @@ for (const [name, url] of [['create page', '/'], ['live pad', '/live'], ['about 
     if (overflow > 1) throw new Error(`${overflow}px wider than the screen`)
   })
 }
+
+console.log('\nEdge cases: validation')
+await test('empty content is refused with a clear message', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByPlaceholder('Secret edit code').fill('code1234')
+  await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+  await expectText(page, 'Please add some content or upload a file.', 8000)
+  if (new URL(page.url()).pathname !== '/') throw new Error('navigated away with empty content')
+})
+
+await test('edit code shorter than 4 characters is refused', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByPlaceholder(/Paste your text/).fill('short code body')
+  await page.getByPlaceholder('Secret edit code').fill('abc')
+  await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+  // the browser blocks the submit with its own validation bubble; the field must say it is too short
+  const tooShort = await page.getByPlaceholder('Secret edit code').evaluate((el) => el.validity.tooShort)
+  if (!tooShort) throw new Error('3-character edit code was not flagged as too short')
+  if (new URL(page.url()).pathname !== '/') throw new Error('form submitted with a short edit code')
+})
+
+await test('view password shorter than 4 characters is refused', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByPlaceholder(/Paste your text/).fill('short pw body')
+  await page.getByText('Encrypt paste').click()
+  await page.getByPlaceholder(/password/i).first().fill('ab')
+  await page.getByPlaceholder('Secret edit code').fill('code1234')
+  await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+  const tooShort = await page.getByPlaceholder(/password/i).first().evaluate((el) => el.validity.tooShort)
+  if (!tooShort) throw new Error('2-character view password was not flagged as too short')
+  if (new URL(page.url()).pathname !== '/') throw new Error('form submitted with a short view password')
+})
+
+console.log('\nEdge cases: content')
+await test('script in a clip is shown as text and never runs', async (page) => {
+  const marker = 'xss-' + rand()
+  const payload = `<img src=x onerror="window.__xss=1"><script>window.__xss=2</script>${marker}`
+  const slug = await createTextClip(page, payload)
+  let dialogs = 0
+  page.on('dialog', (d) => { dialogs++; d.dismiss() })
+  await page.goto(`${UI}/${slug}`)
+  await expectText(page, marker)
+  await sleep(500)
+  const ran = await page.evaluate(() => window.__xss ?? null)
+  if (ran !== null) throw new Error(`injected script ran (window.__xss=${ran})`)
+  if (dialogs) throw new Error('a dialog opened from clip content')
+  const raw = await page.evaluate(() => !!document.querySelector('img[src="x"][onerror]'))
+  if (raw) throw new Error('raw injected element is in the DOM')
+})
+
+await test('Unicode and emoji survive a round trip', async (page) => {
+  const text = 'Привет 世界 🚀 café naïve — “quotes” ' + rand()
+  const slug = await createTextClip(page, text)
+  await page.goto(`${UI}/${slug}`)
+  await expectText(page, text)
+})
+
+await test('Markdown renders: bold and a code block', async (page) => {
+  const marker = 'md-' + rand()
+  const slug = await createTextClip(page, `**bold ${marker}**\n\n\`\`\`\ncode line\n\`\`\``)
+  await page.goto(`${UI}/${slug}`)
+  await page.locator('strong', { hasText: marker }).first().waitFor({ state: 'visible', timeout: 10000 })
+  await expectText(page, 'code line')
+})
+
+await test('a permanent clip shows no countdown', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByPlaceholder(/Paste your text/).fill('forever ' + rand())
+  await page.getByPlaceholder('Secret edit code').fill('code1234')
+  await page.getByRole('combobox').filter({ has: page.locator('option[value="permanent"]') }).selectOption('permanent')
+  await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+  const slug = await waitForSlug(page)
+  await page.goto(`${UI}/${slug}`)
+  await expectText(page, 'forever')
+  const text = await page.locator('body').innerText()
+  if (/\d{2}:\d{2}(:\d{2})? remaining/.test(text)) throw new Error('permanent clip shows a countdown')
+})
+
+console.log('\nEdge cases: Live Pad and dialogs')
+await test('two people typing into a Live Pad converge on the same text', async (page) => {
+  await page.goto(UI + '/live')
+  await page.waitForFunction(() => /^\/live\/[a-z0-9-]+$/.test(location.pathname), null, { timeout: 20000 })
+  const liveUrl = page.url()
+  const { ctx, page: other } = await newPage()
+  try {
+    await other.goto(liveUrl)
+    await other.locator('textarea').first().waitFor()
+    const a = 'alpha-' + rand()
+    const b = 'beta-' + rand()
+    await page.locator('textarea').first().click()
+    await page.keyboard.type(a + ' ')
+    await other.locator('textarea').first().click()
+    await other.keyboard.type(b)
+    await expectText(page, b, 10000)
+    await expectText(other, a, 10000)
+    const x = await page.locator('textarea').first().inputValue()
+    const y = await other.locator('textarea').first().inputValue()
+    if (x !== y) throw new Error(`texts diverged:\n  A: ${x}\n  B: ${y}`)
+  } finally {
+    await ctx.close()
+  }
+})
+
+await test('Escape closes the file preview', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await page.locator('input[type=file]').first().setInputFiles(PNG_PATH)
+  await page.getByPlaceholder('Secret edit code').fill('code1234')
+  await page.getByRole('button', { name: /Create (Clip|Link)/ }).click()
+  await waitForSlug(page)
+  await page.getByRole('button', { name: 'Preview' }).first().click()
+  await page.waitForFunction(PREVIEW_OPEN, null, { timeout: 10000 })
+  await page.keyboard.press('Escape')
+  for (let i = 0; i < 25 && (await page.evaluate(PREVIEW_OPEN)); i++) await sleep(200)
+  if (await page.evaluate(PREVIEW_OPEN)) throw new Error('Escape did not close the preview')
+})
 
 if (process.env.ADMIN_KEY) {
   await test('admin panel opens with the admin key', async (page) => {
