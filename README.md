@@ -1,11 +1,11 @@
 <div align="center">
 
-<h1>
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png" />
-    <img src="docs/logo-light.png" width="300" alt="Clip" />
+    <img src="docs/logo-light.png" width="260" alt="Clip" />
   </picture>
-</h1>
+</p>
 
 **Temporary text and file sharing with custom links, optional encryption and a live pad.**
 
