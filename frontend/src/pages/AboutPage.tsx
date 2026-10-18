@@ -51,7 +51,6 @@ export default function AboutPage() {
       </nav>
 
       <header className="lp-hero">
-        <span className="lp-reveal lp-chip"><i /> Free · No account · Gone when you want</span>
         <h1 className="lp-reveal">
           Your text. Your files.
           <br />
