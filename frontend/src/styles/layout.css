@@ -192,7 +192,7 @@
   box-sizing: border-box;
 }
 
-.create-textarea {
+textarea.input.create-textarea {
   min-height: 0;
   flex: 1;
   resize: none;

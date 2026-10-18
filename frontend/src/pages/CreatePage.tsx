@@ -283,13 +283,20 @@ export default function CreatePage() {
           <div className="field" style={{ margin: 0, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {mode === 'text' && (
               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                <label className="label" style={{ marginBottom: '0.4rem', flexShrink: 0 }}>Content <span style={{color:'var(--text-muted)'}}>*</span></label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem', flexShrink: 0 }}>
+                  <label className="label" style={{ margin: 0 }}>Content <span style={{color:'var(--text-muted)'}}>*</span></label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>{content.length.toLocaleString()} chars</span>
+                </div>
                 <textarea
                   className="input create-textarea"
-                  placeholder="Paste your text here… Markdown is supported (or press Ctrl+V to paste files/images)"
+                  placeholder="Paste your text, code, or notes here… Markdown is supported."
                   value={content}
                   onChange={e => setContent(e.target.value)}
                 />
+                <p style={{ fontSize: '0.785rem', color: 'var(--text-dim)', marginTop: '0.4rem', marginBottom: 0, flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <FileText size={13} style={{ color: 'var(--text-dim)', flexShrink: 0 }} />
+                  <span>Markdown, code blocks and math are supported. Press Ctrl+V anywhere to paste screenshots or files.</span>
+                </p>
               </div>
             )}
 
