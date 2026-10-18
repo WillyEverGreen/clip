@@ -10,6 +10,35 @@
  */
 import { DurableObject } from 'cloudflare:workers'
 import type { Env, FileItem } from '../lib/types'
+import { OtServerDoc, mapPos, hashText, type Op } from '../lib/ot'
+
+const MAX_NAME_CHARS = 24
+/** How long the doc must be quiet before clients are asked to verify they match the server. */
+const CHECK_DELAY_MS = 1500
+/** Clients ping every 20s, but hidden browser tabs can be throttled to about once a minute. */
+const STALE_SOCKET_MS = 150_000
+const STALE_SWEEP_MS = 30_000
+
+interface PresenceInfo {
+  name: string
+  start: number
+  end: number
+}
+
+// Display names come from clients: strip control chars, collapse whitespace, cap the length.
+function cleanName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const name = value.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_CHARS)
+  return name || null
+}
+
+function clampIndex(value: unknown, max: number): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) ? Math.min(Math.max(value, 0), max) : 0
+}
+
+function cleanSid(value: string | null): string {
+  return value && /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : crypto.randomUUID()
+}
 
 export interface RoomSecurity {
   isProtected: boolean
@@ -28,7 +57,19 @@ export class ClipRoom extends DurableObject<Env> {
   private authenticatedSockets: Set<WebSocket> = new Set()
   private clientMap: Map<string, WebSocket> = new Map()
   private socketToClient: Map<WebSocket, string> = new Map()
-  private currentText: string = ''
+  // The live text lives in an operational-transform document so concurrent typing merges
+  private doc = new OtServerDoc('')
+  private get currentText(): string { return this.doc.text }
+  private set currentText(text: string) { this.doc.reset(text) }
+  // Sockets that speak the op protocol; everyone else keeps receiving full-text updates
+  private otSockets: Set<WebSocket> = new Set()
+  private socketSid: Map<WebSocket, string> = new Map()
+  // Multi-cursor presence, only for clients that opted in
+  private presence: Map<string, PresenceInfo> = new Map()
+  private checkTimer: ReturnType<typeof setTimeout> | null = null
+  // Last time each socket said anything, so connections that died silently can be dropped
+  private lastSeen: Map<WebSocket, number> = new Map()
+  private staleTimer: ReturnType<typeof setInterval> | null = null
   private currentFiles: FileItem[] = []
   private roomSecurity: RoomSecurity = { isProtected: false }
   private loadedStorage: boolean = false
@@ -120,6 +161,16 @@ export class ClipRoom extends DurableObject<Env> {
       this.sockets.add(server)
       this.clientMap.set(clientId, server)
       this.socketToClient.set(server, clientId)
+      this.lastSeen.set(server, Date.now())
+      this.ensureStaleSweep()
+
+      // Op-protocol clients announce themselves in the URL and say which version they last saw
+      if (url.searchParams.get('ot') === '1') {
+        this.otSockets.add(server)
+        this.socketSid.set(server, cleanSid(url.searchParams.get('sid')))
+      }
+      const sinceParam = url.searchParams.get('v')
+      const since = sinceParam !== null && /^\d{1,15}$/.test(sinceParam) ? Number(sinceParam) : -1
 
       // If room is protected, require authentication challenge before sharing state
       if (this.roomSecurity.isProtected) {
@@ -133,14 +184,7 @@ export class ClipRoom extends DurableObject<Env> {
         }))
       } else {
         this.authenticatedSockets.add(server)
-        server.send(JSON.stringify({
-          type: 'init',
-          text: this.currentText,
-          files: this.currentFiles,
-          peers: this.sockets.size,
-          peerIds: Array.from(this.clientMap.keys()),
-          clientId,
-        }))
+        server.send(this.buildInit(server, clientId, since))
       }
 
       // Broadcast new peer count to everyone
@@ -155,6 +199,7 @@ export class ClipRoom extends DurableObject<Env> {
       let lastAuthAttemptTime = 0
 
       server.addEventListener('message', (event) => {
+        this.lastSeen.set(server, Date.now())
         try {
           const raw = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data)
           const data = JSON.parse(raw)
@@ -172,14 +217,7 @@ export class ClipRoom extends DurableObject<Env> {
             if (this.roomSecurity.isProtected && data.hash && data.hash === this.roomSecurity.authHash) {
               failedAuthAttempts = 0
               this.authenticatedSockets.add(server)
-              server.send(JSON.stringify({
-                type: 'init',
-                text: this.currentText,
-                files: this.currentFiles,
-                peers: this.sockets.size,
-                peerIds: Array.from(this.clientMap.keys()),
-                clientId,
-              }))
+              server.send(this.buildInit(server, clientId, since))
             } else {
               failedAuthAttempts++
               lastAuthAttemptTime = now
@@ -220,15 +258,15 @@ export class ClipRoom extends DurableObject<Env> {
           }
 
           if (data.type === 'text' && typeof data.text === 'string') {
-            this.currentText = data.text
-            // Persist with 24-hour rolling TTL
-            this.persistLiveState()
-            // Broadcast to other authenticated peers
-            this.broadcastWebsocket({
-              type: 'text',
-              text: this.currentText,
-              senderId: clientId,
-            }, server)
+            this.handleLegacyText(server, clientId, data.text)
+          } else if (data.type === 'op') {
+            this.handleOp(server, clientId, data)
+          } else if (data.type === 'presence') {
+            this.handlePresence(server, clientId, data)
+          } else if (data.type === 'cursor') {
+            this.handleCursor(server, clientId, data)
+          } else if (data.type === 'resync') {
+            if (this.otSockets.has(server)) server.send(this.resyncMessage())
           } else if (data.type === 'ping') {
             server.send(JSON.stringify({ type: 'pong' }))
           }
@@ -242,6 +280,16 @@ export class ClipRoom extends DurableObject<Env> {
         this.authenticatedSockets.delete(server)
         this.clientMap.delete(clientId)
         this.socketToClient.delete(server)
+        this.otSockets.delete(server)
+        this.socketSid.delete(server)
+        this.lastSeen.delete(server)
+        if (this.sockets.size === 0 && this.staleTimer) {
+          clearInterval(this.staleTimer)
+          this.staleTimer = null
+        }
+        if (this.presence.delete(clientId)) {
+          this.broadcastWebsocket({ type: 'cursor_off', id: clientId }, undefined, ws => this.hasPresence(ws))
+        }
         this.broadcastWebsocket({
           type: 'peers',
           peers: this.sockets.size,
@@ -362,6 +410,7 @@ export class ClipRoom extends DurableObject<Env> {
         if (!this.currentText && body.text) {
           this.currentText = body.text
           changed = true
+          this.broadcastResync()
         }
         if (this.currentFiles.length === 0 && Array.isArray(body.files) && body.files.length > 0) {
           this.currentFiles = body.files
@@ -481,12 +530,156 @@ export class ClipRoom extends DurableObject<Env> {
     return new Response('Not found', { status: 404 })
   }
 
+  // ── Live Pad text sync (operational transform) ────────────────────────────
+
+  private buildInit(ws: WebSocket, clientId: string, since: number): string {
+    const base = {
+      type: 'init',
+      text: this.currentText,
+      files: this.currentFiles,
+      peers: this.sockets.size,
+      peerIds: Array.from(this.clientMap.keys()),
+      clientId,
+    }
+    if (!this.otSockets.has(ws)) return JSON.stringify(base)
+    return JSON.stringify({
+      ...base,
+      version: this.doc.version,
+      // Ops the client missed while away, when our history still reaches back that far
+      replay: since >= 0 ? this.doc.replaySince(since) : null,
+    })
+  }
+
+  private resyncMessage(): string {
+    return JSON.stringify({ type: 'resync', text: this.currentText, version: this.doc.version })
+  }
+
+  /** The text jumped (seed): op clients resync, legacy clients get the full text. */
+  private broadcastResync() {
+    this.broadcastWebsocket(JSON.parse(this.resyncMessage()), undefined, ws => this.otSockets.has(ws))
+    this.broadcastWebsocket({ type: 'text', text: this.currentText }, undefined, ws => !this.otSockets.has(ws))
+  }
+
+  private hasPresence(ws: WebSocket): boolean {
+    const id = this.socketToClient.get(ws)
+    return id !== undefined && this.presence.has(id)
+  }
+
+  /** Old clients replace the whole text; apply it as ops so op clients stay in step. */
+  private handleLegacyText(sender: WebSocket, clientId: string, text: string) {
+    if (this.otSockets.has(sender)) return
+    const applied = this.doc.replaceAll(text)
+    if (applied.length > 0) this.afterDocChange(sender, clientId, applied)
+  }
+
+  private handleOp(sender: WebSocket, clientId: string, data: { s?: unknown; e?: unknown; x?: unknown; v?: unknown; n?: unknown }) {
+    if (!this.otSockets.has(sender)) return
+    const n = typeof data.n === 'number' && Number.isSafeInteger(data.n) ? data.n : undefined
+    const res = this.doc.submit({ s: data.s, e: data.e, x: data.x }, data.v, { sid: this.socketSid.get(sender), n })
+    if (!res.ok) {
+      // Out of step (stale, invalid or too large): give the client the truth to rebuild from
+      sender.send(this.resyncMessage())
+      return
+    }
+    sender.send(JSON.stringify({ type: 'ack', v: res.version }))
+    this.afterDocChange(sender, clientId, [{ op: res.op, version: res.version }])
+  }
+
+  private afterDocChange(sender: WebSocket, clientId: string, applied: { op: Op; version: number }[]) {
+    // Keep remembered carets glued to the text they were on
+    for (const { op } of applied) {
+      for (const info of this.presence.values()) {
+        info.start = mapPos(info.start, op)
+        info.end = mapPos(info.end, op)
+      }
+    }
+    // Persist with 24-hour rolling TTL
+    this.persistLiveState()
+    for (const { op, version } of applied) {
+      this.broadcastWebsocket(
+        { type: 'op', v: version, s: op.s, e: op.e, x: op.x, from: clientId },
+        sender,
+        ws => this.otSockets.has(ws),
+      )
+    }
+    // Clients without op support still get the whole text
+    this.broadcastWebsocket(
+      { type: 'text', text: this.currentText, senderId: clientId },
+      sender,
+      ws => !this.otSockets.has(ws),
+    )
+    this.scheduleCheck()
+  }
+
+  /** Drop connections that stopped talking (dead networks never send a close), so ghosts disappear. */
+  private ensureStaleSweep() {
+    if (this.staleTimer) return
+    this.staleTimer = setInterval(() => {
+      const cutoff = Date.now() - STALE_SOCKET_MS
+      for (const ws of Array.from(this.sockets)) {
+        if ((this.lastSeen.get(ws) ?? 0) < cutoff) {
+          try { ws.close(1001, 'Idle connection') } catch { /* already gone */ }
+        }
+      }
+    }, STALE_SWEEP_MS)
+  }
+
+  /** Once typing pauses, let op clients confirm they hold exactly the server's text. */
+  private scheduleCheck() {
+    if (this.checkTimer) clearTimeout(this.checkTimer)
+    this.checkTimer = setTimeout(() => {
+      this.checkTimer = null
+      this.broadcastWebsocket(
+        { type: 'check', v: this.doc.version, h: hashText(this.currentText) },
+        undefined,
+        ws => this.otSockets.has(ws),
+      )
+    }, CHECK_DELAY_MS)
+  }
+
+  // ── Multi-cursor presence ─────────────────────────────────────────────────
+
+  private cursorList(exceptId: string) {
+    const list: { id: string; name: string; start: number; end: number }[] = []
+    for (const [id, info] of this.presence) {
+      if (id !== exceptId) list.push({ id, ...info })
+    }
+    return list
+  }
+
+  private handlePresence(sender: WebSocket, clientId: string, data: { on?: unknown; name?: unknown; start?: unknown; end?: unknown }) {
+    if (data.on !== true) {
+      if (this.presence.delete(clientId)) {
+        this.broadcastWebsocket({ type: 'cursor_off', id: clientId }, sender, ws => this.hasPresence(ws))
+      }
+      return
+    }
+    const name = cleanName(data.name)
+    if (!name) return
+    const len = this.currentText.length
+    const info: PresenceInfo = { name, start: clampIndex(data.start, len), end: clampIndex(data.end, len) }
+    this.presence.set(clientId, info)
+    // The newcomer learns who is here; everyone who also opted in learns about the newcomer
+    sender.send(JSON.stringify({ type: 'cursors', list: this.cursorList(clientId) }))
+    this.broadcastWebsocket({ type: 'cursor', id: clientId, ...info }, sender, ws => this.hasPresence(ws))
+  }
+
+  private handleCursor(sender: WebSocket, clientId: string, data: { start?: unknown; end?: unknown }) {
+    const info = this.presence.get(clientId)
+    if (!info) return
+    const len = this.currentText.length
+    info.start = clampIndex(data.start, len)
+    info.end = clampIndex(data.end, len)
+    this.broadcastWebsocket({ type: 'cursor', id: clientId, ...info }, sender, ws => this.hasPresence(ws))
+  }
+
   // ── Broadcast to Live Pad WebSockets ──────────────────────────────────────
-  private broadcastWebsocket(msgObj: any, excludeWs?: WebSocket) {
+  private broadcastWebsocket(msgObj: any, excludeWs?: WebSocket, only?: (ws: WebSocket) => boolean) {
     const msg = JSON.stringify(msgObj)
     const dead: WebSocket[] = []
     for (const ws of this.sockets) {
       if (ws === excludeWs) continue
+      if (only && !only(ws)) continue
       // If room is protected, only broadcast sensitive updates (text, files) to authenticated peers
       if (this.roomSecurity.isProtected && !this.authenticatedSockets.has(ws) && msgObj.type !== 'peers') {
         continue

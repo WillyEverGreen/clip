@@ -2,14 +2,39 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { BASE, getLiveState, type FileItem } from './api'
 import { computeAuthHash } from './crypto'
 import { useWebRtcPeer } from './useWebRtcPeer'
+import { OtClient, diffOps, hashText, mapPos, type ClientStep, type Op, type ReplayOp } from './ot'
 
-export function useLiveSocket(slug: string | undefined) {
+export interface RemoteCursor {
+  id: string
+  name: string
+  start: number
+  end: number
+}
+
+interface LiveSocketOptions {
+  /**
+   * Called synchronously whenever the network changes the editor text, with the edit that was
+   * applied when it was a single op. The editor must put `text` into the textarea right away
+   * (before React re-renders), otherwise a keystroke in that gap would be computed against stale
+   * text and could undo someone else's change.
+   */
+  syncEditor?: (text: string, op?: Op) => void
+}
+
+function isRemoteCursor(v: unknown): v is RemoteCursor {
+  if (typeof v !== 'object' || v === null) return false
+  const c = v as RemoteCursor
+  return typeof c.id === 'string' && typeof c.name === 'string' && Number.isFinite(c.start) && Number.isFinite(c.end)
+}
+
+export function useLiveSocket(slug: string | undefined, options: LiveSocketOptions = {}) {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'reconnecting' | 'disconnected'>('connecting')
   const [text, setText] = useState<string>('')
   const [files, setFiles] = useState<FileItem[]>([])
   const [peers, setPeers] = useState<number>(1)
   const [clientId, setClientId] = useState<string | null>(null)
   const [peerIds, setPeerIds] = useState<string[]>([])
+  const [cursors, setCursors] = useState<RemoteCursor[]>([])
 
   // Authentication states
   const [isProtected, setIsProtected] = useState<boolean>(false)
@@ -22,8 +47,20 @@ export function useLiveSocket(slug: string | undefined) {
 
   const wsRef = useRef<WebSocket | null>(null)
   const destroyedRef = useRef(false)
-  const localTextRef = useRef<string>('')
-  const isDirtyRef = useRef(false)
+  // Identifies this page's editor across reconnects (not persisted, so duplicated tabs never collide)
+  const sidRef = useRef<string | null>(null)
+  if (sidRef.current === null) sidRef.current = crypto.randomUUID()
+  const otRef = useRef<OtClient | null>(null)
+  // True once we hold server state; decides between replaying missed ops and a fresh start
+  const hasStateRef = useRef(false)
+  const resyncTimesRef = useRef<number[]>([])
+  const cursorsRef = useRef<Map<string, RemoteCursor>>(new Map())
+  const presenceRef = useRef<{ on: boolean; name: string }>({ on: false, name: '' })
+  const selectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 })
+  const syncEditorRef = useRef(options.syncEditor)
+  useEffect(() => {
+    syncEditorRef.current = options.syncEditor
+  })
   const [remoteUpdateTrigger, setRemoteUpdateTrigger] = useState(0)
   const p2pBlobsRef = useRef<Map<string, Blob>>(new Map())
   const handleIncomingSignalRef = useRef<((senderId: string, payload: any) => Promise<void>) | null>(null)
@@ -42,9 +79,52 @@ export function useLiveSocket(slug: string | undefined) {
     return `${wsBase}/api/live/${s}/ws`
   }, [])
 
+  const sendJson = useCallback((msg: object): boolean => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false
+    ws.send(JSON.stringify(msg))
+    return true
+  }, [])
+
+  // Send whatever the sync engine wants on the wire, or ask the server to resync
+  const flushStep = useCallback((step: ClientStep) => {
+    if (step.kind === 'desync') {
+      sendJson({ type: 'resync' })
+      return
+    }
+    if (step.send) {
+      sendJson({ type: 'op', v: step.baseVersion, n: step.n, s: step.send.s, e: step.send.e, x: step.send.x })
+    }
+  }, [sendJson])
+
+  const commitCursors = useCallback(() => {
+    setCursors(Array.from(cursorsRef.current.values()))
+  }, [])
+
+  // Keep other people's carets on the same words when the text shifts
+  const shiftCursors = useCallback((op: Op) => {
+    if (cursorsRef.current.size === 0) return
+    for (const c of cursorsRef.current.values()) {
+      c.start = mapPos(c.start, op)
+      c.end = mapPos(c.end, op)
+    }
+    commitCursors()
+  }, [commitCursors])
+
+  const announcePresence = useCallback(() => {
+    const p = presenceRef.current
+    if (!p.on) return
+    sendJson({ type: 'presence', on: true, name: p.name, start: selectionRef.current.start, end: selectionRef.current.end })
+  }, [sendJson])
+
   useEffect(() => {
     if (!slug) return
     destroyedRef.current = false
+    otRef.current = new OtClient(sidRef.current!)
+    hasStateRef.current = false
+    resyncTimesRef.current = []
+    cursorsRef.current = new Map()
+    setCursors([])
     let retryDelay = 1000
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let pingTimer: ReturnType<typeof setInterval> | null = null
@@ -70,7 +150,10 @@ export function useLiveSocket(slug: string | undefined) {
       setStatus(prev => prev === 'connected' ? 'reconnecting' : 'connecting')
 
       try {
-        const url = getWsUrl(slug)
+        const ot = otRef.current!
+        // Tell the server which version we last saw so it can replay what we missed
+        const connectedAt = hasStateRef.current ? ot.version : -1
+        const url = `${getWsUrl(slug)}?ot=1&sid=${encodeURIComponent(ot.sid)}&v=${connectedAt}`
         const ws = new WebSocket(url)
         wsRef.current = ws
 
@@ -81,15 +164,6 @@ export function useLiveSocket(slug: string | undefined) {
           }
           setStatus('connected')
           retryDelay = 1000
-
-          // If there were local edits queued while disconnected, sync them immediately
-          if (isDirtyRef.current && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: 'text',
-              text: localTextRef.current,
-            }))
-            isDirtyRef.current = false
-          }
 
           // Keep connection alive with lightweight ping
           if (pingTimer) clearInterval(pingTimer)
@@ -137,18 +211,23 @@ export function useLiveSocket(slug: string | undefined) {
                 setIsAuthenticated(true)
                 setIsProtectionChecked(true)
                 setAuthError(null)
-                if (typeof data.text === 'string') {
-                  if (isDirtyRef.current && localTextRef.current !== data.text) {
-                    // Local changes exist that the server didn't have; push them
-                    if (ws.readyState === WebSocket.OPEN) {
-                      ws.send(JSON.stringify({ type: 'text', text: localTextRef.current }))
-                      isDirtyRef.current = false
-                    }
-                  } else {
-                    localTextRef.current = data.text
-                    setText(data.text)
-                    setRemoteUpdateTrigger(prev => prev + 1)
+                if (typeof data.text === 'string' && typeof data.version === 'number') {
+                  const ot = otRef.current!
+                  const state = {
+                    text: data.text as string,
+                    version: data.version as number,
+                    replay: Array.isArray(data.replay) ? (data.replay as ReplayOp[]) : null,
                   }
+                  // First connect starts from the server's text; later ones pick up where we left off
+                  const step = hasStateRef.current
+                    ? ot.resume(state, connectedAt)
+                    : ot.rebase(state.text, state.version)
+                  hasStateRef.current = true
+                  syncEditorRef.current?.(ot.local)
+                  setText(ot.local)
+                  setRemoteUpdateTrigger(prev => prev + 1)
+                  flushStep(step)
+                  announcePresence()
                 }
                 if (Array.isArray(data.files)) {
                   setFiles(data.files)
@@ -164,13 +243,69 @@ export function useLiveSocket(slug: string | undefined) {
                 }
                 break
 
-              case 'text':
-                if (typeof data.text === 'string') {
-                  localTextRef.current = data.text
-                  isDirtyRef.current = false
-                  setText(data.text)
-                  setRemoteUpdateTrigger(prev => prev + 1)
+              case 'ack':
+                if (typeof data.v === 'number') flushStep(otRef.current!.ack(data.v))
+                break
+
+              case 'op': {
+                const ot = otRef.current!
+                const step = typeof data.v === 'number'
+                  ? ot.remote({ s: data.s, e: data.e, x: data.x }, data.v)
+                  : ({ kind: 'desync' } as const)
+                if (step.kind === 'desync') {
+                  sendJson({ type: 'resync' })
+                  break
                 }
+                syncEditorRef.current?.(ot.local, step.applied)
+                setText(ot.local)
+                shiftCursors(step.applied)
+                setRemoteUpdateTrigger(prev => prev + 1)
+                break
+              }
+
+              case 'resync':
+                if (typeof data.text === 'string' && typeof data.version === 'number') {
+                  const ot = otRef.current!
+                  const now = Date.now()
+                  const recent = resyncTimesRef.current.filter(t => now - t < 10_000)
+                  recent.push(now)
+                  resyncTimesRef.current = recent
+                  // Repeated resyncs mean our edits keep conflicting: take the server's text outright
+                  const step = recent.length > 3 ? ot.rebase(data.text, data.version) : ot.merge(data.text, data.version)
+                  hasStateRef.current = true
+                  syncEditorRef.current?.(ot.local)
+                  setText(ot.local)
+                  setRemoteUpdateTrigger(prev => prev + 1)
+                  flushStep(step)
+                }
+                break
+
+              // Periodic proof that we hold exactly the server's text; anything else heals itself
+              case 'check': {
+                const ot = otRef.current!
+                if (typeof data.v === 'number' && typeof data.h === 'string' && ot.version === data.v
+                  && ot.isSynced() && hashText(ot.base) !== data.h) {
+                  sendJson({ type: 'resync' })
+                }
+                break
+              }
+
+              case 'cursors':
+                cursorsRef.current = new Map(
+                  (Array.isArray(data.list) ? data.list : []).filter(isRemoteCursor).map((c: RemoteCursor) => [c.id, c]),
+                )
+                commitCursors()
+                break
+
+              case 'cursor':
+                if (isRemoteCursor(data)) {
+                  cursorsRef.current.set(data.id, { id: data.id, name: data.name, start: data.start, end: data.end })
+                  commitCursors()
+                }
+                break
+
+              case 'cursor_off':
+                if (typeof data.id === 'string' && cursorsRef.current.delete(data.id)) commitCursors()
                 break
 
               case 'peers':
@@ -179,6 +314,12 @@ export function useLiveSocket(slug: string | undefined) {
                 }
                 if (Array.isArray(data.peerIds)) {
                   setPeerIds(data.peerIds)
+                  const present = new Set<string>(data.peerIds)
+                  let pruned = false
+                  for (const id of Array.from(cursorsRef.current.keys())) {
+                    if (!present.has(id)) { cursorsRef.current.delete(id); pruned = true }
+                  }
+                  if (pruned) commitCursors()
                 }
                 break
 
@@ -235,6 +376,9 @@ export function useLiveSocket(slug: string | undefined) {
             setRoomClosedMessage(prev => prev || 'Room has been terminated by administrator.')
             return
           }
+          otRef.current?.setOnline(false)
+          cursorsRef.current.clear()
+          setCursors([])
           setStatus('reconnecting')
           retryTimer = setTimeout(() => {
             retryDelay = Math.min(retryDelay * 1.5, 10_000)
@@ -263,7 +407,7 @@ export function useLiveSocket(slug: string | undefined) {
         wsRef.current = null
       }
     }
-  }, [slug, getWsUrl])
+  }, [slug, getWsUrl, flushStep, sendJson, shiftCursors, commitCursors, announcePresence])
 
   // WebRTC P2P DataChannel setup
   const sendWsSignal = useCallback((targetId: string, payload: any) => {
@@ -276,12 +420,8 @@ export function useLiveSocket(slug: string | undefined) {
     }
   }, [])
 
-  const onRemoteText = useCallback((remoteText: string) => {
-    localTextRef.current = remoteText
-    isDirtyRef.current = false
-    setText(remoteText)
-    setRemoteUpdateTrigger(prev => prev + 1)
-  }, [])
+  // Peer-to-peer text is ignored: concurrent edits must go through the server so they merge
+  const ignoreP2PText = useCallback(() => {}, [])
 
   const onRemoteFileReceived = useCallback((file: FileItem, blob: Blob) => {
     p2pBlobsRef.current.set(file.id, blob)
@@ -294,14 +434,13 @@ export function useLiveSocket(slug: string | undefined) {
   const {
     isP2PActive,
     p2pPeerCount,
-    sendP2PText,
     sendP2PFile,
     handleIncomingSignal,
   } = useWebRtcPeer({
     myClientId: clientId,
     activePeerIds: peerIds,
     sendWsSignal,
-    onRemoteText,
+    onRemoteText: ignoreP2PText,
     onRemoteFileReceived,
   })
 
@@ -324,24 +463,36 @@ export function useLiveSocket(slug: string | undefined) {
     }))
   }, [salt, slug])
 
-  // Method to send live text update (fast path over P2P DataChannel + WebSocket persistence)
+  // The user typed: update the editor right away and let the sync engine decide what to send
   const sendText = useCallback((newText: string) => {
-    localTextRef.current = newText
+    const ot = otRef.current
+    if (!ot) return
+    const before = ot.local
+    const step = ot.edit(newText)
     setText(newText)
-
-    // Send immediately over WebRTC DataChannel (sub-millisecond latency on LAN)
-    sendP2PText(newText)
-
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      isDirtyRef.current = false
-      wsRef.current.send(JSON.stringify({
-        type: 'text',
-        text: newText,
-      }))
-    } else {
-      isDirtyRef.current = true
+    if (cursorsRef.current.size > 0) {
+      for (const op of diffOps(before, newText)) shiftCursors(op)
     }
-  }, [sendP2PText])
+    flushStep(step)
+  }, [flushStep, shiftCursors])
+
+  // Turn multi-cursor on or off for this tab (the choice is the caller's to persist)
+  const setPresence = useCallback((on: boolean, name: string) => {
+    presenceRef.current = { on, name }
+    if (on) {
+      announcePresence()
+      return
+    }
+    cursorsRef.current.clear()
+    setCursors([])
+    sendJson({ type: 'presence', on: false })
+  }, [announcePresence, sendJson])
+
+  // Report where our caret is
+  const sendCursor = useCallback((start: number, end: number) => {
+    selectionRef.current = { start, end }
+    if (presenceRef.current.on) sendJson({ type: 'cursor', start, end })
+  }, [sendJson])
 
   // Method to update local files after an upload
   const addLocalFile = useCallback((file: FileItem) => {
@@ -379,6 +530,9 @@ export function useLiveSocket(slug: string | undefined) {
     files,
     peers,
     clientId,
+    cursors,
+    setPresence,
+    sendCursor,
     isProtected,
     isAuthenticated,
     isProtectionChecked,

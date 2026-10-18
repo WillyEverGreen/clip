@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   Zap, ArrowLeft, ArrowRight, Copy, Check, QrCode, Upload, Download, Trash2,
@@ -7,6 +7,9 @@ import {
   FolderPlus, Code, Play, Clock
 } from 'lucide-react'
 import { useLiveSocket } from '../lib/useLiveSocket'
+import { loadCursorPrefs, saveCursorPrefs, randomCuteName } from '../lib/cuteNames'
+import { mapPos, type Op } from '../lib/ot'
+import { CursorControls, RemoteCursorsOverlay } from '../components/LiveCursors'
 import {
   liveFileDownloadUrl,
   uploadLiveFile,
@@ -173,12 +176,43 @@ export default function LivePage() {
     canonicalUrl: slug ? `https://clip.foo.ng/live/${slug}` : 'https://clip.foo.ng/live',
   })
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const cursorRef = useRef<{ start: number; end: number } | null>(null)
+
+  // Remote changes go straight into the textarea, in the same tick they arrive. React would only
+  // catch up on its next render, and a keystroke before that would be based on stale text.
+  // The caret rides along with the edit so it stays on the same words.
+  const syncEditor = useCallback((next: string, op?: Op) => {
+    const el = textareaRef.current
+    if (!el || el.value === next) return
+    let start = el.selectionStart
+    let end = el.selectionEnd
+    if (op) {
+      start = mapPos(start, op)
+      end = mapPos(end, op)
+    }
+    start = Math.min(start, next.length)
+    end = Math.min(end, next.length)
+    el.value = next
+    if (document.activeElement === el) {
+      try {
+        el.setSelectionRange(start, end)
+      } catch {
+        // some browsers throw while the element is not rendered
+      }
+    }
+    cursorRef.current = { start, end }
+  }, [])
+
   const {
     status,
     roomClosedMessage,
     text,
     files,
     peers,
+    cursors,
+    setPresence,
+    sendCursor,
     remoteUpdateTrigger,
     sendText,
     addLocalFile,
@@ -194,7 +228,7 @@ export default function LivePage() {
     sendP2PFile,
     getP2PBlob,
     setLocalP2PBlob,
-  } = useLiveSocket(slug)
+  } = useLiveSocket(slug, { syncEditor })
 
   const [enterPass, setEnterPass] = useState('')
   const [isAuthenticating, setIsAuthenticating] = useState(false)
@@ -246,28 +280,44 @@ export default function LivePage() {
   const [saveSaving, setSaveSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dragCounterRef = useRef(0)
-  const cursorRef = useRef<{ start: number; end: number } | null>(null)
 
-  // Track cursor position to prevent cursor jump on remote incoming changes
-  const handleCursorTrack = useCallback(() => {
-    const el = textareaRef.current
-    if (el) {
-      cursorRef.current = { start: el.selectionStart, end: el.selectionEnd }
-    }
+  // Multi-cursor is opt-in per browser; the random name is remembered so it stays stable
+  const [cursorPrefs, setCursorPrefs] = useState(loadCursorPrefs)
+  useEffect(() => {
+    setPresence(cursorPrefs.enabled, cursorPrefs.name)
+    saveCursorPrefs(cursorPrefs.enabled, cursorPrefs.name)
+  }, [cursorPrefs, setPresence])
+
+  const cursorSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (cursorSendTimer.current) clearTimeout(cursorSendTimer.current)
   }, [])
 
+  // Track cursor position to prevent cursor jump on remote incoming changes,
+  // and share it with others (batched so fast typing does not flood the socket)
+  const handleCursorTrack = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    cursorRef.current = { start: el.selectionStart, end: el.selectionEnd }
+    if (cursorSendTimer.current) return
+    cursorSendTimer.current = setTimeout(() => {
+      cursorSendTimer.current = null
+      const t = textareaRef.current
+      if (t) sendCursor(t.selectionStart, t.selectionEnd)
+    }, 60)
+  }, [sendCursor])
+
   // Restore cursor position after remote incoming text changes
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = textareaRef.current
     if (!el || document.activeElement !== el || !cursorRef.current) return
     const { start, end } = cursorRef.current
-    requestAnimationFrame(() => {
-      try {
-        el.setSelectionRange(start, end)
-      } catch {}
-    })
+    try {
+      el.setSelectionRange(Math.min(start, el.value.length), Math.min(end, el.value.length))
+    } catch {
+      // some browsers throw while the element is not rendered
+    }
   }, [remoteUpdateTrigger])
 
   // Local text typing with fast debounce for real-time propagation
@@ -1184,6 +1234,14 @@ export default function LivePage() {
             {/* Real-time Synchronized Textarea Column */}
             {(!isMobile || mobileTab === 'editor') && (
               <div style={{ flex: 1, minWidth: 0, height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <CursorControls
+                  enabled={cursorPrefs.enabled}
+                  name={cursorPrefs.name}
+                  others={cursors}
+                  onToggle={enabled => setCursorPrefs(p => ({ ...p, enabled }))}
+                  onReroll={() => setCursorPrefs(p => ({ ...p, name: randomCuteName() }))}
+                />
+                <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
                 <textarea
                   ref={textareaRef}
                   className="input"
@@ -1211,6 +1269,8 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                     boxSizing: 'border-box',
                   }}
                 />
+                <RemoteCursorsOverlay textareaRef={textareaRef} text={text} cursors={cursors} />
+                </div>
               </div>
             )}
 

@@ -1,0 +1,111 @@
+/* Holder sits over the textarea's wrapper; it never intercepts clicks or typing */
+.lc-holder {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.lc-clip {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.lc-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  /* glide between positions instead of teleporting */
+  transition: transform 0.12s ease-out;
+  will-change: transform;
+}
+
+.lc-flag {
+  position: absolute;
+  bottom: 100%;
+  left: -1px;
+  padding: 1px 6px;
+  border-radius: 6px 6px 6px 2px;
+  font-family: var(--font);
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: #111;
+}
+
+/* near the top edge there is no room above the caret, so hang the name below it */
+.lc-flag--below {
+  bottom: auto;
+  top: 100%;
+  border-radius: 2px 6px 6px 6px;
+}
+
+.lc-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+  min-height: 1.6rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.lc-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.lc-toggle:hover { color: #fff; border-color: var(--border-active); }
+.lc-toggle.is-on { color: #fff; border-color: var(--border-active); background: rgba(255, 255, 255, 0.06); }
+
+.lc-you,
+.lc-peer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #e4e4e7;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lc-you i,
+.lc-peer i {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.lc-reroll {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.lc-reroll:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-caret { transition: none; }
+}
