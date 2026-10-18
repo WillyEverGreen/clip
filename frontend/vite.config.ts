@@ -8,12 +8,12 @@ export default defineConfig({
       // Proxy API and WebSocket calls to local Wrangler dev server during development
       '/api': { target: 'http://localhost:8787', changeOrigin: true, ws: true },
       // Short CLI routes served by worker
-      '/r':   { target: 'http://localhost:8787', changeOrigin: true },
-      '/z':   { target: 'http://localhost:8787', changeOrigin: true },
-      '/f':   { target: 'http://localhost:8787', changeOrigin: true },
+      '/r/':   { target: 'http://localhost:8787', changeOrigin: true },
+      '/z/':   { target: 'http://localhost:8787', changeOrigin: true },
+      '/f/':   { target: 'http://localhost:8787', changeOrigin: true },
       // Long-form routes
-      '/raw':  { target: 'http://localhost:8787', changeOrigin: true },
-      '/zip':  { target: 'http://localhost:8787', changeOrigin: true },
+      '/raw/':  { target: 'http://localhost:8787', changeOrigin: true },
+      '/zip/':  { target: 'http://localhost:8787', changeOrigin: true },
     },
   },
   build: {
