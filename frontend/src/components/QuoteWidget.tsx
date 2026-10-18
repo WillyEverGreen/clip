@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Quote, RefreshCw, X } from 'lucide-react'
+import { BASE } from '../lib/api'
 import '../styles/quote.css'
 
-const QUOTES_API = 'https://quotes-api-ruddy.vercel.app'
 const QUOTES_REPO = 'https://github.com/Chronos778/quotes_api'
 const STORAGE_KEY = 'clip_show_quote'
 
@@ -25,10 +25,9 @@ export default function QuoteWidget() {
   const load = useCallback(async (signal?: AbortSignal) => {
     setState('loading')
     try {
-      const res = await fetch(`${QUOTES_API}/quotes/random`, { signal })
+      const res = await fetch(`${BASE}/api/quote`, { signal })
       if (!res.ok) throw new Error(String(res.status))
-      const json = await res.json()
-      const q = json?.data
+      const q = await res.json()
       if (!q?.text) throw new Error('bad shape')
       setQuote({ text: String(q.text), author: String(q.author ?? 'Unknown') })
       setState('idle')

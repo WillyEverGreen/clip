@@ -34,6 +34,24 @@ app.onError((err, c) => {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// Quote proxy: the upstream Quotes API only allows an origin allowlist for browsers,
+// so we fetch server-side (no Origin header) and hand the browser a tiny JSON payload.
+const QUOTES_API = 'https://quotes-api-ruddy.vercel.app/quotes/random'
+app.get('/api/quote', async (c) => {
+  try {
+    const res = await fetch(QUOTES_API, { signal: AbortSignal.timeout(4000) })
+    if (!res.ok) return c.json({ error: 'quote_unavailable' }, 502)
+    const json = await res.json() as { data?: { text?: unknown; author?: unknown } }
+    const text = typeof json?.data?.text === 'string' ? json.data.text : ''
+    if (!text) return c.json({ error: 'quote_unavailable' }, 502)
+    const author = typeof json.data?.author === 'string' && json.data.author ? json.data.author : 'Unknown'
+    c.header('Cache-Control', 'no-store')
+    return c.json({ text, author })
+  } catch {
+    return c.json({ error: 'quote_unavailable' }, 502)
+  }
+})
+
 // Create
 app.post('/api/entry',                handleCreate)
 
