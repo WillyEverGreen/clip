@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangle, Check, File as FileIcon, X, Plus } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangle, Check, File as FileIcon, X, Plus, Info } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
 import { createEntryWithProgress, getUniqueLiveSlug, setLiveSecurity, seedLiveRoom, uploadLiveFile, formatBytes, type ApiError } from '../lib/api'
@@ -643,6 +643,9 @@ export default function CreatePage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <LinkIcon size={13} style={{ color: 'var(--text-muted)' }} /> Custom Slugs &amp; CLI Access
           </span>
+          <Link to="/about" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', textDecoration: 'none' }}>
+            <Info size={13} /> About Clip
+          </Link>
         </aside>
       </main>
     </div>
