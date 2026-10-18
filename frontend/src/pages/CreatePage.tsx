@@ -26,6 +26,7 @@ export default function CreatePage() {
   const [content,       setContent]       = useState('')
   const [files,         setFiles]         = useState<File[]>([])
   const [slug,          setSlug]          = useState('')
+  const [slugHint,      setSlugHint]      = useState('')
   const [editCode,      setEditCode]      = useState('')
   const [ttl,           setTtl]           = useState('21600')
   const [lockContent,   setLockContent]   = useState(false)
@@ -87,7 +88,16 @@ export default function CreatePage() {
     text_too_large:      'Text exceeds 2 MB limit.',
     no_content:          'Please add some content or upload a file.',
     mime_mismatch:       'File type does not match its content.',
+    rate_limited:        'Too many clips created from this network. Please wait a couple of minutes and try again.',
+    network_error:       'Could not reach Clip. Check your connection and try again.',
+    timeout:             'The upload took too long. Please try again.',
+    parse_error:         'Clip returned an unexpected response. Please try again.',
+    internal_error:      'Something went wrong on our side. Please try again.',
+    unauthorized:        'You need the room password to do that.',
+    room_storage_limit_exceeded: 'This LivePad is full (100 MB or 30 files). Remove a file to add another.',
   }
+  // Anything not listed above still gets a readable message instead of a raw error code
+  const errorText = (code: string) => errorLabels[code] ?? 'Something went wrong. Please try again.'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -476,10 +486,18 @@ export default function CreatePage() {
                   style={{ height:'42px', boxSizing:'border-box', borderRadius:'0 10px 10px 0', flex:1 }}
                   placeholder={mode === 'live' ? 'my-live-room' : 'your-custom-slug'}
                   value={slug}
-                  onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,''))}
+                  onChange={e => {
+                    const typed = e.target.value.toLowerCase()
+                    const cleaned = typed.replace(/[^a-z0-9-]/g, '')
+                    setSlug(cleaned)
+                    setSlugHint(cleaned === typed ? '' : 'Only lowercase letters, numbers and hyphens are allowed.')
+                  }}
                   maxLength={50}
                   spellCheck={false}
                 />
+                {slugHint && (
+                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{slugHint}</p>
+                )}
               </div>
             </div>
 
@@ -625,7 +643,7 @@ export default function CreatePage() {
           {/* Error Message */}
           {error && (
             <div style={{ marginTop:'0.75rem', padding:'0.55rem 0.85rem', background:'#18181b', border:'1px solid #52525b', borderRadius:'10px', fontSize:'0.85rem', color:'#ffffff' }}>
-              {errorLabels[error] ?? error}
+              {errorText(error)}
             </div>
           )}
         </form>

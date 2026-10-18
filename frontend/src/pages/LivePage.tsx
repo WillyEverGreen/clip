@@ -548,6 +548,8 @@ export default function LivePage() {
   // Delete live file
   const handleDeleteFile = async (fileId: string) => {
     if (!slug) return
+    const file = files.find(f => f.id === fileId)
+    if (!window.confirm(`Remove "${file?.fileName ?? 'this file'}" for everyone in this LivePad? This cannot be undone.`)) return
     try {
       removeLocalFile(fileId)
       await deleteLiveFile(slug, fileId)
@@ -1705,6 +1707,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 className="btn btn-ghost"
                                 style={{ padding: '0.25rem 0.4rem', color: 'var(--text-muted)' }}
                                 title="Preview file"
+                                aria-label="Preview file"
                                 onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
                                 onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
                               >
@@ -1716,6 +1719,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 className="btn btn-secondary"
                                 style={{ padding: '0.25rem 0.5rem', fontSize: '0.725rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                                 title="Download"
+                                aria-label="Download file"
                               >
                                 <Download size={12} />
                               </button>
@@ -1724,6 +1728,7 @@ Tip: Paste images directly from your clipboard (Ctrl+V) or drag and drop any fil
                                 onClick={() => handleDeleteFile(f.id)}
                                 className="btn btn-ghost"
                                 title="Remove file for everyone"
+                                aria-label="Remove file for everyone"
                                 style={{ padding: '0.25rem 0.4rem', color: 'var(--text-muted)' }}
                                 onMouseEnter={e => (e.currentTarget.style.color = '#ffffff')}
                                 onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}

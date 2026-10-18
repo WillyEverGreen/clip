@@ -1583,6 +1583,7 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
                     className="btn btn-secondary"
                     style={{ gap: '0.4rem', padding: '0.45rem 0.85rem', fontSize: '0.8rem' }}
                     title="Preview file"
+                    aria-label="Preview file"
                   >
                     {isLoadingThis ? <div className="spinner" style={{ width: 14, height: 14 }} /> : <Eye size={14} />}
                     Preview
@@ -1671,6 +1672,7 @@ function FileCard({ entry, slug }: { entry: PublicEntry; slug: string }) {
                     className="btn btn-secondary"
                     style={{ flex: 1, justifyContent: 'center', gap: '0.35rem', padding: '0.45rem 0.6rem', fontSize: '0.775rem' }}
                     title="Preview file"
+                    aria-label="Preview file"
                   >
                     {isLoadingThis ? <div className="spinner" style={{ width: 12, height: 12 }} /> : <Eye size={13} />} Preview
                   </button>

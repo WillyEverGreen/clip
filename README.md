@@ -1,8 +1,11 @@
 <div align="center">
 
-<img src="frontend/public/icon-512.png" width="110" alt="Clip logo" />
-
-# Clip
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png" />
+    <img src="docs/logo-light.png" width="300" alt="Clip" />
+  </picture>
+</h1>
 
 **Temporary text and file sharing with custom links, optional encryption and a live pad.**
 

@@ -29,7 +29,8 @@ app.use('*', (c, next) => strictCors(c.env.FRONTEND_ORIGIN)(c, next))
 
 app.onError((err, c) => {
   console.error('Worker global error:', err)
-  return c.json({ error: 'internal_error', message: err.message }, 500)
+  console.error('internal error:', err)
+  return c.json({ error: 'internal_error', message: 'Something went wrong on the server. Please try again.' }, 500)
 })
 
 // ── Routes ────────────────────────────────────────────────────────────────────
