@@ -154,10 +154,13 @@ export default function CreatePage() {
           const encFile = await encryptFile(f, viewPassword)
           filesToUpload.push(encFile)
         }
-        const placeholder = await encryptContent('{"file_lock":true}', viewPassword)
-        form.append('content', placeholder)
+        // Keep any note typed in the Text tab (encrypted too); otherwise mark the files as locked
+        const note = content.trim() ? content : '{"file_lock":true}'
+        form.append('content', await encryptContent(note, viewPassword))
       } else {
         filesToUpload.push(...files)
+        // Text typed before switching to Files (or before pasting a photo) is saved as the clip's note
+        if (content.trim()) form.append('content', content)
       }
       filesToUpload.forEach((f) => {
         form.append('files', f)
@@ -320,6 +323,12 @@ export default function CreatePage() {
                   <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, paddingLeft: '1.15rem' }}>
                     <span>Tip: Press Ctrl+V anywhere on the page to paste screenshots or files directly.</span>
                   </p>
+                  {content.trim() && (
+                    <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, paddingLeft: '1.15rem', color: 'var(--text-dim)' }}>
+                      <FileText size={13} style={{ flexShrink: 0 }} />
+                      <span>Your text from the Text tab ({content.length.toLocaleString()} chars) will be saved with the files as a note.</span>
+                    </p>
+                  )}
                 </div>
               </div>
             )}
