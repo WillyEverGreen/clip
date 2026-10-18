@@ -2,8 +2,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png" />
-    <img src="docs/logo-light.png" width="260" alt="Clip" />
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg" />
+    <img src="docs/logo-light.svg" width="260" alt="Clip" />
   </picture>
 </p>
 
