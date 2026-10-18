@@ -1225,7 +1225,7 @@ export default function FilePreviewModal({
                   </div>
                 ) : filteredZipEntries.length === 0 ? (
                   <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    No files found matching "{zipSearchQuery}"
+                    No files found matching &ldquo;{zipSearchQuery}&rdquo;
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -1331,7 +1331,7 @@ export default function FilePreviewModal({
                 </p>
               </div>
               <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: 1.5 }}>
-                Direct preview is not available for this binary format. You can download the file to open it with your device's native application.
+                Direct preview is not available for this binary format. You can download the file to open it with your device&rsquo;s native application.
               </p>
               <button
                 type="button"
