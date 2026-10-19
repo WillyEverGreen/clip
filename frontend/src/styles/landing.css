@@ -76,10 +76,10 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  /* Centered left-to-right only; the text starts in the upper part of the screen
-     instead of floating in the middle of it */
-  justify-content: flex-start;
-  padding: clamp(56px, 12vh, 130px) 24px 40px;
+  /* Centred both ways. The bottom padding is larger than the top so the block
+     lands near the middle of the screen rather than the middle of the hero box */
+  justify-content: center;
+  padding: 24px 24px clamp(96px, 13vh, 120px);
   min-height: calc(100vh - 80px);
 }
 
