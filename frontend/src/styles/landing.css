@@ -178,7 +178,7 @@
 .glow-img {
   position: absolute;
   height: auto;
-  width: clamp(150px, 20vw, 250px);
+  width: clamp(180px, 22vw, 300px);
   mix-blend-mode: screen; /* black background of the image melts into the page */
   will-change: transform;
 }
