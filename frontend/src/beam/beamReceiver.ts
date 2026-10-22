@@ -104,7 +104,7 @@ const MSG = {
   peerGone: 'The sender disconnected before the transfer finished.',
   serverGone: 'Lost the connection to Clip before the devices could pair. Try again.',
   corrupt: 'The received file did not match the original (SHA-256 mismatch), so it was discarded. Try sending it again.',
-  lost: 'The connection was lost.',
+  lost: 'The connection to the sender was lost.',
 }
 
 type ReceiverMessage =
@@ -633,7 +633,7 @@ export class BeamReceiver {
   private connectionLost(message: string): void {
     if (this.isFinished() || this.interrupting) return
     if (this.state.phase === 'verifying') return // everything has arrived; only the sender's last message is lost
-    if (this.writer && (this.hasConnected || this.resuming)) this.interrupt(message)
+    if (this.writer && (this.hasConnected || this.resuming)) this.interrupt(MSG.lost)
     else this.fail(message)
   }
 
