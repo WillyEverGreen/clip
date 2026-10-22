@@ -60,4 +60,4 @@ export function beamWsUrl(pin: string | undefined, name: string): string {
   return `${base}/api/beam/ws${qs ? `?${qs}` : ''}`
 }
 
-export { formatPin, parsePin, formatBytes, formatDuration, formatEta } from './beamFormat'
+export { formatPin, parsePin, formatBytes, formatDuration, formatEta, avatarFor } from './beamFormat'

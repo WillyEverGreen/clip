@@ -1,13 +1,16 @@
 import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowDownToLine, Check, Copy, File as FileIcon, QrCode, Radio, RotateCcw, Send, ShieldCheck, TriangleAlert, Upload, Users, X } from 'lucide-react'
+import { ArrowDownToLine, Ban, Check, Copy, File as FileIcon, QrCode, Radio, RotateCcw, Send, ShieldCheck, TriangleAlert, Upload, Users, X } from 'lucide-react'
 import Logo from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
 import { colorForId } from '../lib/cuteNames'
 import { copyToClipboard } from '../lib/clipboard'
 import { useBeam } from './useBeam'
 import { canStreamToDisk, MEMORY_LIMIT } from './diskWriter'
-import { formatBytes, formatDuration, formatEta, formatPin, parsePin } from './beamProtocol'
+import { avatarFor, formatBytes, formatDuration, formatEta, formatPin, parsePin } from './beamProtocol'
+import Radar from './Radar'
+import type { LobbyInvite } from './beamLobby'
+import type { VisibleState } from './useBeam'
 import type { SenderLeg, SenderState } from './beamSender'
 import type { ReceiverState } from './beamReceiver'
 import './beam.css'
@@ -86,11 +89,11 @@ export default function BeamPage() {
         </header>
 
         {role === null ? (
-          <StartPanels onSend={beam.send} onJoin={beam.join} />
+          <StartPanels onSend={beam.send} onJoin={(pin) => beam.join(pin)} visible={beam.visible} onVisible={beam.setVisible} onRespond={beam.respondInvite} />
         ) : (
           <section className="beam-card" aria-live="polite">
             {role === 'sender'
-              ? <SenderPanel state={sender} onStop={beam.stopSharing} onCancelLeg={beam.cancelLeg} onReset={beam.reset} />
+              ? <SenderPanel state={sender} onStop={beam.stopSharing} onCancelLeg={beam.cancelLeg} onReset={beam.reset} onInvite={beam.inviteNearby} />
               : <ReceiverPanel state={receiver} onAccept={beam.accept} onDecline={beam.decline} onCancel={beam.cancelReceive} onReset={beam.reset} />}
           </section>
         )}
@@ -108,7 +111,15 @@ export default function BeamPage() {
 
 // ── Landing: send or receive ────────────────────────────────────────────────
 
-function StartPanels({ onSend, onJoin }: { onSend: (f: File) => void; onJoin: (pin: string) => void }) {
+interface StartProps {
+  onSend: (f: File) => void
+  onJoin: (pin: string) => void
+  visible: VisibleState
+  onVisible: (on: boolean) => void
+  onRespond: (invite: LobbyInvite, accept: boolean, block?: boolean) => void
+}
+
+function StartPanels({ onSend, onJoin, visible, onVisible, onRespond }: StartProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [pinText, setPinText] = useState('')
@@ -180,7 +191,69 @@ function StartPanels({ onSend, onJoin }: { onSend: (f: File) => void; onJoin: (p
             ? 'Files are written straight to disk as they arrive.'
             : `This browser keeps the file in memory until it finishes, so it can receive up to ${formatBytes(MEMORY_LIMIT)}. Use Chrome or Edge for bigger files.`}
         </p>
+        <ReceiveMode visible={visible} onVisible={onVisible} onRespond={onRespond} />
       </section>
+    </div>
+  )
+}
+
+/** Receive mode: opt in to be listed to senders on the same network, and answer their requests. */
+function ReceiveMode({ visible, onVisible, onRespond }: Pick<StartProps, 'visible' | 'onVisible' | 'onRespond'>) {
+  return (
+    <div className="beam-nearby-opt" data-receive-mode={visible.on ? 'on' : 'off'}>
+      <label className="beam-switch">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={visible.on}
+          onChange={(e) => onVisible(e.target.checked)}
+          aria-label="Show me to nearby senders"
+        />
+        <span className="beam-switch-track" aria-hidden="true"><span className="beam-switch-thumb" /></span>
+        <span>
+          <span className="beam-switch-title">Show me to nearby senders</span>
+          <span className="beam-hint beam-switch-sub">
+            {visible.on
+              ? 'Visible only while this page is open. Close the tab or switch this off to disappear.'
+              : 'Off by default. Senders on your network can then send you a request, which you can decline.'}
+          </span>
+        </span>
+      </label>
+
+      {visible.on && (
+        <div className="beam-visible-card" aria-live="polite">
+          <span className="beam-peer-avatar is-me" style={{ background: `${colorForId(visible.name)}33`, borderColor: colorForId(visible.name) }}>
+            <span aria-hidden="true">{avatarFor(visible.name)}</span>
+          </span>
+          <div>
+            <div className="beam-visible-name" data-testid="beam-visible-name">{visible.name} <span className="beam-person-you">you</span></div>
+            <div className="beam-muted">
+              <span className={`beam-dot${visible.status === 'online' ? '' : ' is-off'}`} />{' '}
+              {visible.status === 'online' ? 'Waiting for requests...' : visible.status === 'connecting' ? 'Connecting...' : 'Offline. Switch off and on to retry.'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {visible.invites.map((inv) => (
+        <div key={inv.inviteId} className="beam-invite" role="alertdialog" aria-label={`${inv.from.name} wants to send you a file`} data-invite-from={inv.from.name}>
+          <div className="beam-invite-head">
+            <span className="beam-peer-avatar" style={{ background: `${colorForId(inv.from.name)}33`, borderColor: colorForId(inv.from.name) }}>
+              <span aria-hidden="true">{avatarFor(inv.from.name)}</span>
+            </span>
+            <div className="beam-invite-text">
+              <strong>{inv.from.name}</strong> wants to send you
+              <div className="beam-file-name">{inv.offer.name}</div>
+              <div className="beam-muted">{formatBytes(inv.offer.size)}</div>
+            </div>
+          </div>
+          <div className="beam-actions">
+            <button type="button" className="btn btn-primary" onClick={() => onRespond(inv, true)}><ArrowDownToLine size={15} /> Accept</button>
+            <button type="button" className="btn btn-ghost" onClick={() => onRespond(inv, false)}>Decline</button>
+            <button type="button" className="btn btn-ghost" onClick={() => onRespond(inv, false, true)} title="Decline and hide future requests from this sender"><Ban size={15} /> Block</button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -192,9 +265,10 @@ interface SenderPanelProps {
   onStop: () => void
   onCancelLeg: (id: string) => void
   onReset: () => void
+  onInvite: (ids: string[]) => void
 }
 
-function SenderPanel({ state, onStop, onCancelLeg, onReset }: SenderPanelProps) {
+function SenderPanel({ state, onStop, onCancelLeg, onReset, onInvite }: SenderPanelProps) {
   const { phase, offer, legs } = state
 
   if (phase === 'error') {
@@ -228,6 +302,7 @@ function SenderPanel({ state, onStop, onCancelLeg, onReset }: SenderPanelProps) 
         <p className="beam-who">Sharing as <Person name={state.myName} you /></p>
       )}
 
+      {open && <NearbySection state={state} onInvite={onInvite} />}
       {open && state.pin && <PinShare pin={state.pin} count={legs.length} />}
       {phase === 'connecting' && <p className="beam-status"><span className="beam-dot" /> Opening a Beam room...</p>}
       {phase === 'stopped' && (
@@ -242,7 +317,7 @@ function SenderPanel({ state, onStop, onCancelLeg, onReset }: SenderPanelProps) 
         </ul>
       )}
 
-      {open && legs.length === 0 && <p className="beam-status"><span className="beam-dot" /> Waiting for a receiver to enter the PIN...</p>}
+      {open && legs.length === 0 && <p className="beam-status"><span className="beam-dot" /> Waiting for someone to join. Pick people on the radar, or share the PIN.</p>}
 
       <div className="beam-actions">
         {open
@@ -256,11 +331,60 @@ function SenderPanel({ state, onStop, onCancelLeg, onReset }: SenderPanelProps) 
   )
 }
 
-/** A person's cute name with their colour dot, the same pairing Live Pad uses for cursors. */
+/** People on the same network who switched on Receive mode, as a radar. Pick one or several and ask. */
+function NearbySection({ state, onInvite }: { state: SenderState; onInvite: (ids: string[]) => void }) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const legNames = new Set(state.legs.map((l) => l.name))
+  const connected = new Set(state.nearby.filter((p) => legNames.has(p.name)).map((p) => p.id))
+  // Forget selections for people who left the radar
+  useEffect(() => {
+    setSelected((cur) => {
+      const ids = new Set(state.nearby.map((p) => p.id))
+      const next = new Set([...cur].filter((id) => ids.has(id)))
+      return next.size === cur.size ? cur : next
+    })
+  }, [state.nearby])
+
+  const pickable = state.nearby.filter((p) => !connected.has(p.id) && p.status !== 'invited' && p.status !== 'accepted')
+  const toggle = (id: string) => setSelected((cur) => {
+    const next = new Set(cur)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const send = () => {
+    onInvite([...selected])
+    setSelected(new Set())
+  }
+
+  return (
+    <div className="beam-nearby" data-nearby-count={state.nearby.length}>
+      <div className="beam-nearby-head">
+        <span className="label">Send to people nearby</span>
+        <span className="beam-muted">
+          {state.nearbyStatus === 'offline' ? 'Discovery is offline' : state.nearby.length === 0 ? 'Looking...' : `${state.nearby.length} ${state.nearby.length === 1 ? 'person' : 'people'} here`}
+        </span>
+      </div>
+      <Radar people={state.nearby} selected={selected} connected={connected} onToggle={toggle} />
+      {state.nearby.length === 0 ? (
+        <p className="beam-hint beam-center">Nobody yet. Ask people on your network to open clip.foo.ng/beam and switch on &quot;Show me to nearby senders&quot;. They never need a PIN: you pick them, they tap Accept.</p>
+      ) : (
+        <div className="beam-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => setSelected(new Set(pickable.map((p) => p.id)))} disabled={pickable.length === 0}>Select all</button>
+          <button type="button" className="btn btn-primary" onClick={send} disabled={selected.size === 0}>
+            <Send size={15} /> Send to {selected.size || ''} {selected.size === 1 ? 'person' : selected.size > 1 ? 'people' : 'selected'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** A person's cute name with their avatar, the same pairing Live Pad uses for cursors. */
 function Person({ name, you }: { name: string; you?: boolean }) {
   return (
     <span className="beam-person" data-person={name}>
-      <span className="beam-person-dot" style={{ background: colorForId(name) }} aria-hidden="true" />
+      <span className="beam-person-dot" style={{ background: `${colorForId(name)}33`, borderColor: colorForId(name) }} aria-hidden="true">{avatarFor(name)}</span>
       <span className="beam-person-name">{name}</span>
       {you && <span className="beam-person-you">you</span>}
     </span>
@@ -315,7 +439,7 @@ function PinShare({ pin, count }: { pin: string; count: number }) {
   }
   return (
     <div className="beam-pin-share">
-      <span className="label">Share this PIN with up to 8 receivers</span>
+      <span className="label">Or share a PIN instead (up to 8 people)</span>
       <div className="beam-pin" data-testid="beam-pin" aria-label={`PIN ${pin.split('').join(' ')}`}>{formatPin(pin)}</div>
       <div className="beam-actions">
         <button type="button" className="btn btn-ghost" onClick={() => copy('pin')}>

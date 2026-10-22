@@ -322,6 +322,216 @@ await test('churn: 30 receivers join and leave one room quickly, then a real one
   sender.close(); final.close()
 })
 
+/** A nearby-lobby client. Everyone in one test shares `ip`, so they land in the same lobby group. */
+class Lobby {
+  constructor(role, name, ip) {
+    this.messages = []
+    this.waiters = []
+    this.closed = null
+    const query = new URLSearchParams({ role })
+    if (name) query.set('name', name)
+    this.ws = new WebSocket(`${BASE}/api/beam/lobby/ws?${query}`, { headers: { 'CF-Connecting-IP': ip } })
+    this.ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data)
+      this.messages.push(msg)
+      this.waiters = this.waiters.filter((w) => !(w.test(msg) && (w.resolve(msg), true)))
+    }
+    this.closedPromise = new Promise((resolve) => { this.ws.onclose = (ev) => { this.closed = ev.code; resolve(ev.code) } })
+    this.ws.onerror = () => {}
+  }
+
+  /** Waits for a message of `type` (optionally also matching `where`), including ones that already arrived. */
+  next(type, where = () => true, timeout = 5000) {
+    const hit = this.messages.find((m) => m.type === type && !m._taken && where(m))
+    if (hit) { hit._taken = true; return Promise.resolve(hit) }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`timed out waiting for ${type}; got ${JSON.stringify(this.messages)}`)), timeout)
+      this.waiters.push({ test: (m) => m.type === type && where(m), resolve: (m) => { clearTimeout(timer); m._taken = true; resolve(m) } })
+    })
+  }
+
+  /** Resolves with the latest `peers` list once `where` holds for it. */
+  peersWhere(where, timeout = 5000) {
+    const check = () => { const l = this.messages.filter((m) => m.type === 'peers').at(-1); return l && where(l.peers) ? l.peers : null }
+    return new Promise((resolve, reject) => {
+      const started = Date.now()
+      const t = setInterval(() => {
+        const ok = check()
+        if (ok) { clearInterval(t); resolve(ok) }
+        else if (Date.now() - started > timeout) { clearInterval(t); reject(new Error(`peers never matched; last ${JSON.stringify(this.messages.filter((m) => m.type === 'peers').at(-1))}`)) }
+      }, 25)
+    })
+  }
+
+  send(msg) { this.ws.send(JSON.stringify(msg)) }
+  close() { try { this.ws.close() } catch {} }
+}
+
+const lobbyIp = () => `10.${200 + Math.floor(Math.random() * 50)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
+
+await test('nearby: bad role gets 400, plain HTTP gets 426', async () => {
+  assert.equal(await rawGet('/api/beam/lobby/ws?role=admin', { ...WS_HEADERS, 'CF-Connecting-IP': lobbyIp() }), 400)
+  assert.equal(await rawGet('/api/beam/lobby/ws', { 'CF-Connecting-IP': lobbyIp() }), 426)
+  assert.equal(await rawGet('/api/beam/lobby/ws?role=receiver', { 'CF-Connecting-IP': lobbyIp() }), 426)
+})
+
+await test('nearby: receivers on the same network appear to the sender; other networks, other receivers and senders see nothing', async () => {
+  const ip = lobbyIp()
+  const sender = new Lobby('sender', 'Sunny', ip)
+  const a = new Lobby('receiver', 'Mochi', ip)
+  const b = new Lobby('receiver', 'Biscuit', ip)
+  const otherNetwork = lobbyIp()
+  const stranger = new Lobby('sender', 'Elsewhere', otherNetwork)
+  const strangerReceiver = new Lobby('receiver', 'Faraway', otherNetwork)
+  const peers = await sender.peersWhere((l) => l.length === 2)
+  assert.deepEqual(peers.map((p) => p.name).sort(), ['Biscuit', 'Mochi'])
+  assert.ok(peers.every((p) => Object.keys(p).sort().join() === 'id,name'))
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal(a.messages.filter((m) => m.type === 'peers').length, 0, 'receiver saw a peer list')
+  assert.equal(b.messages.filter((m) => m.type === 'peers').length, 0)
+  assert.deepEqual((await stranger.peersWhere((l) => l.length === 1)).map((p) => p.name), ['Faraway'])
+  assert.ok(stranger.messages.every((m) => m.type !== 'peers' || m.peers.every((p) => p.name !== 'Mochi' && p.name !== 'Biscuit')))
+  assert.equal(strangerReceiver.messages.filter((m) => m.type === 'peers').length, 0)
+  for (const c of [sender, a, b, stranger, strangerReceiver]) c.close()
+})
+
+await test('nearby: closing the tab (socket) removes a receiver from the radar', async () => {
+  const ip = lobbyIp()
+  const sender = new Lobby('sender', 'Sunny', ip)
+  const a = new Lobby('receiver', 'Mochi', ip)
+  const b = new Lobby('receiver', 'Biscuit', ip)
+  await sender.peersWhere((l) => l.length === 2)
+  a.close()
+  assert.deepEqual((await sender.peersWhere((l) => l.length === 1)).map((p) => p.name), ['Biscuit'])
+  await a.closedPromise
+  sender.close(); b.close()
+})
+
+await test('nearby: names are unique across the group even when everyone asks for the same one', async () => {
+  const ip = lobbyIp()
+  const sender = new Lobby('sender', 'Mochi', ip)
+  const rs = [new Lobby('receiver', 'Mochi', ip), new Lobby('receiver', 'Mochi', ip), new Lobby('receiver', undefined, ip)]
+  const names = [(await sender.next('welcome')).name, ...await Promise.all(rs.map(async (r) => (await r.next('welcome')).name))]
+  assert.equal(new Set(names.map((n) => n.toLowerCase())).size, 4)
+  assert.equal(names[0], 'Mochi')
+  sender.close(); rs.forEach((r) => r.close())
+})
+
+await test('nearby: invite to several receivers, one accepts and joins the room, one declines and blocks, one is not asked', async () => {
+  const ip = lobbyIp()
+  const room = await openRoom({ name: 'holiday.mov', size: 4200000000, type: 'video/quicktime' })
+  const sender = new Lobby('sender', 'Sunny', ip)
+  const [a, b, c] = ['Mochi', 'Biscuit', 'Pudding'].map((n) => new Lobby('receiver', n, ip))
+  const peers = await sender.peersWhere((l) => l.length === 3)
+  const id = Object.fromEntries(peers.map((p) => [p.name, p.id]))
+
+  sender.send({ type: 'invite', to: [id.Mochi, id.Biscuit], pin: room.pin, offer: { name: 'holiday.mov', size: 4200000000, type: 'video/quicktime' } })
+  const invA = await a.next('invite')
+  const invB = await b.next('invite')
+  assert.equal(invA.from.name, 'Sunny')
+  assert.equal(invA.pin, room.pin)
+  assert.equal(invA.offer.name, 'holiday.mov')
+  assert.equal(c.messages.filter((m) => m.type === 'invite').length, 0)
+  await sender.next('invite_sent', (m) => m.to === id.Mochi)
+
+  // Mochi accepts: tells the sender, then joins the room with the PIN
+  a.send({ type: 'accept', inviteId: invA.inviteId })
+  assert.equal((await sender.next('invite_accepted')).to, id.Mochi)
+  const joined = new Client(room.pin, undefined, 'Mochi')
+  assert.equal((await joined.next('joined')).offer.name, 'holiday.mov')
+  assert.equal((await room.sender.next('peer_joined')).name, 'Mochi')
+
+  // Biscuit declines and blocks the sender
+  b.send({ type: 'decline', inviteId: invB.inviteId, block: true })
+  const closed = await sender.next('invite_closed', (m) => m.to === id.Biscuit)
+  assert.equal(closed.reason, 'declined')
+  sender.send({ type: 'invite', to: [id.Biscuit], pin: room.pin, offer: { name: 'again.mov', size: 1, type: '' } })
+  const again = await sender.next('invite_closed', (m) => m.to === id.Biscuit)
+  assert.equal(again.reason, 'declined')
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal(b.messages.filter((m) => m.type === 'invite').length, 1, 'a blocked sender reached the receiver')
+
+  for (const x of [sender, a, b, c, joined, room.sender]) x.close()
+})
+
+await test('nearby: a sender stopping (cancel_invites, or closing) withdraws open requests', async () => {
+  const ip = lobbyIp()
+  const sender = new Lobby('sender', 'Sunny', ip)
+  const a = new Lobby('receiver', 'Mochi', ip)
+  const peers = await sender.peersWhere((l) => l.length === 1)
+  const offer = { name: 'x.bin', size: 1, type: '' }
+  sender.send({ type: 'invite', to: [peers[0].id], pin: '123456', offer })
+  await a.next('invite')
+  sender.send({ type: 'cancel_invites' })
+  await a.next('invite_gone')
+  sender.send({ type: 'invite', to: [peers[0].id], pin: '123456', offer })
+  const second = await a.next('invite')
+  sender.close()
+  assert.equal((await a.next('invite_gone')).inviteId, second.inviteId)
+  a.close()
+})
+
+await test('nearby: a receiver going away tells the sender its request is closed', async () => {
+  const ip = lobbyIp()
+  const sender = new Lobby('sender', 'Sunny', ip)
+  const a = new Lobby('receiver', 'Mochi', ip)
+  const peers = await sender.peersWhere((l) => l.length === 1)
+  sender.send({ type: 'invite', to: [peers[0].id], pin: '123456', offer: { name: 'x.bin', size: 1, type: '' } })
+  await a.next('invite')
+  a.close()
+  assert.equal((await sender.next('invite_closed')).reason, 'left')
+  sender.close()
+})
+
+await test('nearby: garbage, forged and out-of-role messages are refused and the lobby keeps working', async () => {
+  const ip = lobbyIp()
+  const sender = new Lobby('sender', 'Sunny', ip)
+  const a = new Lobby('receiver', 'Mochi', ip)
+  const b = new Lobby('receiver', 'Biscuit', ip)
+  const peers = await sender.peersWhere((l) => l.length === 2)
+  a.ws.send('{{{'); a.ws.send(new Uint8Array([1, 2, 3])); a.ws.send('x'.repeat(70_000)); a.ws.send('[]')
+  a.send({ type: 'invite', to: [peers[0].id], pin: '123456', offer: { name: 'x', size: 1 } }) // receivers cannot invite
+  a.send({ type: 'accept', inviteId: 'i1' }) // nothing to accept
+  for (let i = 0; i < 200; i++) a.send({ type: 'ping' })
+  await new Promise((r) => setTimeout(r, 400))
+  assert.equal(a.closed, null)
+  assert.ok(a.messages.filter((m) => m.type === 'pong').length >= 200)
+  assert.equal(b.messages.filter((m) => m.type === 'invite').length, 0)
+  // b cannot answer an invite that was sent to a
+  sender.send({ type: 'invite', to: [peers.find((p) => p.name === 'Mochi').id], pin: '123456', offer: { name: 'x', size: 1, type: '' } })
+  const inv = await a.next('invite')
+  b.send({ type: 'accept', inviteId: inv.inviteId })
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal(sender.messages.filter((m) => m.type === 'invite_accepted').length, 0)
+  a.send({ type: 'accept', inviteId: inv.inviteId })
+  await sender.next('invite_accepted')
+  for (const x of [sender, a, b]) x.close()
+})
+
+await test('nearby stress: 60 receivers and 5 senders in one group, then half leave at once; every sender sees the same list', async () => {
+  const ip = lobbyIp()
+  const senders = Array.from({ length: 5 }, (_, i) => new Lobby('sender', `S${i}`, ip))
+  const receivers = Array.from({ length: 60 }, (_, i) => new Lobby('receiver', `R${i}`, ip))
+  await Promise.all(senders.map((s) => s.peersWhere((l) => l.length === 60, 10000)))
+  receivers.slice(0, 30).forEach((r) => r.close())
+  const lists = await Promise.all(senders.map((s) => s.peersWhere((l) => l.length === 30, 10000)))
+  const first = JSON.stringify(lists[0].map((p) => p.id).sort())
+  for (const l of lists) assert.equal(JSON.stringify(l.map((p) => p.id).sort()), first)
+  assert.ok(lists[0].every((p) => Number(p.name.slice(1)) >= 30))
+  senders.forEach((s) => s.close()); receivers.forEach((r) => r.close())
+})
+
+await test('nearby: lobby connections are rate limited per IP', async () => {
+  const ip = lobbyIp()
+  let limited = false
+  for (let i = 0; i < 300 && !limited; i++) {
+    const status = await rawGet('/api/beam/lobby/ws?role=receiver', { ...WS_HEADERS, 'CF-Connecting-IP': ip })
+    if (status === 429) limited = true
+    else assert.equal(status, 101)
+  }
+  assert.ok(limited, 'expected a 429 within 300 connections')
+})
+
 await test('PIN guessing is rate limited per IP', async () => {
   const ip = `10.99.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
   let limited = false

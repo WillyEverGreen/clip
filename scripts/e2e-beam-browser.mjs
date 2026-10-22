@@ -7,7 +7,8 @@
 //
 // Env: UI (default http://localhost:5199), CHROME (path to chrome.exe),
 //      BEAM_MB (size of the big transfer, default 200),
-//      BEAM_STRESS=1 (adds a 1 GB transfer; slow on a loopback link),
+//      BEAM_STRESS=1 (adds a 700 MB transfer to 2 receivers; slow on a loopback link. Kept under 1 GB because headless Chrome's
+//        private file system hit its storage quota at about 0.9 GB),
 //      ONLY=<text> (run only tests whose name contains it)
 //
 // The save dialog cannot be clicked in a headless browser, so the receiver's showSaveFilePicker is
@@ -122,10 +123,12 @@ const CORRUPT_ONE_CHUNK = () => {
 }
 
 async function newPage(init, opts = {}) {
-  const ctx = await browser.newContext({ viewport: { width: 1100, height: 860 }, acceptDownloads: true, ...opts })
-  // Joining is rate limited per client IP; give each browser its own (local dev only, Cloudflare sets this in production)
+  const { ip, ...ctxOpts } = opts
+  const ctx = await browser.newContext({ viewport: { width: 1100, height: 860 }, acceptDownloads: true, ...ctxOpts })
+  // Joining is rate limited per client IP; give each browser its own (local dev only, Cloudflare sets this in production).
+  // Browsers that pass the same `ip` are on the same "network" and see each other in Nearby.
   ipCounter++
-  await ctx.setExtraHTTPHeaders({ 'CF-Connecting-IP': `10.66.${(ipCounter >> 8) & 255}.${ipCounter & 255}` })
+  await ctx.setExtraHTTPHeaders({ 'CF-Connecting-IP': ip ?? `10.66.${(ipCounter >> 8) & 255}.${ipCounter & 255}` })
   for (const script of [].concat(init || [])) await ctx.addInitScript(script)
   const page = await ctx.newPage()
   page.setDefaultTimeout(15000)
@@ -217,6 +220,28 @@ async function joinReceiver(open, pin, init = SAVE_TO_OPFS) {
   await acceptBtn(r.page).waitFor()
   return r
 }
+
+
+// ── Nearby helpers ──────────────────────────────────────────────────────────
+
+const newNetwork = () => `10.${150 + Math.floor(Math.random() * 40)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
+
+/** A receiver tab on `ip` with Receive mode switched on and listed. Returns its visible name too. */
+async function nearbyReceiver(open, ip, init = SAVE_TO_OPFS) {
+  const r = await open(init, { ip })
+  await r.page.getByRole('switch', { name: 'Show me to nearby senders' }).check({ force: true })
+  await r.page.getByText('Waiting for requests').waitFor()
+  const raw = await r.page.getByTestId('beam-visible-name').innerText()
+  r.name = raw.replace(/\s*you\s*$/, '').trim()
+  return r
+}
+
+const radarNames = (page) => page.locator('.beam-peer[data-peer]').evaluateAll((els) => els.map((e) => e.getAttribute('data-peer')))
+const peer = (page, name) => page.locator(`.beam-peer[data-peer="${name}"]`)
+async function waitRadar(page, count, timeout = 15000) {
+  await page.waitForFunction((n) => document.querySelectorAll('.beam-peer[data-peer]').length === n, count, { timeout })
+}
+const invitePrompt = (page) => page.locator('.beam-invite')
 
 console.log(`\nClip Beam browser e2e (${UI}, ${BIG_MB} MB file)`)
 const big = await makeFile(`beam-big-${BIG_MB}mb.bin`, BIG_MB)
@@ -592,6 +617,184 @@ await test('when the browsers cannot reach each other, the sender row and the re
   await sender.page.locator('.beam-leg').first().getByText('Could not open a direct connection').waitFor()
 })
 
+await test('Nearby: Receive mode is off by default and does not even open a connection to the lobby', async (open) => {
+  const r = await open()
+  const sockets = []
+  r.page.on('websocket', (ws) => sockets.push(ws.url()))
+  await sleep(800)
+  if (await r.page.getByRole('switch', { name: 'Show me to nearby senders' }).isChecked()) throw new Error('Receive mode starts on')
+  if (sockets.some((u) => u.includes('/lobby/'))) throw new Error('lobby socket opened without opting in')
+})
+
+await test('Nearby radar: only receivers who opted in, on the same network, appear; receivers and senders stay hidden from each other', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, small)
+  await sender.page.locator('.beam-radar').waitFor()
+  await sender.page.getByText('Nobody yet').waitFor()
+  const a = await nearbyReceiver(open, net)
+  const b = await nearbyReceiver(open, net)
+  const offNet = await nearbyReceiver(open, newNetwork())
+  const notOptedIn = await open(null, { ip: net }) // same network but Receive mode never switched on
+  await waitRadar(sender.page, 2)
+  const names = (await radarNames(sender.page)).sort()
+  if (JSON.stringify(names) !== JSON.stringify([a.name, b.name].sort())) throw new Error(`radar shows ${names}, expected ${[a.name, b.name]}`)
+  if (names.includes(offNet.name)) throw new Error('a receiver on another network showed up')
+  await sleep(300)
+  for (const r of [a, b, offNet, notOptedIn]) {
+    if (await r.page.locator('.beam-radar, .beam-peer').count()) throw new Error('a receiver can see a radar or people')
+    const body = await r.page.locator('body').innerText()
+    if (/Sunny|Sender/.test(body) && body.includes('wants to send')) throw new Error('a receiver was shown a sender')
+  }
+  // every avatar is an emoji on a coloured ring, and the count is announced
+  const emoji = await sender.page.locator('.beam-peer-avatar span[aria-hidden]').allInnerTexts()
+  if (emoji.some((e) => !e.trim())) throw new Error('an avatar is empty')
+  await sender.page.getByText('2 people here').waitFor()
+})
+
+await test('Nearby radar: switching Receive mode off, or closing the tab, removes a receiver from the radar', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, small)
+  const a = await nearbyReceiver(open, net)
+  const b = await nearbyReceiver(open, net)
+  await waitRadar(sender.page, 2)
+  await a.page.getByRole('switch', { name: 'Show me to nearby senders' }).uncheck({ force: true })
+  await waitRadar(sender.page, 1)
+  if ((await radarNames(sender.page))[0] !== b.name) throw new Error('wrong person left the radar')
+  await b.ctx.close()
+  await waitRadar(sender.page, 0)
+  await a.page.getByRole('switch', { name: 'Show me to nearby senders' }).check({ force: true })
+  await waitRadar(sender.page, 1)
+})
+
+await test('Nearby send: pick several people at once, they get a request with the file and sender, accept, and all receive identical bytes', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, mid)
+  const rs = [await nearbyReceiver(open, net), await nearbyReceiver(open, net), await nearbyReceiver(open, net)]
+  await waitRadar(sender.page, 3)
+  const sendBtn = sender.page.getByRole('button', { name: /^Send to/ })
+  if (!(await sendBtn.isDisabled())) throw new Error('send button enabled with nobody selected')
+  // choose two of the three
+  await peer(sender.page, rs[0].name).click()
+  await peer(sender.page, rs[2].name).click()
+  if ((await peer(sender.page, rs[0].name).getAttribute('aria-pressed')) !== 'true') throw new Error('selection did not show')
+  if ((await peer(sender.page, rs[1].name).getAttribute('aria-pressed')) !== 'false') throw new Error('wrong person selected')
+  await sender.page.getByRole('button', { name: 'Send to 2 people' }).click()
+
+  for (const r of [rs[0], rs[2]]) {
+    await invitePrompt(r.page).waitFor()
+    const text = await invitePrompt(r.page).innerText()
+    if (!text.includes(mid.name) || !text.includes('60.0 MB')) throw new Error(`prompt lacks the file: ${text}`)
+    const senderName = await sender.page.locator('.beam-who [data-person]').first().getAttribute('data-person')
+    if (!text.includes(senderName)) throw new Error(`prompt does not name the sender ${senderName}: ${text}`)
+  }
+  await sleep(400)
+  if (await invitePrompt(rs[1].page).count()) throw new Error('an unchosen person got a request')
+  await peer(sender.page, rs[0].name).and(sender.page.locator('[data-peer-status=invited]')).waitFor()
+
+  // accepting is the only click: it joins the room and goes straight to saving
+  await Promise.all([rs[0], rs[2]].map((r) => invitePrompt(r.page).getByRole('button', { name: 'Accept' }).click()))
+  await Promise.all([rs[0], rs[2]].map((r) => waitPhase(r.page, 'done', 240_000)))
+  for (const r of [rs[0], rs[2]]) await expectSaved(r.page, mid)
+  if ((await rs[0].page.evaluate(() => window.__beamPicked)) !== mid.name) throw new Error('did not go straight to saving')
+  await waitLeg(sender.page, 1, 'done')
+  // Accepting leaves the lobby: they drop off the radar and show as transfers, under the same names
+  await waitRadar(sender.page, 1)
+  const legNames = await sender.page.locator('.beam-leg [data-person]').evaluateAll((els) => els.map((e) => e.getAttribute('data-person')).sort())
+  if (JSON.stringify(legNames) !== JSON.stringify([rs[0].name, rs[2].name].sort())) throw new Error(`transfer rows ${legNames}, expected ${[rs[0].name, rs[2].name]}`)
+  // the one nobody asked is untouched and still selectable
+  if ((await peer(sender.page, rs[1].name).getAttribute('data-peer-status')) !== 'idle') throw new Error('third person changed')
+})
+
+await test('Nearby send: Select all asks everyone on the radar', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, small)
+  const rs = []
+  for (let i = 0; i < 4; i++) rs.push(await nearbyReceiver(open, net))
+  await waitRadar(sender.page, 4)
+  await sender.page.getByRole('button', { name: 'Select all' }).click()
+  await sender.page.getByRole('button', { name: 'Send to 4 people' }).click()
+  for (const r of rs) await invitePrompt(r.page).waitFor()
+})
+
+await test('Nearby: decline tells the sender; block silences that sender; Decline does not block', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, small)
+  const r = await nearbyReceiver(open, net)
+  await waitRadar(sender.page, 1)
+  const ask = async () => {
+    await peer(sender.page, r.name).click()
+    await sender.page.getByRole('button', { name: 'Send to 1 person' }).click()
+  }
+  await ask()
+  await invitePrompt(r.page).getByRole('button', { name: 'Decline' }).click()
+  await peer(sender.page, r.name).and(sender.page.locator('[data-peer-status=declined]')).waitFor()
+  if (await invitePrompt(r.page).count()) throw new Error('prompt stayed after declining')
+  // not blocked: asking again works
+  await ask()
+  await invitePrompt(r.page).waitFor()
+  await invitePrompt(r.page).getByRole('button', { name: 'Block' }).click()
+  await peer(sender.page, r.name).and(sender.page.locator('[data-peer-status=declined]')).waitFor()
+  // blocked: asking again shows declined on the sender and nothing on the receiver
+  await ask()
+  await sleep(700)
+  if (await invitePrompt(r.page).count()) throw new Error('a blocked sender got through')
+  await peer(sender.page, r.name).and(sender.page.locator('[data-peer-status=declined]')).waitFor()
+})
+
+await test('Nearby: stopping sharing withdraws the request from the receiver', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, small)
+  const r = await nearbyReceiver(open, net)
+  await waitRadar(sender.page, 1)
+  await peer(sender.page, r.name).click()
+  await sender.page.getByRole('button', { name: 'Send to 1 person' }).click()
+  await invitePrompt(r.page).waitFor()
+  await sender.page.getByRole('button', { name: 'Stop sharing' }).click()
+  await invitePrompt(r.page).waitFor({ state: 'detached', timeout: 15000 })
+})
+
+await test('Nearby: a receiver who is mid-transfer or has accepted is no longer listed, and a new sender can still find the others', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net })
+  await startSending(sender.page, small)
+  const a = await nearbyReceiver(open, net)
+  const b = await nearbyReceiver(open, net)
+  await waitRadar(sender.page, 2)
+  await peer(sender.page, a.name).click()
+  await sender.page.getByRole('button', { name: 'Send to 1 person' }).click()
+  await invitePrompt(a.page).getByRole('button', { name: 'Accept' }).click()
+  await waitPhase(a.page, 'done', 120_000)
+  await waitRadar(sender.page, 1)
+  const second = await open(null, { ip: net })
+  await startSending(second.page, small)
+  await waitRadar(second.page, 1)
+  if ((await radarNames(second.page))[0] !== b.name) throw new Error('second sender sees the wrong people')
+})
+
+await test('Nearby radar at phone width: no sideways scroll with 6 people on it', async (open) => {
+  const net = newNetwork()
+  const sender = await open(null, { ip: net, viewport: { width: 375, height: 812 } })
+  await startSending(sender.page, small)
+  for (let i = 0; i < 6; i++) await nearbyReceiver(open, net)
+  await waitRadar(sender.page, 6)
+  if (await sender.page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)) throw new Error('page scrolls sideways')
+  // every person is fully inside the radar circle and tappable
+  const bad = await sender.page.evaluate(() => {
+    const r = document.querySelector('.beam-radar').getBoundingClientRect()
+    return [...document.querySelectorAll('.beam-peer')].filter((p) => {
+      const b = p.getBoundingClientRect()
+      return b.left < r.left - 2 || b.right > r.right + 2 || b.top < r.top - 2 || b.bottom > r.bottom + 2
+    }).length
+  })
+  if (bad) throw new Error(`${bad} people are drawn outside the radar`)
+})
+
 await test('phone width: no sideways scrolling on the start screen, PIN screen, or with several receivers', async (open) => {
   const { page } = await open(null, { viewport: { width: 375, height: 812 } })
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
@@ -605,8 +808,8 @@ await test('phone width: no sideways scrolling on the start screen, PIN screen, 
 })
 
 if (process.env.BEAM_STRESS) {
-  await test('stress: 1 GB to 2 receivers, hashes match on both', async (open) => {
-    const gig = await makeFile('beam-1gb.bin', 1024)
+  await test('stress: 700 MB to 2 receivers, hashes match on both', async (open) => {
+    const gig = await makeFile('beam-700mb.bin', 700)
     const sender = await open()
     const pin = await startSending(sender.page, gig)
     const a = await joinReceiver(open, pin)

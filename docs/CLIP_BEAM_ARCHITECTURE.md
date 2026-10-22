@@ -5,7 +5,8 @@
 **What it is:** direct browser-to-browser file transfer over WebRTC for files too big for Clip's
 25 MB KV uploads. The file streams from the sender's disk to the receiver's disk. Clip's servers only
 introduce the browsers to each other. One sender can feed up to 8 receivers at once, and everyone gets
-a cute name like in Live Pad.
+a cute name like in Live Pad. People on the same network can also find each other on a radar
+("Nearby") instead of typing a PIN.
 
 Background and the wider tiered plan (KV, R2 "Vault", Beam) are in
 [`HYBRID_LARGE_FILE_TRANSFER_SPEC.md`](HYBRID_LARGE_FILE_TRANSFER_SPEC.md).
@@ -121,6 +122,8 @@ frontend/src/beam/
 ├── useBeam.ts         React wrapper: at most one BeamSender or BeamReceiver alive at a time
 ├── beamSender.ts      Sender engine: room, one "leg" per receiver (WebRTC, streaming, hash check)
 ├── beamReceiver.ts    Receiver engine: join, accept, answer, write to disk, verify
+├── beamLobby.ts      Nearby lobby client (receivers listed to senders, invites)
+├── Radar.tsx          The radar: avatars on rings, tap to select several
 ├── beamProtocol.ts    Channel message types, tuning constants, WS URL
 ├── beamFormat.ts      Pure text helpers (PIN, sizes, durations); unit tested in Node
 ├── diskWriter.ts      Where incoming bytes go (File System Access API, or download fallback)
@@ -240,7 +243,40 @@ missing, and makes names unique across the sender and all receivers by adding a 
 receiver sees its own name and the sender's ("Biscuit receiving from Mochi"). Names are display only:
 nothing is authenticated by them.
 
-## 5. What Beam stores
+## 5. Nearby (radar)
+
+Instead of reading out a PIN, a sender can see receivers on the same network and ask them directly.
+Visibility is **one-way**:
+
+- **Receivers** opt in with "Show me to nearby senders" (off by default, nothing connects until it is
+  switched on). While on, they appear to senders with a random name and avatar. They stay listed only
+  while the page is open and the switch is on.
+- **Senders** are never listed to anyone. A sender who has opened a Beam room sees the radar and can tap
+  **several** people (or "Select all"), then "Send to N people".
+- **Receivers never see each other**, only requests addressed to them.
+- A request says who wants to send what ("Kiwi wants to send you holiday.mov, 4.2 GB") with
+  **Accept**, **Decline** and **Block**. Accept is a single click: it leaves the lobby, joins that
+  sender's room with the PIN carried in the request, and goes straight to the save dialog. Decline
+  tells the sender "Declined". Block also hides all future requests from that sender for the rest of
+  the visit; the sender just sees "Declined" and cannot tell they were blocked.
+- Requests are withdrawn if the sender stops sharing, leaves, or the receiver closes the page.
+
+How it works: `GET /api/beam/lobby/ws?role=sender|receiver&name=` routes to a `BeamLobby` Durable
+Object (migration `v3`, `new_sqlite_classes`) chosen by the client's **public IP** (IPv6 grouped by
+/64). The lobby (`worker/src/lib/beamLobby.ts`, Node-testable) holds sockets in memory only, lists
+receivers to senders, relays `invite` / `accept` / `decline` / `cancel_invites`, and drops sockets that
+go quiet for 150 s (clients ping every 25 s). Limits: 200 people per lobby, 8 people per request,
+30 requests a minute per sender, 240 connections per 2 minutes per IP. Request contents are cleaned
+the same way as Beam offers (PIN must be 6 digits, file name and size validated).
+
+The invite is only a doorbell: the transfer itself is the normal Beam room and direct connection.
+
+**Privacy limits to know about.** Grouping is by public IP, so on shared networks (campus Wi-Fi,
+mobile carriers, an office) a sender can see strangers who switched Receive mode on. What limits that:
+Receive mode is explicit and off by default, names are random and carry no identity, every request
+needs an Accept, and Block exists. Anyone on the same network can also be asked by any sender on it.
+
+## 6. What Beam stores
 
 Nothing of its own. No `sessionStorage`, no KV (apart from the rate-limit counter for joins), no R2, no
 Durable Object storage except the expiry alarm. The only `localStorage` touched is the display name
@@ -250,13 +286,20 @@ nothing behind.
 
 ---
 
-## 6. Tests
+## 7. Tests
 
 | Suite | File | Runs in | Checks |
 |---|---|---|---|
-| Room logic + speed/ETA maths | `scripts/test-beam.mjs` | `npm test` | 40: PINs (incl. even spread), pairing, up to 8 receivers, per-receiver routing, no id forging, offer and name cleaning, roles, size cap, leave handling, expiry clocks, a 20,000-message randomised fuzz, speed and time-left accuracy (steady, noisy, speed change, stall, finish, tiny files) |
-| Signalling route against a real worker | `scripts/e2e-beam-signal.mjs` | `npm run test:e2e` | 16: 426/400, PIN allocation, relay with ids, 8 receivers + 9th refused, no cross-talk, offer updates, roles, impersonation, leave/close, garbage frames, 40 concurrent rooms x 3 receivers, join/leave churn, cute names, rate limit |
-| Real Chrome pages | `scripts/e2e-beam-browser.mjs` | `npm run test:browser` | 21 (+1 with `BEAM_STRESS=1`): see below |
+| Room, lobby and speed/ETA logic | `scripts/test-beam.mjs` | `npm test` | 60: PINs (incl. even spread), pairing, up to 8 receivers, per-receiver routing, no id forging, offer and name cleaning, roles, size cap, leave handling, expiry clocks, a 20,000-message randomised fuzz, speed and time-left accuracy (steady, noisy, speed change, stall, finish, tiny files) |
+| Signalling route against a real worker | `scripts/e2e-beam-signal.mjs` | `npm run test:e2e` | 26 (16 room + 10 nearby): 426/400, PIN allocation, relay with ids, 8 receivers + 9th refused, no cross-talk, offer updates, roles, impersonation, leave/close, garbage frames, 40 concurrent rooms x 3 receivers, join/leave churn, cute names, rate limit |
+| Real Chrome pages | `scripts/e2e-beam-browser.mjs` | `npm run test:browser` | 30 (+1 with `BEAM_STRESS=1`): see below |
+
+Nearby checks (browser): off by default with no lobby connection, radar shows only opted-in people on
+the same network, receivers and senders hidden from each other, switching off or closing removes someone,
+multi-select send with accept and identical bytes, select all, decline vs block, stopping withdraws
+requests, accepted receivers drop off the radar, radar fits phone width. Nearby checks (worker): group
+isolation by IP, names, invite/accept/decline/block flows, withdrawal, forged and garbage input,
+5 senders watching 60 receivers while 30 leave, lobby rate limit.
 
 Browser checks: 200 MB streamed to disk with matching SHA-256 and live speed / time-left compared with
 reality; one file to 3 receivers with a late 4th; cute names agree on both sides; 9th receiver
@@ -264,7 +307,7 @@ refused; a receiver vanishing mid-transfer; Stop sharing mid-transfer; cancellin
 damaged chunk (flipped byte) caught by the hash; 0-byte file; unicode / emoji / HTML file names; two
 independent transfers at once; Send/Receive another file; download fallback; QR link; PIN entry
 validation; wrong PIN; sender reload; decline then another receiver; sender tab closed mid-transfer;
-blocked network; phone width. `BEAM_STRESS=1` adds 1 GB to 2 receivers at once.
+blocked network; phone width. `BEAM_STRESS=1` adds 700 MB to 2 receivers at once (headless Chrome's private file system, used as the save target, runs out of quota near 1 GB; real disk saves are not affected).
 
 `npm run test:beam` runs all three. The browser suite points the receiver's save dialog at the
 Origin Private File System (same streaming writable, readable by the test), gives each browser its
@@ -282,11 +325,12 @@ local WebRTC ceiling, not Beam overhead. Real LAN numbers between two machines a
 
 ---
 
-## 7. Status and what is left
+## 8. Status and what is left
 
 Done:
 - `BeamRoom` DO, `/api/beam/ws`, `v2` migration, PIN allocation, join rate limit, expiry alarm
 - One sender to up to 8 receivers at once, with cute names (shared with Live Pad)
+- Nearby radar: opt-in Receive mode, sender picks one or many people, Accept / Decline / Block
 - `/beam` page: send, receive, PIN + copy + QR, accept/decline, progress, speed, ETA, route badge,
   cancel, results, all error states above, phone layout, links from the home page, about page and the
   25 MB upload error
@@ -302,6 +346,8 @@ Left:
   and phone to laptop. Nothing outside a single Windows machine has been tested.
 - **TURN fallback** for the symmetric-NAT case (Cloudflare Calls TURN or similar; has a cost).
 - **Service-worker streaming download** so Firefox/Safari can receive more than 2 GB.
+- **Nearby by Wi-Fi network instead of IP**, and a receiver-initiated "ask for files" (the lobby
+  already carries the needed identities, but senders are deliberately invisible today).
 - **Multiple files** in one Beam (queue over the same channel, or zip on the fly).
 - **Send once, relay to many:** each receiver currently costs the sender one full upload; receivers
   that already have the file could pass it on.

@@ -84,6 +84,7 @@ export class BeamReceiver {
   private connectTimer: ReturnType<typeof setTimeout> | null = null
   private tickTimer: ReturnType<typeof setInterval> | null = null
   private disposed = false
+  private autoAccept = false
 
   private writer: DiskWriter | null = null
   private received = 0
@@ -95,7 +96,9 @@ export class BeamReceiver {
 
   constructor(private readonly emit: (state: ReceiverState) => void) {}
 
-  join(pin: string, name: string): void {
+  /** `autoAccept`: the user already said yes to an invite, so go straight to choosing where to save. */
+  join(pin: string, name: string, autoAccept = false): void {
+    this.autoAccept = autoAccept
     this.update({ phase: 'connecting', pin, myName: name })
     let ws: WebSocket
     try {
@@ -128,7 +131,7 @@ export class BeamReceiver {
   }
 
   /** Pick where to save, then tell the sender to start. Call from a click handler. */
-  async accept(): Promise<void> {
+  async accept(auto = false): Promise<void> {
     const offer = this.state.offer
     if (this.state.phase !== 'offered' || !offer) return
     try {
@@ -137,6 +140,8 @@ export class BeamReceiver {
       this.writer = await createDiskWriter(offer.name, offer.size, offer.type)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return // closed the save dialog
+      // The browser may no longer count the invite click as a gesture; leave the Accept button for a fresh one
+      if (auto && err instanceof DOMException && (err.name === 'SecurityError' || err.name === 'NotAllowedError')) return
       if (err instanceof UnsupportedSizeError) {
         this.sendSignal({ type: 'file_reject' })
         this.fail(err.message)
@@ -182,7 +187,13 @@ export class BeamReceiver {
     switch (msg.type) {
       case 'joined':
         this.update({ myName: msg.name || this.state.myName, senderName: msg.sender || '' })
-        if (msg.offer) this.update({ offer: msg.offer, phase: 'offered' })
+        if (msg.offer) {
+          this.update({ offer: msg.offer, phase: 'offered' })
+          if (this.autoAccept) {
+            this.autoAccept = false
+            await this.accept(true)
+          }
+        }
         break
       case 'file_offer':
         if (this.state.phase === 'connecting' || this.state.phase === 'offered') this.update({ offer: msg.offer, phase: 'offered' })
@@ -196,7 +207,7 @@ export class BeamReceiver {
           // The sender may be about to say something on the channel (cancel, or the final hash); let it
           setTimeout(() => this.fail(MSG.peerGone), PEER_LEFT_GRACE_MS)
         } else {
-          this.fail(MSG.peerGone)
+          this.fail(this.state.phase === 'peering' ? MSG.connectFailed : MSG.peerGone)
         }
         break
       case 'cancel':

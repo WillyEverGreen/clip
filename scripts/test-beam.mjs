@@ -6,8 +6,11 @@ import assert from 'node:assert/strict'
 import {
   BeamSignalRoom, generateBeamPin, cleanOffer, cleanName, uniqueName, BEAM_PIN_RE, BEAM_IDLE_MS, BEAM_MAX_MESSAGE_BYTES, BEAM_MAX_RECEIVERS,
 } from '../worker/src/lib/beam.ts'
+import {
+  BeamLobbyRoom, LOBBY_MAX_MEMBERS, LOBBY_STALE_MS, LOBBY_INVITES_PER_MIN,
+} from '../worker/src/lib/beamLobby.ts'
 import { SpeedTracker } from '../frontend/src/beam/speedTracker.ts'
-import { parsePin, formatPin, formatBytes, formatDuration, formatEta } from '../frontend/src/beam/beamFormat.ts'
+import { parsePin, formatPin, formatBytes, formatDuration, formatEta, avatarFor } from '../frontend/src/beam/beamFormat.ts'
 
 let passed = 0
 let failed = 0
@@ -508,6 +511,285 @@ test('formatting: PINs, sizes, durations and time left', () => {
   assert.equal(formatEta(Infinity), 'Calculating...')
   assert.equal(formatEta(42), '42s left')
   assert.equal(formatEta(0.4), '<1s left')
+})
+
+console.log('\n\x1b[1m\x1b[36mClip Beam nearby lobby\x1b[0m')
+
+const FILE = { name: 'holiday.mov', size: 4.2e9, type: 'video/quicktime' }
+
+function lobby() {
+  const room = new BeamLobbyRoom()
+  const add = (role, name, now = 0) => {
+    const peer = new FakePeer()
+    const res = room.add(peer, role, name, now)
+    return { peer, id: res.id, name: res.name, res }
+  }
+  const say = (m, msg, now = 1) => room.handleMessage(m.peer, JSON.stringify(msg), now)
+  return { room, add, say }
+}
+
+test('receivers appear to senders; senders and other receivers see nobody', () => {
+  const { add } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  const b = add('receiver', 'Pudding')
+  assert.deepEqual(s.peer.ofType('peers').at(-1).peers.map((p) => p.name), ['Mochi', 'Pudding'])
+  assert.equal(a.peer.ofType('peers').length, 0)
+  assert.equal(b.peer.ofType('peers').length, 0)
+  assert.deepEqual(a.peer.sent.map((m) => m.type), ['welcome'])
+  const asSender = s.peer.ofType('peers').at(-1).peers
+  assert.ok(asSender.every((p) => !('role' in p) && Object.keys(p).sort().join() === 'id,name'))
+})
+
+test('a sender who arrives later gets the current list; leavers disappear from it', () => {
+  const { room, add } = lobby()
+  const a = add('receiver', 'Mochi')
+  const b = add('receiver', 'Biscuit')
+  const s = add('sender', 'Sunny')
+  assert.deepEqual(s.peer.ofType('peers')[0].peers.map((p) => p.name), ['Mochi', 'Biscuit'])
+  room.remove(a.peer)
+  assert.deepEqual(s.peer.ofType('peers').at(-1).peers.map((p) => p.name), ['Biscuit'])
+  room.remove(b.peer)
+  assert.deepEqual(s.peer.ofType('peers').at(-1).peers, [])
+})
+
+test('a sender joining or leaving never changes what senders or receivers see', () => {
+  const { room, add } = lobby()
+  const s1 = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  const before = s1.peer.sent.length
+  const aBefore = a.peer.sent.length
+  const s2 = add('sender', 'Toast')
+  room.remove(s2.peer)
+  assert.equal(s1.peer.sent.length, before)
+  assert.equal(a.peer.sent.length, aBefore)
+})
+
+test('names are cleaned and unique across everyone in the lobby', () => {
+  const { add } = lobby()
+  const names = [add('sender', 'Mochi'), add('receiver', 'Mochi'), add('receiver', 'mochi'), add('receiver', null), add('receiver', '  '), add('receiver', 'x'.repeat(80))].map((m) => m.name)
+  assert.equal(names[0], 'Mochi')
+  assert.equal(names[1], 'Mochi 2')
+  assert.deepEqual(names.slice(3, 5), ['Guest', 'Guest 2'])
+  assert.equal(names[5].length, 24)
+  assert.equal(new Set(names.map((n) => n.toLowerCase())).size, names.length)
+})
+
+test('invite reaches only the chosen receivers, with a cleaned offer and the sender name', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const [a, b, c] = ['Mochi', 'Biscuit', 'Pudding'].map((n) => add('receiver', n))
+  say(s, { type: 'invite', to: [a.id, c.id], pin: '123456', offer: { name: 'a/b.mov', size: 5, type: 'video/quicktime', evil: 1 } })
+  for (const r of [a, c]) {
+    const inv = r.peer.ofType('invite')[0]
+    assert.deepEqual(inv.from, { id: s.id, name: 'Sunny' })
+    assert.deepEqual(inv.offer, { name: 'a_b.mov', size: 5, type: 'video/quicktime' })
+    assert.equal(inv.pin, '123456')
+  }
+  assert.equal(b.peer.ofType('invite').length, 0)
+  assert.deepEqual(s.peer.ofType('invite_sent').map((m) => m.to).sort(), [a.id, c.id].sort())
+})
+
+test('invalid invites are refused: bad PIN, bad offer, no targets, unknown or non-receiver targets', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const other = add('sender', 'Toast')
+  const a = add('receiver', 'Mochi')
+  const bad = [
+    { type: 'invite', to: [a.id], pin: '12345', offer: FILE },
+    { type: 'invite', to: [a.id], pin: 'abcdef', offer: FILE },
+    { type: 'invite', to: [a.id], pin: '123456', offer: { name: 'x', size: 'big' } },
+    { type: 'invite', to: 'r1', pin: '123456', offer: FILE },
+    { type: 'invite', pin: '123456', offer: FILE },
+  ]
+  for (const m of bad) say(s, m)
+  assert.equal(s.peer.ofType('error').filter((e) => e.code === 'bad_invite').length, bad.length)
+  say(s, { type: 'invite', to: ['r999', other.id, 7, null], pin: '123456', offer: FILE })
+  assert.equal(a.peer.ofType('invite').length, 0)
+  assert.equal(other.peer.ofType('invite').length, 0)
+  assert.deepEqual(s.peer.ofType('invite_closed').map((m) => m.reason), ['gone', 'gone'])
+})
+
+test('accepting tells the sender; declining tells the sender; answers are single-use and owner-only', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  const b = add('receiver', 'Biscuit')
+  say(s, { type: 'invite', to: [a.id, b.id], pin: '123456', offer: FILE })
+  const ia = a.peer.ofType('invite')[0].inviteId
+  const ib = b.peer.ofType('invite')[0].inviteId
+  say(b, { type: 'accept', inviteId: ia }) // b answering a's invite does nothing
+  assert.equal(s.peer.ofType('invite_accepted').length, 0)
+  say(a, { type: 'accept', inviteId: ia })
+  assert.deepEqual(s.peer.ofType('invite_accepted').map((m) => m.to), [a.id])
+  say(a, { type: 'decline', inviteId: ia }) // already answered
+  assert.equal(s.peer.ofType('invite_closed').length, 0)
+  say(b, { type: 'decline', inviteId: ib })
+  assert.deepEqual(s.peer.ofType('invite_closed').map((m) => [m.to, m.reason]), [[b.id, 'declined']])
+})
+
+test('blocking: that sender can no longer reach the receiver, and is told it was declined; others still can', () => {
+  const { add, say } = lobby()
+  const s1 = add('sender', 'Sunny')
+  const s2 = add('sender', 'Toast')
+  const a = add('receiver', 'Mochi')
+  say(s1, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  say(a, { type: 'decline', inviteId: a.peer.ofType('invite')[0].inviteId, block: true })
+  const before = a.peer.ofType('invite').length
+  say(s1, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  assert.equal(a.peer.ofType('invite').length, before)
+  assert.equal(s1.peer.ofType('invite_closed').at(-1).reason, 'declined')
+  assert.equal(s1.peer.ofType('invite_sent').length, 1)
+  say(s2, { type: 'invite', to: [a.id], pin: '222222', offer: FILE })
+  assert.equal(a.peer.ofType('invite').length, before + 1)
+})
+
+test('a plain decline does not block', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  say(a, { type: 'decline', inviteId: a.peer.ofType('invite')[0].inviteId })
+  say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  assert.equal(a.peer.ofType('invite').length, 2)
+})
+
+test('a new invite to the same receiver replaces the old one', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  const first = a.peer.ofType('invite')[0].inviteId
+  say(s, { type: 'invite', to: [a.id], pin: '222222', offer: FILE })
+  assert.deepEqual(a.peer.ofType('invite_gone').map((m) => m.inviteId), [first])
+  say(a, { type: 'accept', inviteId: first })
+  assert.equal(s.peer.ofType('invite_accepted').length, 0)
+})
+
+test('cancel_invites and a sender leaving withdraw open invites from receivers', () => {
+  const { room, add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  const b = add('receiver', 'Biscuit')
+  say(s, { type: 'invite', to: [a.id, b.id], pin: '111111', offer: FILE })
+  say(s, { type: 'cancel_invites' })
+  assert.equal(a.peer.ofType('invite_gone').length, 1)
+  assert.equal(b.peer.ofType('invite_gone').length, 1)
+  say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  room.remove(s.peer)
+  assert.equal(a.peer.ofType('invite_gone').length, 2)
+  assert.equal(b.peer.ofType('invite_gone').length, 1)
+})
+
+test('a receiver leaving tells the sender its request is closed', () => {
+  const { room, add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE })
+  room.remove(a.peer)
+  assert.deepEqual(s.peer.ofType('invite_closed').map((m) => [m.to, m.reason]), [[a.id, 'left']])
+})
+
+test('at most 8 receivers per invite; duplicates in the list are sent once', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const rs = Array.from({ length: 12 }, (_, i) => add('receiver', `P${i}`))
+  say(s, { type: 'invite', to: [rs[0].id, rs[0].id, ...rs.map((r) => r.id)], pin: '111111', offer: FILE })
+  assert.equal(rs.filter((r) => r.peer.ofType('invite').length).length, 8)
+  assert.equal(rs[0].peer.ofType('invite').length, 1)
+})
+
+test('roles are enforced: receivers cannot invite, senders cannot answer, junk is rejected', () => {
+  const { room, add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  say(a, { type: 'invite', to: [s.id], pin: '111111', offer: FILE })
+  say(s, { type: 'accept', inviteId: 'i1' })
+  say(a, { type: 'peers', peers: [] })
+  assert.equal(a.peer.ofType('error').length, 2)
+  assert.equal(s.peer.ofType('error').length, 1)
+  assert.equal(s.peer.ofType('invite').length + a.peer.ofType('invite').length, 0)
+  for (const raw of ['{', '[]', 'null', '5', 'x'.repeat(70_000)]) room.handleMessage(a.peer, raw, 2)
+  assert.deepEqual(a.peer.ofType('error').slice(-5).map((e) => e.code), ['bad_message', 'bad_message', 'bad_message', 'bad_message', 'too_large'])
+})
+
+test('ping gets pong; unknown peers are ignored', () => {
+  const { room, add, say } = lobby()
+  const a = add('receiver', 'Mochi')
+  say(a, { type: 'ping' })
+  assert.equal(a.peer.last().type, 'pong')
+  const stranger = new FakePeer()
+  room.handleMessage(stranger, '{"type":"ping"}', 1)
+  assert.equal(stranger.sent.length, 0)
+})
+
+test('invites are rate limited per sender per minute', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const a = add('receiver', 'Mochi')
+  for (let i = 0; i < LOBBY_INVITES_PER_MIN + 5; i++) say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE }, 1000 + i)
+  assert.equal(s.peer.ofType('error').filter((e) => e.code === 'rate_limited').length, 5)
+  say(s, { type: 'invite', to: [a.id], pin: '111111', offer: FILE }, 1000 + 61_000)
+  assert.equal(s.peer.ofType('error').filter((e) => e.code === 'rate_limited').length, 5)
+})
+
+test('the lobby is capped, and idle members are swept out', () => {
+  const { room, add } = lobby()
+  const s = add('sender', 'Sunny', 0)
+  for (let i = 0; i < LOBBY_MAX_MEMBERS - 1; i++) add('receiver', `P${i}`, 0)
+  const over = add('receiver', 'Late')
+  assert.deepEqual(over.res, { error: 'lobby_full' })
+  assert.equal(over.peer.closed.code, 4010)
+  assert.equal(room.sweep(LOBBY_STALE_MS - 1), 0)
+  room.handleMessage(s.peer, '{"type":"ping"}', LOBBY_STALE_MS) // the sender is alive, everyone else is not
+  assert.equal(room.sweep(LOBBY_STALE_MS + 1), LOBBY_MAX_MEMBERS - 1)
+  assert.equal(room.size, 1)
+  assert.deepEqual(s.peer.ofType('peers').at(-1).peers, [])
+})
+
+test('a peer whose socket throws never breaks the lobby for the others', () => {
+  const { add, say } = lobby()
+  const s = add('sender', 'Sunny')
+  const bad = add('receiver', 'Bad')
+  const good = add('receiver', 'Good')
+  bad.peer.send = () => { throw new Error('closed') }
+  say(s, { type: 'invite', to: [bad.id, good.id], pin: '111111', offer: FILE })
+  assert.equal(good.peer.ofType('invite').length, 1)
+})
+
+test('fuzz: 20,000 random lobby operations never throw and keep ids and views consistent', () => {
+  let seed = 99
+  const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 2 ** 32)
+  const pick = (a) => a[Math.floor(rnd() * a.length)]
+  const { room, add, say } = lobby()
+  const live = []
+  for (let i = 0; i < 20000; i++) {
+    const r = rnd()
+    if (r < 0.05 && live.length < 60) live.push(add(rnd() < 0.3 ? 'sender' : 'receiver', pick(['Mochi', 'Pudding', '', null, 'x'.repeat(40), 7]), i))
+    else if (r < 0.09 && live.length) room.remove(live.splice(Math.floor(rnd() * live.length), 1)[0].peer)
+    else if (live.length) {
+      const m = pick(live)
+      const ids = live.map((l) => l.id)
+      const body = rnd() < 0.1
+        ? pick(['', '{', '[]', 'null', 'x'.repeat(70000)])
+        : JSON.stringify({ type: pick(['invite', 'accept', 'decline', 'cancel_invites', 'ping', 'peers', 'x', 5]), to: [pick([...ids, 'r0', 3])], pin: pick(['123456', 'x', 5]), offer: pick([FILE, {}, null]), inviteId: pick(['i1', 'i2', 'i3', 'i9', 4]), block: pick([true, false, 'yes']) })
+      room.handleMessage(m.peer, body, i)
+    }
+    if (i % 997 === 0) room.sweep(i)
+    assert.ok(room.size <= LOBBY_MAX_MEMBERS)
+  }
+  for (const m of live) {
+    for (const p of m.peer.ofType('peers').at(-1)?.peers ?? []) assert.deepEqual(Object.keys(p).sort(), ['id', 'name'])
+    if (m.id.startsWith('r')) assert.equal(m.peer.ofType('peers').length, 0, 'a receiver was told about other people')
+  }
+})
+
+test('avatars are stable per name, ignore the room-added number, and cover the whole set', () => {
+  assert.equal(avatarFor('Mochi'), avatarFor('Mochi'))
+  assert.equal(avatarFor('Mochi 2'), avatarFor('Mochi'))
+  assert.equal(avatarFor('MOCHI'), avatarFor('mochi'))
+  const seen = new Set(['Mochi', 'Biscuit', 'Pudding', 'Waffles', 'Pebble', 'Noodle', 'Bubbles', 'Peanut', 'Cupcake', 'Muffin', 'Sprout', 'Marshmallow', 'Pixel', 'Button', 'Cookie', 'Nugget', 'Pickles', 'Tofu', 'Boba', 'Sesame'].map(avatarFor))
+  assert.ok(seen.size >= 8, `only ${seen.size} different avatars`)
 })
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`)

@@ -21,6 +21,7 @@ import { checkRateLimit, getClientIp } from './lib/rateLimit'
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
 export { BeamRoom } from './durable/BeamRoom'
+export { BeamLobby } from './durable/BeamLobby'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -610,6 +611,25 @@ app.get('/api/beam/ws', async (c) => {
     if (res.status !== 409) return res
   }
   return c.json({ error: 'pin_exhausted' }, 503)
+})
+
+// Clip Beam "nearby": receivers who opt in are listed to senders on the same public IP.
+// IPv6 clients are grouped by /64 so one household is one group.
+app.get('/api/beam/lobby/ws', async (c) => {
+  if (!c.env.BEAM_LOBBY_DO) return c.json({ error: 'beam_unavailable' }, 503)
+  if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
+    return c.json({ error: 'expected_websocket' }, 426)
+  }
+  const role = c.req.query('role')
+  if (role !== 'sender' && role !== 'receiver') return c.json({ error: 'invalid_role' }, 400)
+  const ip = getClientIp(c.req.raw)
+  const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:lobby', ip)
+  if (limit.limited) return c.json({ error: 'rate_limited', retryAfter: limit.retryAfter }, 429)
+  const group = ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip
+  const name = (c.req.query('name') ?? '').slice(0, 100)
+  return c.env.BEAM_LOBBY_DO.get(c.env.BEAM_LOBBY_DO.idFromName(`lobby:${group}`)).fetch(
+    new Request(`https://beam-lobby/ws?role=${role}&name=${encodeURIComponent(name)}`, { headers: c.req.raw.headers }),
+  )
 })
 
 // Health check

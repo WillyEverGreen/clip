@@ -39,3 +39,13 @@ export function formatEta(seconds: number): string {
   if (!Number.isFinite(seconds)) return 'Calculating...'
   return `${formatDuration(seconds)} left`
 }
+
+const AVATARS = ['🍡', '🧁', '🥟', '🍪', '🍩', '🥐', '🍑', '🍋', '🥭', '🫐', '🍓', '🌸', '🌼', '🍀', '🐣', '🦊']
+
+/** A stable emoji avatar for a display name (the trailing " 2" the room adds is ignored). */
+export function avatarFor(name: string): string {
+  const base = name.replace(/ \d+$/, '').toLowerCase()
+  let h = 0
+  for (let i = 0; i < base.length; i++) h = (Math.imul(h, 31) + base.charCodeAt(i)) >>> 0
+  return AVATARS[h % AVATARS.length]
+}

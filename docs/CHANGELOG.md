@@ -11,6 +11,7 @@ This document serves as a permanent reference archive of all architectural updat
 * **Transfer:** `File.stream()` sender with DataChannel backpressure plus a 32 MB receiver ack window; receiver writes through the File System Access API (download fallback up to 2 GB elsewhere); SHA-256 (hash-wasm) on both ends, partial files discarded on mismatch, cancel or disconnect.
 * **Many receivers, cute names:** one sender can send to up to 8 receivers at once (own connection, progress and hash check each); everyone gets a Live Pad style name and colour dot.
 * **Live speed and time left:** sliding-window speed and a self-correcting countdown that starts at the first byte (median error 4 to 12% on a real 200 MB transfer).
+* **Nearby radar:** receivers can opt in ("Show me to nearby senders", off by default) and appear on a radar for senders on the same network; the sender taps one or several people and sends a request they can Accept, Decline or Block. New `BeamLobby` Durable Object (migration `v3`) grouped by public IP; senders are never visible and receivers never see each other.
 * **Tests:** `scripts/test-beam.mjs` (in `npm test`), `scripts/e2e-beam-signal.mjs` (in `test:e2e`), `scripts/e2e-beam-browser.mjs` (in `test:browser`); `npm run test:beam` runs all three.
 * **Docs:** [`docs/CLIP_BEAM_ARCHITECTURE.md`](CLIP_BEAM_ARCHITECTURE.md).
 

@@ -16,6 +16,7 @@ import {
   beamWsUrl, type ChannelMessage, type FileOffer, type SignalData,
 } from './beamProtocol'
 import { SpeedTracker } from './speedTracker'
+import { BeamLobbyClient, type LobbyStatus, type NearbyPerson } from './beamLobby'
 
 export type LegPhase = 'joined' | 'peering' | 'transferring' | 'verifying' | 'done' | 'declined' | 'error'
 
@@ -40,8 +41,17 @@ export interface SenderLeg {
 
 export type SenderPhase = 'idle' | 'connecting' | 'open' | 'stopped' | 'error'
 
+/** A receiver on the radar. */
+export interface NearbyEntry extends NearbyPerson {
+  /** idle: not asked yet. invited: request delivered. accepted: said yes. declined: said no or left. */
+  status: 'idle' | 'invited' | 'accepted' | 'declined'
+}
+
 export interface SenderState {
   phase: SenderPhase
+  /** Receivers who switched on Receive mode on this network */
+  nearby: NearbyEntry[]
+  nearbyStatus: LobbyStatus
   /** This sender's own display name, as the room knows it */
   myName: string
   pin: string | null
@@ -50,7 +60,7 @@ export interface SenderState {
   error: string | null
 }
 
-export const INITIAL_SENDER_STATE: SenderState = { phase: 'idle', myName: '', pin: null, offer: null, legs: [], error: null }
+export const INITIAL_SENDER_STATE: SenderState = { phase: 'idle', nearby: [], nearbyStatus: 'connecting', myName: '', pin: null, offer: null, legs: [], error: null }
 
 /** How long a leg with an open data channel waits for its own messages after its socket closes. */
 const PEER_LEFT_GRACE_MS = 3000
@@ -330,6 +340,7 @@ export class BeamSender {
   private tickTimer: ReturnType<typeof setInterval> | null = null
   private disposed = false
   private file: File | null = null
+  private lobby: BeamLobbyClient | null = null
 
   constructor(private readonly emit: (state: SenderState) => void) {}
 
@@ -371,9 +382,17 @@ export class BeamSender {
     }
   }
 
+  /** Asks these nearby receivers to take the file. */
+  invite(ids: string[]): void {
+    const { offer, pin } = this.state
+    if (!this.lobby || !offer || !pin || ids.length === 0) return
+    this.lobby.invite(ids, offer, pin)
+  }
+
   /** Stops sharing: cancels unfinished transfers and closes the room. */
   stop(): void {
     if (this.state.phase === 'stopped' || this.state.phase === 'error') return
+    this.lobby?.cancelInvites()
     this.send({ type: 'cancel' })
     for (const leg of this.legs.values()) leg.cancel()
     this.publish()
@@ -389,6 +408,8 @@ export class BeamSender {
 
   dispose(): void {
     this.disposed = true
+    this.lobby?.close()
+    this.lobby = null
     this.shutdown()
     for (const leg of this.legs.values()) leg.close()
   }
@@ -398,6 +419,7 @@ export class BeamSender {
     switch (msg.type) {
       case 'room_created':
         this.update({ phase: 'open', pin: msg.pin, myName: msg.name || this.state.myName })
+        this.startLobby(msg.name || this.state.myName)
         this.send({ type: 'file_offer', offer: this.state.offer })
         this.tickTimer = setInterval(() => this.tick(), 200)
         break
@@ -414,7 +436,11 @@ export class BeamSender {
         break
       }
       case 'peer_left':
-        this.legs.get(msg.id)?.gone(MSG.peerGone, PEER_LEFT_GRACE_MS)
+        {
+          // Gone while still connecting means the direct connection never opened, not that they dropped mid-transfer
+          const leg = this.legs.get(msg.id)
+          leg?.gone(leg.info.phase === 'peering' ? MSG.connectFailed : MSG.peerGone, PEER_LEFT_GRACE_MS)
+        }
         this.publish()
         break
       case 'file_accept':
@@ -442,6 +468,23 @@ export class BeamSender {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg))
   }
 
+  /** Opens the nearby lobby as a (hidden) sender so receivers on this network show up on the radar. */
+  private startLobby(name: string): void {
+    const setEntry = (id: string, status: NearbyEntry['status']) =>
+      this.update({ nearby: this.state.nearby.map((p) => (p.id === id ? { ...p, status } : p)) })
+    this.lobby = new BeamLobbyClient('sender', name, {
+      onStatus: (nearbyStatus) => this.update({ nearbyStatus }),
+      onPeers: (peers) => {
+        const old = new Map(this.state.nearby.map((p) => [p.id, p.status]))
+        this.update({ nearby: peers.map((p) => ({ ...p, status: old.get(p.id) ?? 'idle' })) })
+      },
+      onInviteSent: (to) => setEntry(to, 'invited'),
+      onInviteAccepted: (to) => setEntry(to, 'accepted'),
+      onInviteClosed: (to, reason) => setEntry(to, reason === 'declined' ? 'declined' : 'idle'),
+    })
+    this.lobby.connect()
+  }
+
   private tick(): void {
     for (const leg of this.legs.values()) leg.tick()
     this.publish()
@@ -464,6 +507,8 @@ export class BeamSender {
     if (this.tickTimer) clearInterval(this.tickTimer)
     this.pingTimer = null
     this.tickTimer = null
+    this.lobby?.close()
+    this.lobby = null
     const ws = this.ws
     this.ws = null
     if (ws) {
