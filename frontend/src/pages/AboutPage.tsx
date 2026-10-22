@@ -46,6 +46,7 @@ export default function AboutPage() {
         <Link to="/about" className="lp-brand"><Logo size="sm" linkable={false} /></Link>
         <a href="#features">Features</a>
         <Link to="/live">Live Pad</Link>
+        <Link to="/beam">Beam</Link>
         <a href="https://github.com/WillyEverGreen/clip" target="_blank" rel="noreferrer">GitHub</a>
         <Link to="/" className="lp-nav-cta">Open app</Link>
       </nav>

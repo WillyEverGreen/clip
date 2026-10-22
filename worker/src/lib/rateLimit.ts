@@ -13,6 +13,7 @@ const LIMITS: Record<string, LimitConfig> = {
   patch:  { max: 30, window: 120 }, // 30 edits   / 2 min / IP (global)
   'patch:slug': { max: 10, window: 120 }, // 10 edits / 2 min / IP / slug
   delete: { max: 20, window: 120 }, // 20 deletes / 2 min / IP
+  'beam:join': { max: 20, window: 120 }, // 20 Beam PIN joins / 2 min / IP (slows PIN guessing)
 }
 
 export interface RateLimitResult {

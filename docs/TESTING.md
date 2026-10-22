@@ -1,6 +1,6 @@
 # Testing Clip
 
-Four suites. Run the first two anywhere; the last two need the site and worker running locally.
+Unit-level suites run anywhere; the rest need the site and worker running locally. Clip Beam has its own three (see `docs/CLIP_BEAM_ARCHITECTURE.md`); `npm run test:beam` runs just those.
 
 | Suite | Command | What it covers | Needs |
 |---|---|---|---|
@@ -8,7 +8,10 @@ Four suites. Run the first two anywhere; the last two need the site and worker r
 | OT | `npm test` (part 2) | Text merge correctness, randomized multi-client runs (16 checks) | nothing |
 | Site API | `npm run test:e2e` (part 1) | Every HTTP route: create, edit, expiry, verify, delete, uploads, zip, live passwords (31 checks) | worker on `127.0.0.1:8787` |
 | Live pad | `npm run test:e2e` (part 2) | Real-time sync against the worker (8 checks) | worker on `8787`, `BASE=ws://127.0.0.1:8787` |
-| Browser | `npm run test:browser` | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
+| Beam signalling | `npm test` (part 3) | Beam room logic: PINs, pairing, relay, roles, expiry (13 checks) | nothing |
+| Beam route | `npm run test:e2e` (part 3) | `/api/beam/ws` against the real `BeamRoom` DO (8 checks) | worker, `BASE=ws://127.0.0.1:8787` |
+| Browser | `npm run test:browser` (part 1) | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
+| Beam browser | `npm run test:browser` (part 2) | Two Chrome pages: 300 MB transfer with SHA-256 check, fallback download, QR, wrong PIN, decline, disconnect, cancel, blocked network, phone width (9 checks) | Vite on `5199` and worker on `8787` |
 
 ## Running everything locally
 
@@ -28,7 +31,8 @@ The browser suite uses the installed Chrome at `C:/Program Files/Google/Chrome/A
 - **Production:** the API suite can't run against production because of the rate limit. Production is checked with curl smoke tests (health, pages, admin locked 401, quote proxy, new slug).
 - **Empty rooms reset:** a Live Pad with no text and no files can have its password changed without the current one. The password test seeds text first so the refusal is actually tested.
 - **Dev proxy:** `frontend/vite.config.ts` keys for `/r/`, `/z/`, `/f/`, `/raw/`, `/zip/` must keep the trailing slash, or clips with slugs starting with those letters 404 in dev.
+- **Beam browser test:** the receiver's save dialog is pointed at the Origin Private File System so the test can read the file back, and Chrome runs with `--disable-features=WebRtcHideLocalIpsWithMdns` so two headless pages can connect. `BEAM_MB` sets the big file size (default 300). Local WebRTC loopback tops out around 10 MB/s on Windows, so the 300 MB case takes about a minute.
 - **Screenshots:** a failing browser test writes a full-page screenshot to `%TEMP%/clip-e2e-browser/`.
 - **Preview checks** look for a decoded image inside a fixed-position overlay, not any image on the page (the header logo would otherwise pass).
 - **Validation checks** assert the field is flagged `tooShort` and the form did not submit. The browser shows its own bubble, not app text.
-- **Not covered by any suite:** real phones, real OS clipboard photos, PDF rendering in real Chrome, Live Pad on mobile, production admin, Cloudflare-specific behaviour, load or stress, accessibility audits, other browsers (Firefox, Safari), and dark/light OS theme switching.
+- **Not covered by any suite:** real phones, real OS clipboard photos, PDF rendering in real Chrome, Live Pad on mobile, production admin, Cloudflare-specific behaviour, load or stress, accessibility audits, other browsers (Firefox, Safari), dark/light OS theme switching, and Beam between two real machines or across NATs.

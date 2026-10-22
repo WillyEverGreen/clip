@@ -9,6 +9,7 @@ const EditPage    = lazy(() => import('./pages/EditPage'))
 const LivePage    = lazy(() => import('./pages/LivePage'))
 const ExpiredPage = lazy(() => import('./pages/ExpiredPage'))
 const AboutPage   = lazy(() => import('./pages/AboutPage'))
+const BeamPage    = lazy(() => import('./beam/BeamPage'))
 
 const AdminPage = lazy(() =>
   import('./pages/AdminPage').catch(() => ({
@@ -25,6 +26,7 @@ export default function App() {
           <Route path="/live"        element={<LivePage />} />
           <Route path="/live/:slug"  element={<LivePage />} />
           <Route path="/about"       element={<AboutPage />} />
+          <Route path="/beam"        element={<BeamPage />} />
           <Route path="/admin"      element={<AdminPage />} />
           <Route path="/:slug"       element={<ViewPage />} />
           <Route path="/:slug/edit"  element={<EditPage />} />

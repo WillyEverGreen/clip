@@ -15,9 +15,12 @@ import { handleReadZip } from './handlers/zip'
 import { getMimeType, validateMime } from './lib/mime'
 import { zipSync, strToU8 } from 'fflate'
 import { isEncryptedFileBuffer, decryptFileArrayBuffer, isEncrypted, decryptContent } from './lib/crypto'
+import { BEAM_PIN_RE, generateBeamPin } from './lib/beam'
+import { checkRateLimit, getClientIp } from './lib/rateLimit'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
+export { BeamRoom } from './durable/BeamRoom'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -578,6 +581,34 @@ app.get('/api/live/:slug/zip', async (c) => {
       'Pragma':              'no-cache',
     },
   })
+})
+
+// ── Clip Beam signalling ─────────────────────────────────────────────────────
+// WebSocket to a BeamRoom DO that relays WebRTC SDP/ICE between two browsers. File bytes never
+// come here. No `pin` = a sender opening a room (the worker picks a free PIN); `?pin=` = a receiver.
+app.get('/api/beam/ws', async (c) => {
+  if (!c.env.BEAM_DO) return c.json({ error: 'beam_unavailable' }, 503)
+  if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
+    return c.json({ error: 'expected_websocket' }, 426)
+  }
+  const roomRequest = (pin: string, role: 'sender' | 'receiver') =>
+    c.env.BEAM_DO.get(c.env.BEAM_DO.idFromName(pin)).fetch(
+      new Request(`https://beam-do/ws?role=${role}&pin=${pin}`, { headers: c.req.raw.headers }),
+    )
+
+  const pin = c.req.query('pin')
+  if (pin !== undefined) {
+    if (!BEAM_PIN_RE.test(pin)) return c.json({ error: 'invalid_pin' }, 400)
+    const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:join', getClientIp(c.req.raw))
+    if (limit.limited) return c.json({ error: 'rate_limited', retryAfter: limit.retryAfter }, 429)
+    return roomRequest(pin, 'receiver')
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const res = await roomRequest(generateBeamPin(), 'sender')
+    if (res.status !== 409) return res
+  }
+  return c.json({ error: 'pin_exhausted' }, 503)
 })
 
 // Health check

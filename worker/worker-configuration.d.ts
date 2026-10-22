@@ -5,4 +5,5 @@ interface Env {
 	FRONTEND_ORIGIN: "https://clip.foo.ng";
 	ADMIN_SECRET: string;
 	CLIP_DO: DurableObjectNamespace<import("./src/index").ClipRoom>;
+	BEAM_DO: DurableObjectNamespace<import("./src/index").BeamRoom>;
 }

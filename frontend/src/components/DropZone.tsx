@@ -46,7 +46,7 @@ export default function DropZone({
       // Check per-file size limit
       const oversizedFiles = newFiles.filter(f => f.size > MAX_PER_FILE)
       if (oversizedFiles.length > 0) {
-        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit.`)
+        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit. Use Clip Beam (clip.foo.ng/beam) to send big files directly.`)
         return
       }
       

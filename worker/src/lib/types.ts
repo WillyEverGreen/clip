@@ -3,6 +3,7 @@
 export interface Env {
   PASTE_KV: KVNamespace
   CLIP_DO: DurableObjectNamespace  // ClipRoom — SSE fan-out per slug
+  BEAM_DO: DurableObjectNamespace  // BeamRoom — Clip Beam WebRTC signalling per PIN
   APP_PEPPER: string        // set via: wrangler secret put APP_PEPPER
   FRONTEND_ORIGIN: string   // set in wrangler.toml [vars]
   ADMIN_SECRET?: string     // set via wrangler.toml [vars] or secret
