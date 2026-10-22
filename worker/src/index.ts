@@ -593,12 +593,19 @@ app.get('/api/beam/ws', async (c) => {
     return c.json({ error: 'expected_websocket' }, 426)
   }
   const name = c.req.query('name') ?? ''
-  const roomRequest = (pin: string, role: 'sender' | 'receiver') =>
+  const resume = c.req.query('resume') === '1' ? '1' : '0'
+  const roomRequest = (pin: string, role: 'sender' | 'receiver', token = '') =>
     c.env.BEAM_DO.get(c.env.BEAM_DO.idFromName(pin)).fetch(
-      new Request(`https://beam-do/ws?role=${role}&pin=${pin}&name=${encodeURIComponent(name.slice(0, 100))}`, { headers: c.req.raw.headers }),
+      new Request(`https://beam-do/ws?role=${role}&pin=${pin}&name=${encodeURIComponent(name.slice(0, 100))}&token=${encodeURIComponent(token)}&resume=${resume}`, { headers: c.req.raw.headers }),
     )
 
   const pin = c.req.query('pin')
+  const token = c.req.query('token')
+  if (pin !== undefined && token) {
+    // A sender taking its room back after a dropped connection
+    if (!BEAM_PIN_RE.test(pin)) return c.json({ error: 'invalid_pin' }, 400)
+    return roomRequest(pin, 'sender', token.slice(0, 100))
+  }
   if (pin !== undefined) {
     if (!BEAM_PIN_RE.test(pin)) return c.json({ error: 'invalid_pin' }, 400)
     const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:join', getClientIp(c.req.raw))

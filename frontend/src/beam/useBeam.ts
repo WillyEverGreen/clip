@@ -3,6 +3,7 @@ import { BeamSender, INITIAL_SENDER_STATE, type SenderState } from './beamSender
 import { loadMyName } from '../lib/cuteNames'
 import { BeamReceiver, INITIAL_RECEIVER_STATE, type ReceiverState } from './beamReceiver'
 import { BeamLobbyClient, type LobbyInvite, type LobbyStatus } from './beamLobby'
+import { deleteRecord, listRecords, type ResumeRecord } from './resumeStore'
 
 export type BeamRole = 'sender' | 'receiver'
 
@@ -23,6 +24,7 @@ export function useBeam() {
   const [sender, setSender] = useState<SenderState>(INITIAL_SENDER_STATE)
   const [receiver, setReceiver] = useState<ReceiverState>(INITIAL_RECEIVER_STATE)
   const [visible, setVisibleState] = useState<VisibleState>(VISIBLE_OFF)
+  const [unfinished, setUnfinished] = useState<ResumeRecord[]>([])
   const senderRef = useRef<BeamSender | null>(null)
   const receiverRef = useRef<BeamReceiver | null>(null)
   const lobbyRef = useRef<BeamLobbyClient | null>(null)
@@ -44,6 +46,14 @@ export function useBeam() {
     disposeAll()
     lobbyRef.current?.close()
   }, [disposeAll])
+
+  /** Downloads that were interrupted earlier and can be carried on (this browser only). */
+  const refreshUnfinished = useCallback(() => {
+    void listRecords().then(setUnfinished)
+  }, [])
+  useEffect(() => {
+    refreshUnfinished()
+  }, [refreshUnfinished])
 
   const send = useCallback((file: File) => {
     disposeAll()
@@ -69,7 +79,22 @@ export function useBeam() {
     setRole(null)
     setSender(INITIAL_SENDER_STATE)
     setReceiver(INITIAL_RECEIVER_STATE)
+    refreshUnfinished()
+  }, [disposeAll, closeLobby, refreshUnfinished])
+
+  /** Carry on an unfinished download from an earlier visit. Must be called from a click. */
+  const resumeUnfinished = useCallback((record: ResumeRecord) => {
+    disposeAll()
+    closeLobby()
+    const r = new BeamReceiver(setReceiver)
+    receiverRef.current = r
+    setRole('receiver')
+    void r.resumeFromRecord(record)
   }, [disposeAll, closeLobby])
+
+  const discardUnfinished = useCallback((rk: string) => {
+    void deleteRecord(rk).then(refreshUnfinished)
+  }, [refreshUnfinished])
 
   /** Turns Receive mode on or off. Off by default; only while on does anyone nearby see this browser. */
   const setVisible = useCallback((on: boolean) => {
@@ -103,7 +128,12 @@ export function useBeam() {
   }, [join, visible.name])
 
   return {
-    role, sender, receiver, visible, send, join, reset, setVisible, respondInvite,
+    role, sender, receiver, visible, unfinished, send, join, reset, setVisible, respondInvite,
+    resumeUnfinished, discardUnfinished,
+    /** Reconnect an interrupted download now (the Reconnect button) */
+    reconnectReceive: useCallback(() => receiverRef.current?.reconnect(true), []),
+    /** Reconnect the sender's own link to Clip now */
+    reconnectSender: useCallback(() => senderRef.current?.reconnectNow(), []),
     accept: useCallback(() => receiverRef.current?.accept(), []),
     decline: useCallback(() => receiverRef.current?.decline(), []),
     cancelReceive: useCallback(() => receiverRef.current?.cancel(), []),

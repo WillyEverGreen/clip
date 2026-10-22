@@ -122,6 +122,25 @@ const CORRUPT_ONE_CHUNK = () => {
   })
 }
 
+/** Records every connection this page makes so a test can cut them, the way a lost network would. */
+const TRACK = () => {
+  window.__pcs = []
+  window.__wss = []
+  const PC = window.RTCPeerConnection
+  window.RTCPeerConnection = function (...a) { const pc = new PC(...a); window.__pcs.push(pc); return pc }
+  window.RTCPeerConnection.prototype = PC.prototype
+  const WS = window.WebSocket
+  window.WebSocket = function (...a) { const ws = new WS(...a); if (String(a[0]).includes('/api/beam')) window.__wss.push(ws); return ws } // not Vite's hot-reload socket
+  window.WebSocket.prototype = WS.prototype
+  Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+}
+const dropNetwork = (page) => page.evaluate(() => {
+  window.__pcs.forEach((pc) => pc.close())
+  window.__wss.forEach((ws) => { try { ws.close(4000, 'lost') } catch { /* already closed */ } })
+})
+const waitProgress = (page, pct, timeout = 120_000) => page.waitForFunction(
+  (n) => Number(document.querySelector('[role=progressbar]')?.getAttribute('aria-valuenow')) >= n, pct, { timeout })
+
 async function newPage(init, opts = {}) {
   const { ip, ...ctxOpts } = opts
   const ctx = await browser.newContext({ viewport: { width: 1100, height: 860 }, acceptDownloads: true, ...ctxOpts })
@@ -134,6 +153,7 @@ async function newPage(init, opts = {}) {
   page.setDefaultTimeout(15000)
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
+  if (process.env.DEBUG_CONSOLE) page.on('console', (m) => { if (m.text().startsWith('DBG')) console.log('   [page]', m.text()) })
   await page.goto(UI + '/beam')
   return { ctx, page, errors }
 }
@@ -384,7 +404,7 @@ await test('9th receiver is refused; the 8 already in are unaffected and can all
   for (const r of rs) await expectSaved(r.page, small)
 })
 
-await test('a receiver that vanishes mid-transfer does not stop the others, and the sender names which one dropped', async (open) => {
+await test('a receiver that vanishes mid-transfer does not stop the others, and the sender shows which one is paused', async (open) => {
   const sender = await open()
   const pin = await startSending(sender.page, big)
   const keep1 = await joinReceiver(open, pin)
@@ -394,8 +414,8 @@ await test('a receiver that vanishes mid-transfer does not stop the others, and 
   await waitPhase(drop.page, 'transferring')
   await sleep(1500)
   await drop.ctx.close()
-  await waitLeg(sender.page, 1, 'error', 45_000)
-  await sender.page.locator('.beam-leg').nth(1).getByText('disconnected').waitFor()
+  await waitLeg(sender.page, 1, 'paused', 45_000) // paused, not failed: it could still come back and carry on
+  await sender.page.locator('.beam-leg').nth(1).getByText('Connection lost').waitFor()
   await Promise.all([keep1, keep2].map((r) => waitPhase(r.page, 'done', 300_000)))
   await expectSaved(keep1.page, big)
   await expectSaved(keep2.page, big)
@@ -567,7 +587,7 @@ await test('a wrong PIN shows a clear error and Start over returns to the start 
   await waitPhase(receiver.page, 'idle')
 })
 
-await test('reloading the sender kills its room: the old PIN stops working', async (open) => {
+await test('reloading the sender: its old PIN is held for it, and a new receiver is told the sender lost connection', async (open) => {
   const sender = await open()
   const pin = await startSending(sender.page, small)
   await sender.page.reload()
@@ -575,7 +595,7 @@ await test('reloading the sender kills its room: the old PIN stops working', asy
   const receiver = await open()
   await joinWithPin(receiver.page, pin)
   await waitPhase(receiver.page, 'error')
-  await receiver.page.getByText('No transfer is waiting on that PIN').waitFor()
+  await receiver.page.getByText('The sender lost their connection').waitFor()
 })
 
 await test('declining shows on the sender as a declined receiver, and another receiver can still take the file', async (open) => {
@@ -591,19 +611,20 @@ await test('declining shows on the sender as a declined receiver, and another re
   await expectSaved(r2.page, small)
 })
 
-await test('closing the sender tab mid-transfer shows the receiver an error and discards the partial file', async (open) => {
+await test('closing the sender tab mid-transfer leaves the receiver interrupted with the part it has kept, ready to reconnect', async (open) => {
   const sender = await open()
   const receiver = await open(SAVE_TO_OPFS)
   await joinWithPin(receiver.page, await startSending(sender.page, big))
   await acceptBtn(receiver.page).click()
   await waitPhase(receiver.page, 'transferring')
-  await sleep(1000)
+  await waitProgress(receiver.page, 10)
   await sender.ctx.close()
-  await waitPhase(receiver.page, 'error', 45_000)
-  await receiver.page.getByText('sender disconnected').waitFor()
-  await sleep(300)
+  await waitPhase(receiver.page, 'interrupted', 45_000)
+  await receiver.page.getByTestId('beam-interrupted').getByText('is saved').waitFor()
+  await receiver.page.getByRole('button', { name: 'Reconnect' }).waitFor()
+  await sleep(500)
   const info = await opfsInfo(receiver.page, big.name)
-  if (info && info.size !== 0) throw new Error(`partial file kept: ${info.size} bytes`)
+  if (!info || info.size === 0) throw new Error('the part already received was not kept')
 })
 
 await test('when the browsers cannot reach each other, the sender row and the receiver both say the direct connection failed', async (open) => {
@@ -793,6 +814,175 @@ await test('Nearby radar at phone width: no sideways scroll with 6 people on it'
     }).length
   })
   if (bad) throw new Error(`${bad} people are drawn outside the radar`)
+})
+
+await test('Reconnect: the receiver loses its connection mid-transfer, reconnects by itself, and carries on from where it stopped', async (open) => {
+  const sender = await open([TRACK])
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 35)
+  await dropNetwork(receiver.page)
+  await waitPhase(receiver.page, 'interrupted', 20_000)
+  const card = receiver.page.getByTestId('beam-interrupted')
+  const text = await card.innerText()
+  const m = text.match(/\(([\d.]+)%\) is saved/)
+  if (!m || Number(m[1]) < 25) throw new Error(`interrupted card does not show the saved part: ${text}`)
+  await receiver.page.getByRole('button', { name: 'Reconnect' }).waitFor()
+  await receiver.page.getByTestId('beam-reconnect-status').getByText(/Reconnecting automatically|Trying to reconnect/).waitFor()
+  // no click: it comes back on its own
+  await waitPhase(receiver.page, 'transferring', 60_000)
+  await receiver.page.getByTestId('beam-resumed-note').waitFor()
+  await sender.page.locator('.beam-leg').getByTestId('beam-resumed-note').first().waitFor()
+  await waitPhase(receiver.page, 'done', 240_000)
+  await expectSaved(receiver.page, big)
+  await waitLeg(sender.page, 0, 'done')
+  const rows = await legs(sender.page).count()
+  if (rows !== 1) throw new Error(`sender should show one finished row (the paused one replaced), shows ${rows}`)
+})
+
+await test('Reconnect button: pressing it brings the transfer back at once, from where it was left', async (open) => {
+  const sender = await open([TRACK])
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 30)
+  await dropNetwork(receiver.page)
+  await waitPhase(receiver.page, 'interrupted', 20_000)
+  await receiver.page.getByRole('button', { name: 'Reconnect' }).click()
+  await waitPhase(receiver.page, ['peering', 'connecting', 'transferring'], 10_000)
+  await waitPhase(receiver.page, 'transferring', 30_000)
+  const started = Number((await receiver.page.locator('[role=progressbar]').getAttribute('aria-valuenow')))
+  if (started < 25) throw new Error(`restarted from the beginning (${started}%) instead of continuing`)
+  await waitPhase(receiver.page, 'done', 240_000)
+  await expectSaved(receiver.page, big)
+})
+
+await test('Reconnect: dropping several times in a row still ends with the identical file', async (open) => {
+  const sender = await open([TRACK])
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  let last = 0
+  for (const at of [20, 45, 70]) {
+    await waitProgress(receiver.page, at)
+    await dropNetwork(receiver.page)
+    await waitPhase(receiver.page, 'interrupted', 20_000)
+    await receiver.page.getByRole('button', { name: 'Reconnect' }).click()
+    await waitPhase(receiver.page, 'transferring', 40_000)
+    const now = Number(await receiver.page.locator('[role=progressbar]').getAttribute('aria-valuenow'))
+    if (now < last) throw new Error(`progress went backwards: ${last}% -> ${now}%`)
+    last = now
+  }
+  await waitPhase(receiver.page, 'done', 240_000)
+  await expectSaved(receiver.page, big)
+})
+
+await test('Reconnect: the sender loses its own connection, gets its room back, and the receiver carries on', async (open) => {
+  const sender = await open([TRACK])
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  const pin = await startSending(sender.page, big)
+  await joinWithPin(receiver.page, pin)
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 35)
+  await dropNetwork(sender.page)
+  await sender.page.getByTestId('beam-sender-reconnecting').waitFor({ timeout: 5000 })
+  await sender.page.getByRole('button', { name: 'Reconnect now' }).waitFor()
+  await waitPhase(receiver.page, 'interrupted', 30_000)
+  await waitPhase(receiver.page, 'transferring', 90_000)
+  await waitPhase(receiver.page, 'done', 240_000)
+  await expectSaved(receiver.page, big)
+  const stillPin = (await sender.page.getByTestId('beam-pin').innerText()).replace(/\D/g, '')
+  if (stillPin !== pin) throw new Error('the sender got a different PIN after reconnecting')
+  if (await sender.page.getByTestId('beam-sender-reconnecting').count()) throw new Error('the reconnecting banner stayed')
+  await waitLeg(sender.page, 0, 'done')
+  if ((await legs(sender.page).count()) !== 1) throw new Error('paused row was not replaced')
+})
+
+await test('Reconnect: both sides lose their connection at the same moment and still finish', async (open) => {
+  const sender = await open([TRACK])
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 40)
+  await Promise.all([dropNetwork(sender.page), dropNetwork(receiver.page)])
+  await waitPhase(receiver.page, 'interrupted', 30_000)
+  await waitPhase(receiver.page, 'done', 300_000)
+  await expectSaved(receiver.page, big)
+})
+
+await test('Reconnect after closing the tab: a checkpoint kept the file, the next visit offers Reconnect, and the file completes', async (open) => {
+  const sender = await open()
+  const receiver = await open(SAVE_TO_OPFS)
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 75) // past the first checkpoint (after 128 MB of this 200 MB file)
+  await receiver.page.close() // the tab is closed mid-write
+  await waitLeg(sender.page, 0, 'paused', 45_000)
+  const page2 = await receiver.ctx.newPage()
+  page2.setDefaultTimeout(15000)
+  await page2.goto(UI + '/beam')
+  await page2.getByText('Unfinished transfers').waitFor()
+  const row = await page2.locator('[data-unfinished]').first().innerText()
+  if (!row.includes(big.name) || !/saved/.test(row)) throw new Error(`unfinished row does not describe the transfer: ${row}`)
+  const kept = await opfsInfo(page2, big.name)
+  if (!kept || kept.size < 100 * 1024 * 1024) throw new Error(`the checkpointed part was not kept on disk: ${kept?.size}`)
+  await page2.getByRole('button', { name: /Reconnect and continue/ }).click()
+  await waitPhase(page2, 'done', 300_000)
+  await expectSaved(page2, big)
+  await waitLeg(sender.page, 0, 'done')
+  await page2.getByRole('button', { name: 'Receive another file' }).click()
+  await page2.waitForFunction(() => !document.querySelector('[data-unfinished]'))
+})
+
+await test('Reconnect: "Forget it" removes an unfinished transfer, and Cancel transfer while interrupted ends it for good', async (open) => {
+  const sender = await open()
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 30)
+  await dropNetwork(receiver.page)
+  await waitPhase(receiver.page, 'interrupted', 20_000)
+  await receiver.page.getByRole('button', { name: 'Cancel transfer' }).click()
+  await waitPhase(receiver.page, 'cancelled')
+  await receiver.page.getByRole('button', { name: 'Start over' }).click()
+  await sleep(300)
+  if (await receiver.page.locator('[data-unfinished]').count()) throw new Error('a cancelled transfer is still listed as unfinished')
+})
+
+await test('Reconnect: if the sender stops sharing while a receiver is interrupted, the receiver is told it cannot continue', async (open) => {
+  const sender = await open()
+  const receiver = await open([SAVE_TO_OPFS, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, big))
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 30)
+  await dropNetwork(receiver.page)
+  await waitPhase(receiver.page, 'interrupted', 20_000)
+  await sender.page.getByRole('button', { name: 'Stop sharing' }).click()
+  await receiver.page.getByRole('button', { name: 'Reconnect' }).click()
+  await waitPhase(receiver.page, 'error', 30_000)
+  await receiver.page.getByText('no longer sharing').waitFor()
+  await sleep(300)
+  await receiver.page.getByRole('button', { name: 'Start over' }).click()
+  if (await receiver.page.locator('[data-unfinished]').count()) throw new Error('an impossible transfer is still listed')
+})
+
+await test('Reconnect without the save dialog (Firefox/Safari style): the part is kept in the open page and carries on, then downloads', async (open) => {
+  const sender = await open()
+  const receiver = await open([NO_SAVE_PICKER, TRACK])
+  await joinWithPin(receiver.page, await startSending(sender.page, mid))
+  const downloadPromise = receiver.page.waitForEvent('download', { timeout: 240_000 })
+  await acceptBtn(receiver.page).click()
+  await waitProgress(receiver.page, 30)
+  await dropNetwork(receiver.page)
+  await waitPhase(receiver.page, 'interrupted', 20_000)
+  await receiver.page.getByRole('button', { name: 'Reconnect' }).click()
+  await waitPhase(receiver.page, 'transferring', 40_000)
+  const download = await downloadPromise
+  const out = join(DIR, `resumed-${mid.name}`)
+  await download.saveAs(out)
+  if (createHash('sha256').update(readFileSync(out)).digest('hex') !== mid.sha256) throw new Error('downloaded file does not match after resuming')
+  await waitPhase(receiver.page, 'done', 60_000)
 })
 
 await test('phone width: no sideways scrolling on the start screen, PIN screen, or with several receivers', async (open) => {

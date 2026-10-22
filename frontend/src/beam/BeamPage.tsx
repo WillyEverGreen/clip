@@ -8,6 +8,7 @@ import { copyToClipboard } from '../lib/clipboard'
 import { useBeam } from './useBeam'
 import { canStreamToDisk, MEMORY_LIMIT } from './diskWriter'
 import { avatarFor, formatBytes, formatDuration, formatEta, formatPin, parsePin } from './beamProtocol'
+import type { ResumeRecord } from './resumeStore'
 import Radar from './Radar'
 import type { LobbyInvite } from './beamLobby'
 import type { VisibleState } from './useBeam'
@@ -30,6 +31,7 @@ function summarisePhase(role: 'sender' | 'receiver' | null, sender: SenderState,
   if (has('transferring')) return 'transferring'
   if (has('verifying')) return 'verifying'
   if (has('peering')) return 'peering'
+  if (has('paused')) return 'paused'
   if (has('joined')) return 'joined'
   if (legs.every(l => l.phase === 'done')) return 'done'
   if (legs.every(l => l.phase === 'declined')) return 'rejected'
@@ -62,8 +64,8 @@ export default function BeamPage() {
 
   // Closing the tab kills the transfer, so ask first
   const busy = role === 'sender'
-    ? sender.legs.some(l => l.phase === 'peering' || l.phase === 'transferring' || l.phase === 'verifying')
-    : role === 'receiver' && ['transferring', 'verifying', 'peering'].includes(receiver.phase)
+    ? sender.legs.some(l => l.phase === 'peering' || l.phase === 'transferring' || l.phase === 'verifying' || l.phase === 'paused')
+    : role === 'receiver' && ['transferring', 'verifying', 'peering', 'interrupted'].includes(receiver.phase)
   useEffect(() => {
     if (!busy) return
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -89,12 +91,12 @@ export default function BeamPage() {
         </header>
 
         {role === null ? (
-          <StartPanels onSend={beam.send} onJoin={(pin) => beam.join(pin)} visible={beam.visible} onVisible={beam.setVisible} onRespond={beam.respondInvite} />
+          <StartPanels onSend={beam.send} onJoin={(pin) => beam.join(pin)} visible={beam.visible} onVisible={beam.setVisible} onRespond={beam.respondInvite} unfinished={beam.unfinished} onResume={beam.resumeUnfinished} onDiscard={beam.discardUnfinished} />
         ) : (
           <section className="beam-card" aria-live="polite">
             {role === 'sender'
-              ? <SenderPanel state={sender} onStop={beam.stopSharing} onCancelLeg={beam.cancelLeg} onReset={beam.reset} onInvite={beam.inviteNearby} />
-              : <ReceiverPanel state={receiver} onAccept={beam.accept} onDecline={beam.decline} onCancel={beam.cancelReceive} onReset={beam.reset} />}
+              ? <SenderPanel state={sender} onStop={beam.stopSharing} onCancelLeg={beam.cancelLeg} onReset={beam.reset} onInvite={beam.inviteNearby} onReconnect={beam.reconnectSender} />
+              : <ReceiverPanel state={receiver} onAccept={beam.accept} onDecline={beam.decline} onCancel={beam.cancelReceive} onReset={beam.reset} onReconnect={beam.reconnectReceive} />}
           </section>
         )}
 
@@ -117,9 +119,12 @@ interface StartProps {
   visible: VisibleState
   onVisible: (on: boolean) => void
   onRespond: (invite: LobbyInvite, accept: boolean, block?: boolean) => void
+  unfinished: ResumeRecord[]
+  onResume: (record: ResumeRecord) => void
+  onDiscard: (rk: string) => void
 }
 
-function StartPanels({ onSend, onJoin, visible, onVisible, onRespond }: StartProps) {
+function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished, onResume, onDiscard }: StartProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [pinText, setPinText] = useState('')
@@ -145,6 +150,28 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond }: StartPro
   }
 
   return (
+    <>
+    {unfinished.length > 0 && (
+      <section className="beam-card beam-unfinished" aria-label="Unfinished transfers">
+        <h2><RotateCcw size={18} /> Unfinished transfers</h2>
+        <ul className="beam-legs">
+          {unfinished.map((r) => (
+            <li key={r.rk} className="beam-leg" data-unfinished={r.name}>
+              <div className="beam-leg-head">
+                <span className="beam-leg-name">{r.name}</span>
+                <span className="beam-leg-status">{formatBytes(r.have)} of {formatBytes(r.size)} saved{r.senderName ? ` · from ${r.senderName}` : ''}</span>
+              </div>
+              <div className="beam-bar"><div className="beam-bar-fill" style={{ width: `${r.size > 0 ? Math.min(100, (r.have / r.size) * 100) : 0}%` }} /></div>
+              <div className="beam-actions">
+                <button type="button" className="btn btn-primary" onClick={() => onResume(r)}><RotateCcw size={15} /> Reconnect and continue</button>
+                <button type="button" className="btn btn-ghost" onClick={() => onDiscard(r.rk)}>Forget it</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="beam-hint">The sender has to still be sharing (their page open). The part you already have stays where you saved it.</p>
+      </section>
+    )}
     <div className="beam-start">
       <section className="beam-card">
         <h2><Send size={18} /> Send a file</h2>
@@ -194,6 +221,7 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond }: StartPro
         <ReceiveMode visible={visible} onVisible={onVisible} onRespond={onRespond} />
       </section>
     </div>
+    </>
   )
 }
 
@@ -266,9 +294,10 @@ interface SenderPanelProps {
   onCancelLeg: (id: string) => void
   onReset: () => void
   onInvite: (ids: string[]) => void
+  onReconnect: () => void
 }
 
-function SenderPanel({ state, onStop, onCancelLeg, onReset, onInvite }: SenderPanelProps) {
+function SenderPanel({ state, onStop, onCancelLeg, onReset, onInvite, onReconnect }: SenderPanelProps) {
   const { phase, offer, legs } = state
 
   if (phase === 'error') {
@@ -295,6 +324,13 @@ function SenderPanel({ state, onStop, onCancelLeg, onReset, onInvite }: SenderPa
             <div className="beam-file-name">{offer.name}</div>
             <div className="beam-muted">{formatBytes(offer.size)}{offer.type ? ` · ${offer.type}` : ''}</div>
           </div>
+        </div>
+      )}
+
+      {state.connection === 'reconnecting' && phase === 'open' && (
+        <div className="beam-banner" role="status" data-testid="beam-sender-reconnecting">
+          <span><span className="beam-dot" /> Lost the connection to Clip. Reconnecting... Transfers already running keep going.</span>
+          <button type="button" className="btn btn-ghost" onClick={onReconnect}><RotateCcw size={15} /> Reconnect now</button>
         </div>
       )}
 
@@ -397,6 +433,7 @@ function legStatus(leg: SenderLeg): string {
     case 'peering': return 'Opening a direct connection...'
     case 'transferring': return 'Sending'
     case 'verifying': return 'Receiver is checking the file...'
+    case 'paused': return 'Connection lost. Waiting for them to reconnect and carry on...'
     case 'done': return 'Received and verified'
     case 'declined': return 'Declined or left'
     case 'error': return leg.error ?? 'Failed'
@@ -406,6 +443,7 @@ function legStatus(leg: SenderLeg): string {
 function LegRow({ leg, size, onCancel }: { leg: SenderLeg; size: number; onCancel: () => void }) {
   const live = leg.phase === 'transferring' || leg.phase === 'verifying'
   const finished = leg.phase === 'done' || leg.phase === 'declined' || leg.phase === 'error'
+  const resumedNote = leg.resumedFrom > 0 && (live || leg.phase === 'peering')
   return (
     <li className={`beam-leg is-${leg.phase}`} data-leg-phase={leg.phase} data-leg-id={leg.id}>
       <div className="beam-leg-head">
@@ -417,6 +455,7 @@ function LegRow({ leg, size, onCancel }: { leg: SenderLeg; size: number; onCance
           </button>
         )}
       </div>
+      {resumedNote && <div className="beam-muted beam-leg-done" data-testid="beam-resumed-note"><RotateCcw size={13} /> Continued from {formatBytes(leg.resumedFrom)} after a dropped connection</div>}
       {live && <Progress bytes={leg.bytes} total={size} speed={leg.speed} eta={leg.eta} verifying={leg.phase === 'verifying'} route={leg.route} />}
       {leg.phase === 'done' && leg.result && (
         <div className="beam-muted beam-leg-done">
@@ -476,10 +515,51 @@ interface ReceiverPanelProps {
   onDecline: () => void
   onCancel: () => void
   onReset: () => void
+  onReconnect: () => void
 }
 
-function ReceiverPanel({ state, onAccept, onDecline, onCancel, onReset }: ReceiverPanelProps) {
+function ReceiverPanel({ state, onAccept, onDecline, onCancel, onReset, onReconnect }: ReceiverPanelProps) {
   const { phase, offer } = state
+
+  if (phase === 'interrupted' && offer) {
+    const pct = offer.size > 0 ? Math.min(100, (state.saved / offer.size) * 100) : 0
+    return (
+      <div className="beam-active beam-interrupted" role="status" data-testid="beam-interrupted">
+        <div className="beam-file">
+          <FileIcon size={22} />
+          <div>
+            <div className="beam-file-name">{offer.name}</div>
+            <div className="beam-muted">{formatBytes(offer.size)}</div>
+          </div>
+        </div>
+        <div className="beam-result is-warn">
+          <TriangleAlert size={28} />
+          <h2>Connection lost</h2>
+          <p className="beam-error-text">
+            {formatBytes(state.saved)} of {formatBytes(offer.size)} ({pct.toFixed(pct < 10 ? 1 : 0)}%) is saved.
+            {state.canResume ? ' Reconnect to carry on from there instead of starting again.' : ' This browser could not keep the partial file, so the transfer has to start over.'}
+          </p>
+        </div>
+        <div className="beam-bar" aria-hidden="true"><div className="beam-bar-fill" style={{ width: `${pct}%` }} /></div>
+        {state.reason && <p className="beam-hint beam-center">{state.reason}</p>}
+        <p className="beam-status" data-testid="beam-reconnect-status">
+          <span className="beam-dot" />
+          {state.needsClick
+            ? 'Press Reconnect to continue. Your browser needs your OK to reopen the saved file.'
+            : state.retryIn !== null
+              ? `Reconnecting automatically in ${state.retryIn}s${state.attempt > 0 ? ` (attempt ${state.attempt + 1})` : ''}...`
+              : state.attempt > 0 ? 'Trying to reconnect...' : 'Waiting to reconnect...'}
+        </p>
+        <div className="beam-actions">
+          {state.canResume
+            ? <button type="button" className="btn btn-primary" onClick={onReconnect}><RotateCcw size={16} /> Reconnect</button>
+            : <button type="button" className="btn btn-primary" onClick={onReset}><RotateCcw size={16} /> Start over</button>}
+          <button type="button" className="btn btn-ghost" onClick={onCancel}><X size={16} /> Cancel transfer</button>
+        </div>
+        <p className="beam-hint beam-center">The part already saved stays where you saved it. Keep the sender&apos;s page open.</p>
+      </div>
+    )
+  }
 
   if (phase === 'error') {
     return (
@@ -552,6 +632,13 @@ function ReceiverPanel({ state, onAccept, onDecline, onCancel, onReset }: Receiv
             <button type="button" className="btn btn-ghost" onClick={onDecline}>Decline</button>
           </div>
         </div>
+      )}
+
+      {state.resumedFrom > 0 && (phase === 'transferring' || phase === 'peering') && (
+        <p className="beam-muted beam-center" data-testid="beam-resumed-note"><RotateCcw size={13} /> Continuing from {formatBytes(state.resumedFrom)} after a dropped connection</p>
+      )}
+      {state.senderAway && (phase === 'transferring' || phase === 'peering') && (
+        <p className="beam-muted beam-center">The sender lost its connection and is reconnecting...</p>
       )}
 
       {(phase === 'transferring' || phase === 'verifying') && offer && (

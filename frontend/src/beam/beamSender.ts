@@ -18,7 +18,7 @@ import {
 import { SpeedTracker } from './speedTracker'
 import { BeamLobbyClient, type LobbyStatus, type NearbyPerson } from './beamLobby'
 
-export type LegPhase = 'joined' | 'peering' | 'transferring' | 'verifying' | 'done' | 'declined' | 'error'
+export type LegPhase = 'joined' | 'peering' | 'transferring' | 'verifying' | 'paused' | 'done' | 'declined' | 'error'
 
 export interface LegResult {
   seconds: number
@@ -37,6 +37,8 @@ export interface SenderLeg {
   route: string | null
   error: string | null
   result: LegResult | null
+  /** Bytes the receiver already had when this attempt started (0 unless it carried on after a drop) */
+  resumedFrom: number
 }
 
 export type SenderPhase = 'idle' | 'connecting' | 'open' | 'stopped' | 'error'
@@ -52,6 +54,8 @@ export interface SenderState {
   /** Receivers who switched on Receive mode on this network */
   nearby: NearbyEntry[]
   nearbyStatus: LobbyStatus
+  /** The sender's own link to Clip. "reconnecting" while it is down and being retried. */
+  connection: 'online' | 'reconnecting'
   /** This sender's own display name, as the room knows it */
   myName: string
   pin: string | null
@@ -60,10 +64,15 @@ export interface SenderState {
   error: string | null
 }
 
-export const INITIAL_SENDER_STATE: SenderState = { phase: 'idle', nearby: [], nearbyStatus: 'connecting', myName: '', pin: null, offer: null, legs: [], error: null }
+export const INITIAL_SENDER_STATE: SenderState = { phase: 'idle', nearby: [], nearbyStatus: 'connecting', connection: 'online', myName: '', pin: null, offer: null, legs: [], error: null }
 
 /** How long a leg with an open data channel waits for its own messages after its socket closes. */
 const PEER_LEFT_GRACE_MS = 3000
+
+/** Seconds between the sender's own reconnect attempts; the last value repeats. */
+const RECONNECT_DELAYS = [1, 2, 3, 5, 8, 13, 20, 30]
+/** A Beam room is only held about ten minutes for a sender that dropped, so stop trying after that. */
+const RECONNECT_GIVE_UP_MS = 11 * 60_000
 
 const LEG_ACTIVE: LegPhase[] = ['peering', 'transferring', 'verifying']
 const LEG_FINISHED: LegPhase[] = ['done', 'declined', 'error']
@@ -71,6 +80,7 @@ const LEG_FINISHED: LegPhase[] = ['done', 'declined', 'error']
 const MSG = {
   connectFailed: 'Could not open a direct connection to this device. It may be behind a strict firewall or mobile carrier NAT. Try both devices on the same Wi-Fi.',
   peerGone: 'This device disconnected before the transfer finished.',
+  paused: 'Connection lost. Waiting for this device to reconnect and carry on.',
   corrupt: 'This device reported that the file did not match the original (SHA-256 mismatch). Send it again.',
 }
 
@@ -85,6 +95,11 @@ class Leg {
   private acked = 0
   private wake: (() => void) | null = null
   private speed: SpeedTracker
+  /** Identifies this receiver's transfer across reconnects (chosen by the receiver) */
+  rk = ''
+  /** Byte the receiver already has; sending starts here */
+  private startAt = 0
+  private connectedOnce = false
 
   constructor(
     id: string,
@@ -93,7 +108,7 @@ class Leg {
     private readonly signal: (to: string, data: SignalData) => void,
     private readonly changed: () => void,
   ) {
-    this.info = { id, name, phase: 'joined', bytes: 0, speed: 0, eta: Infinity, route: null, error: null, result: null }
+    this.info = { id, name, phase: 'joined', bytes: 0, speed: 0, eta: Infinity, route: null, error: null, result: null, resumedFrom: 0 }
     this.speed = new SpeedTracker(file.size)
   }
 
@@ -105,9 +120,13 @@ class Leg {
     return LEG_ACTIVE.includes(this.info.phase)
   }
 
-  async accept(): Promise<void> {
+  /** `have`: bytes the receiver says it already has safely saved (0 for a fresh transfer). */
+  async accept(data?: { rk?: unknown; have?: unknown }): Promise<void> {
     if (this.info.phase !== 'joined') return
-    this.set({ phase: 'peering' })
+    this.rk = typeof data?.rk === 'string' ? data.rk.slice(0, 64) : ''
+    const have = typeof data?.have === 'number' && Number.isSafeInteger(data.have) ? data.have : 0
+    this.startAt = have >= 0 && have <= this.file.size ? have : 0
+    this.set({ phase: 'peering', resumedFrom: this.startAt })
     this.connectTimer = setTimeout(() => {
       if (this.info.phase === 'peering') this.fail(MSG.connectFailed)
     }, CONNECT_TIMEOUT_MS)
@@ -117,19 +136,18 @@ class Leg {
       if (e.candidate) this.signal(this.info.id, { candidate: e.candidate.toJSON() })
     }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed') this.fail(this.info.phase === 'peering' ? MSG.connectFailed : MSG.peerGone)
+      if (pc.connectionState === 'failed') this.lost(this.info.phase === 'peering' ? MSG.connectFailed : MSG.peerGone)
     }
     const dc = pc.createDataChannel('beam', { ordered: true })
     this.dc = dc
     dc.binaryType = 'arraybuffer'
     dc.onopen = () => {
       this.clearTimer()
+      this.connectedOnce = true
       this.detectRoute()
-      this.run().catch((err: Error) => this.fail(`Sending failed: ${err.message}`))
+      this.run().catch((err: Error) => this.lost(`Sending failed: ${err.message}`))
     }
-    dc.onclose = () => {
-      if (!this.finished) this.fail(MSG.peerGone)
-    }
+    dc.onclose = () => this.lost(MSG.peerGone)
     dc.onbufferedamountlow = () => this.poke()
     dc.onmessage = (e) => {
       if (typeof e.data !== 'string') return
@@ -164,6 +182,21 @@ class Leg {
   }
 
   /**
+   * The direct connection to this receiver dropped. If it had really been connected the leg is paused,
+   * not failed: the receiver keeps its partial file and may come back and carry on.
+   */
+  lost(message: string): void {
+    if (this.finished || this.info.phase === 'paused') return
+    if (this.connectedOnce && this.active) {
+      this.info = { ...this.info, speed: 0, eta: Infinity, error: null }
+      this.set({ phase: 'paused' })
+      this.close()
+    } else {
+      this.fail(message)
+    }
+  }
+
+  /**
    * The receiver's signalling socket closed or it cancelled. A receiver that has just finished also
    * closes its socket, and that notice can overtake its "verified" message on the direct channel,
    * so a leg with an open channel gets a short grace period before it is counted as lost.
@@ -173,9 +206,9 @@ class Leg {
     if (this.info.phase === 'joined') {
       this.set({ phase: 'declined' })
     } else if (graceMs > 0 && this.dc?.readyState === 'open') {
-      setTimeout(() => this.fail(message), graceMs)
+      setTimeout(() => this.lost(message), graceMs)
     } else {
-      this.fail(message)
+      this.lost(message)
     }
   }
 
@@ -200,13 +233,30 @@ class Leg {
     const chunkSize = Math.min(MAX_CHUNK, maxMessage)
     dc.bufferedAmountLowThreshold = BUFFER_LOW
 
-    dc.send(JSON.stringify({ t: 'meta', name: file.name, size: file.size, type: file.type } satisfies ChannelMessage))
-    this.speed.start()
+    const start = this.startAt
+    this.sent = start
+    this.acked = start
+    dc.send(JSON.stringify({ t: 'meta', name: file.name, size: file.size, type: file.type, start } satisfies ChannelMessage))
+    this.speed.start(performance.now(), start)
     this.set({ phase: 'transferring' })
 
     const hasher = await createSHA256()
     hasher.init()
-    const reader = file.stream().getReader()
+    if (start > 0) {
+      // The receiver already has these bytes; read them here only so the final SHA-256 covers the whole file
+      const head = file.slice(0, start).stream().getReader()
+      try {
+        for (;;) {
+          const { done, value } = await head.read()
+          if (done) break
+          hasher.update(value)
+          if (this.finished || this.info.phase === 'paused') throw new Error('stopped')
+        }
+      } finally {
+        head.releaseLock()
+      }
+    }
+    const reader = file.slice(start).stream().getReader()
     try {
       for (;;) {
         const { done, value } = await reader.read()
@@ -230,13 +280,13 @@ class Leg {
 
   private async waitForRoom(dc: RTCDataChannel): Promise<void> {
     while (dc.bufferedAmount > BUFFER_HIGH || this.sent - this.acked > FLOW_WINDOW) {
-      if (this.finished) throw new Error('stopped')
+      if (this.finished || this.info.phase === 'paused') throw new Error('stopped')
       if (dc.readyState !== 'open') throw new Error('connection closed')
       await new Promise<void>((resolve) => {
         this.wake = resolve
       })
     }
-    if (this.finished) throw new Error('stopped')
+    if (this.finished || this.info.phase === 'paused') throw new Error('stopped')
   }
 
   private poke(): void {
@@ -246,7 +296,7 @@ class Leg {
   }
 
   private onChannelMessage(msg: ChannelMessage): void {
-    if (this.finished) return
+    if (this.finished || this.info.phase === 'paused') return
     if (msg.t === 'ack') {
       this.acked = Math.max(this.acked, msg.bytes)
       this.poke()
@@ -267,6 +317,7 @@ class Leg {
       speed: 0,
       eta: 0,
       result: { seconds: this.speed.elapsed(), avgSpeed: this.speed.average(bytes), sha256: prev?.sha256 ?? '' },
+      resumedFrom: this.info.resumedFrom,
     }
     this.set({ phase: 'done' })
     this.close()
@@ -322,10 +373,11 @@ class Leg {
 }
 
 type SenderMessage =
-  | { type: 'room_created'; pin: string; name: string }
+  | { type: 'room_created'; pin: string; name: string; token: string }
+  | { type: 'room_resumed'; pin: string; name: string }
   | { type: 'peer_joined'; id: string; name: string }
   | { type: 'peer_left'; role: 'receiver'; id: string }
-  | { type: 'file_accept'; from: string }
+  | { type: 'file_accept'; from: string; data?: { rk?: unknown; have?: unknown } }
   | { type: 'file_reject'; from: string }
   | { type: 'signal'; from: string; data: SignalData }
   | { type: 'cancel'; from: string }
@@ -341,17 +393,30 @@ export class BeamSender {
   private disposed = false
   private file: File | null = null
   private lobby: BeamLobbyClient | null = null
+  /** Secret that lets this sender take its room back after its own connection drops */
+  private token = ''
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempt = 0
+  private reconnectSince = 0
+  private stopping = false
 
   constructor(private readonly emit: (state: SenderState) => void) {}
 
   start(file: File, name: string): void {
     this.file = file
     this.update({ phase: 'connecting', myName: name, offer: { name: file.name || 'file', size: file.size, type: file.type } })
+    this.connect()
+  }
+
+  /** Opens (or, with a token, re-opens) the signalling socket. */
+  private connect(): void {
+    const reclaiming = this.token !== ''
     let ws: WebSocket
     try {
-      ws = new WebSocket(beamWsUrl(undefined, name))
+      ws = new WebSocket(beamWsUrl(reclaiming ? this.state.pin ?? undefined : undefined, this.state.myName, reclaiming ? this.token : undefined))
     } catch {
-      this.fail('Could not reach Clip Beam.')
+      if (reclaiming) this.scheduleReconnect()
+      else this.fail('Could not reach Clip Beam.')
       return
     }
     this.ws = ws
@@ -368,18 +433,42 @@ export class BeamSender {
       this.onMessage(msg).catch((err: Error) => this.fail(`Connection setup failed: ${err.message}`))
     }
     ws.onclose = () => {
+      if (this.ws !== ws) return
       this.ws = null
-      if (this.state.phase === 'stopped' || this.state.phase === 'error') return
-      const busy = [...this.legs.values()].some((l) => l.active)
-      if (this.state.phase === 'connecting' || !busy) {
-        this.fail(this.state.phase === 'connecting'
-          ? 'Could not reach Clip Beam. Check your connection and try again.'
-          : 'Lost the connection to Clip. No new receivers can join. Start a new Beam to share again.')
-      } else {
-        // Transfers already running are direct, so they carry on; only new joins are lost
-        this.update({ phase: 'stopped', error: 'Lost the connection to Clip. Running transfers will finish, but nobody new can join.' })
+      if (this.pingTimer) clearInterval(this.pingTimer)
+      this.pingTimer = null
+      if (this.state.phase === 'stopped' || this.state.phase === 'error' || this.stopping) return
+      if (this.state.phase === 'connecting' && !this.token) {
+        this.fail('Could not reach Clip Beam. Check your connection and try again.')
+        return
       }
+      // The room is held for a while for a sender that dropped, and running transfers are direct, so keep going
+      this.scheduleReconnect()
     }
+  }
+
+  /** Retries the link to Clip with a growing delay, for as long as the room is held. */
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.disposed) return
+    if (!this.reconnectSince) this.reconnectSince = Date.now()
+    if (Date.now() - this.reconnectSince > RECONNECT_GIVE_UP_MS) {
+      this.fail('Lost the connection to Clip for too long. This Beam has closed; start a new one.')
+      return
+    }
+    this.update({ connection: 'reconnecting' })
+    const delay = RECONNECT_DELAYS[Math.min(this.reconnectAttempt++, RECONNECT_DELAYS.length - 1)]
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.connect()
+    }, delay * 1000)
+  }
+
+  /** "Reconnect now": skip the wait and try again immediately. */
+  reconnectNow(): void {
+    if (this.state.connection !== 'reconnecting' || this.disposed) return
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+    this.connect()
   }
 
   /** Asks these nearby receivers to take the file. */
@@ -392,6 +481,7 @@ export class BeamSender {
   /** Stops sharing: cancels unfinished transfers and closes the room. */
   stop(): void {
     if (this.state.phase === 'stopped' || this.state.phase === 'error') return
+    this.stopping = true
     this.lobby?.cancelInvites()
     this.send({ type: 'cancel' })
     for (const leg of this.legs.values()) leg.cancel()
@@ -417,7 +507,17 @@ export class BeamSender {
   private async onMessage(msg: SenderMessage): Promise<void> {
     if (this.state.phase === 'stopped' || this.state.phase === 'error') return
     switch (msg.type) {
+      case 'room_resumed':
+        // Back after a dropped connection: the room, its PIN and the receivers who stayed are all as we left them
+        this.reconnectAttempt = 0
+        this.reconnectSince = 0
+        this.update({ connection: 'online', myName: msg.name || this.state.myName })
+        this.send({ type: 'file_offer', offer: this.state.offer })
+        this.lobby?.close()
+        this.startLobby(this.state.myName)
+        break
       case 'room_created':
+        this.token = msg.token
         this.update({ phase: 'open', pin: msg.pin, myName: msg.name || this.state.myName })
         this.startLobby(msg.name || this.state.myName)
         this.send({ type: 'file_offer', offer: this.state.offer })
@@ -425,7 +525,7 @@ export class BeamSender {
         break
       case 'peer_joined': {
         const file = this.file
-        if (!file) return
+        if (!file || this.legs.has(msg.id)) return
         const leg = new Leg(
           msg.id, msg.name || 'Guest', file,
           (to, data) => this.send({ type: 'signal', to, data }),
@@ -443,9 +543,23 @@ export class BeamSender {
         }
         this.publish()
         break
-      case 'file_accept':
-        await this.legs.get(msg.from)?.accept()
+      case 'file_accept': {
+        const leg = this.legs.get(msg.from)
+        if (!leg) break
+        // The same receiver coming back after a drop: its old, paused row is replaced by this one
+        const rk = typeof msg.data?.rk === 'string' ? msg.data.rk.slice(0, 64) : ''
+        if (rk) {
+          for (const [id, other] of this.legs) {
+            if (id !== msg.from && other.rk === rk && !other.info.result) {
+              other.close()
+              this.legs.delete(id)
+            }
+          }
+        }
+        await leg.accept(msg.data)
+        this.publish()
         break
+      }
       case 'file_reject':
         this.legs.get(msg.from)?.decline()
         break
@@ -459,7 +573,9 @@ export class BeamSender {
       case 'error':
         this.fail(msg.code === 'expired'
           ? 'This Beam timed out after 10 minutes with nobody receiving. Start a new one.'
-          : msg.message || 'Something went wrong.')
+          : msg.code === 'no_room'
+            ? 'This Beam is no longer open (it was held for 10 minutes after the connection dropped). Start a new one.'
+            : msg.message || 'Something went wrong.')
         break
     }
   }
@@ -503,6 +619,8 @@ export class BeamSender {
   }
 
   private shutdown(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
     if (this.pingTimer) clearInterval(this.pingTimer)
     if (this.tickTimer) clearInterval(this.tickTimer)
     this.pingTimer = null

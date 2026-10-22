@@ -94,7 +94,8 @@ tested in Node.
   signalling traffic. Clients ping every 25 s, so a room with a receiver lives as long as the tabs
   are open. Expired peers get `error {code: expired}` and close 4008.
 
-Server to client messages: `room_created {pin, name}`, `joined {offer, name, sender}`,
+Server to client messages: `room_created {pin, name, token}`, `room_resumed {pin, name}` (sender took its room
+back), `sender_away` / `sender_back` (to receivers), `joined {offer, name, sender}`,
 `peer_joined {id, name}`, `peer_left {role, id?}`, relayed messages, `pong`, `error {code, message}`.
 
 ### `wrangler.toml`
@@ -126,7 +127,8 @@ frontend/src/beam/
 ├── Radar.tsx          The radar: avatars on rings, tap to select several
 ├── beamProtocol.ts    Channel message types, tuning constants, WS URL
 ├── beamFormat.ts      Pure text helpers (PIN, sizes, durations); unit tested in Node
-├── diskWriter.ts      Where incoming bytes go (File System Access API, or download fallback)
+├── diskWriter.ts      Where incoming bytes go (File System Access API, or download fallback); suspend/reopen for resume
+├── resumeStore.ts     IndexedDB record of unfinished downloads (file handle, saved bytes, hash state)
 ├── speedTracker.ts    Speed and time-left maths (see below)
 └── beam.css           Monochrome styles matching the rest of Clip
 ```
@@ -136,11 +138,13 @@ re-renders React. They publish a state snapshot at most every 200 ms during a tr
 
 ### Phases
 
-Receiver: `idle → connecting → offered → peering → transferring → verifying → done`.
+Receiver: `idle → connecting → offered → peering → transferring → verifying → done`, with `interrupted`
+(connection lost, partial file kept, Reconnect available) between `transferring` and `peering` on a drop.
 Terminal: `done`, `cancelled`, `error`.
 
 Sender room: `idle → connecting → open → stopped` (or `error`). Each receiver leg:
-`joined → peering → transferring → verifying → done`, or `declined` / `error`.
+`joined → peering → transferring → verifying → done`, or `paused` (connection lost, waiting for the
+receiver to carry on), `declined`, `error`.
 
 The page root carries `data-beam-phase` (for the sender, a summary of its legs: `waiting`, `joined`,
 `peering`, `transferring`, `verifying`, `done`, `rejected`, `error`) and `data-beam-role`; each leg row
@@ -243,7 +247,59 @@ missing, and makes names unique across the sender and all receivers by adding a 
 receiver sees its own name and the sender's ("Biscuit receiving from Mochi"). Names are display only:
 nothing is authenticated by them.
 
-## 5. Nearby (radar)
+## 5. Reconnect and resume
+
+A dropped connection no longer means starting over. The **Reconnect** button (and an automatic retry)
+carries on from the byte where it stopped.
+
+**What happens when the link drops**
+1. The receiver notices (data channel closed, connection failed, or its signalling socket lost).
+2. It waits for any batch being written, **commits the partly received file to disk**, and saves how
+   many bytes are safely in it together with the running SHA-256 state (`hash-wasm` `save()` / `load()`).
+   The page shows "Connection lost. 1.2 GB of 4.2 GB (29%) is saved." with a **Reconnect** button and
+   an automatic retry countdown (2, 4, 8, 15, 30 s, repeating, up to about 11 minutes; it also retries
+   the moment the browser reports it is back online).
+3. Reconnecting rejoins the sender's room with `resume=1`, reopens the saved file
+   (`createWritable({ keepExistingData: true })`, truncated and positioned at the saved byte), and sends
+   `file_accept {rk, have}`. `rk` is a random id this receiver keeps for the transfer so the sender can
+   tell it is the same one coming back.
+4. The sender replaces that receiver's paused row, hashes the first `have` bytes locally (read, not
+   sent, so its final SHA-256 still covers the whole file), then streams from `have`. `meta` carries
+   `start`; the receiver refuses to continue unless it equals what it saved.
+5. The final whole-file SHA-256 check is the same as always, so a wrong `have` can only cause a
+   visible mismatch, never a silently corrupted file.
+
+**Sender side.** A receiver that drops shows as **paused** ("Connection lost. Waiting for them to
+reconnect and carry on..."), not failed. If the sender's own link to Clip drops, the room is held for
+10 minutes (`senderAway`); receivers are told (`sender_away` / `sender_back`), the sender retries with
+growing delays (1 to 30 s) using the secret token from `room_created`, and a "Reconnect now" button is
+shown. Transfers already running are direct, so they keep going. A deliberate close (Stop sharing, close
+code 1000 or 1005) ends the room for everyone; any other close (lost network 1006, closed tab 1001) holds it.
+While a room is held, only receivers coming back (`resume=1`) may join; a fresh receiver is told
+"The sender lost their connection".
+
+**Checkpoints (why closing the tab does not lose everything).** Browsers keep what a page writes in a
+temporary file and only put it in the real file when the file is closed, so a closed tab or crash would
+discard everything written so far. To limit that, the receiver commits the partial file to disk every
+128 MB (or every 10% of the file if that is larger) and saves its progress record, then reopens the
+file and carries on. After a closed tab or crash you lose at most the last stretch. On the next visit
+`/beam` shows **Unfinished transfers** with **Reconnect and continue** (the browser may ask permission to
+reopen the file; that needs the click) and **Forget it**. The record (IndexedDB `clip-beam`) holds the
+file handle, saved byte count and hash state, stays in that browser only, and expires after 24 hours.
+
+**Limits**
+- The sender's page must still be open (the browser does not keep a file the sender chose), and Beam
+  rooms are held for about 10 minutes after the sender's connection drops.
+- Chrome, Edge and Opera can resume after a reload or crash. Firefox and Safari have no way to reopen a
+  half-saved file, so there the part is kept only while the page stays open (the connection can drop and
+  come back); after a reload or closing the tab the transfer restarts from the beginning. They keep the
+  2 GB limit.
+- A checkpoint closes and reopens the file, which copies what has been saved so far, so very large
+  files pay some extra disk work every 10%.
+- Cancelling, a sender that stops sharing, or a hash mismatch forget the record. A partly saved file
+  from earlier checkpoints stays where it was saved and can be deleted by hand.
+
+## 6. Nearby (radar)
 
 Instead of reading out a PIN, a sender can see receivers on the same network and ask them directly.
 Visibility is **one-way**:
@@ -276,7 +332,7 @@ mobile carriers, an office) a sender can see strangers who switched Receive mode
 Receive mode is explicit and off by default, names are random and carry no identity, every request
 needs an Accept, and Block exists. Anyone on the same network can also be asked by any sender on it.
 
-## 6. What Beam stores
+## 7. What Beam stores
 
 Nothing of its own. No `sessionStorage`, no KV (apart from the rate-limit counter for joins), no R2, no
 Durable Object storage except the expiry alarm. The only `localStorage` touched is the display name
@@ -286,7 +342,7 @@ nothing behind.
 
 ---
 
-## 7. Tests
+## 8. Tests
 
 | Suite | File | Runs in | Checks |
 |---|---|---|---|
@@ -325,11 +381,13 @@ local WebRTC ceiling, not Beam overhead. Real LAN numbers between two machines a
 
 ---
 
-## 8. Status and what is left
+## 9. Status and what is left
 
 Done:
 - `BeamRoom` DO, `/api/beam/ws`, `v2` migration, PIN allocation, join rate limit, expiry alarm
 - One sender to up to 8 receivers at once, with cute names (shared with Live Pad)
+- Reconnect: Reconnect button and automatic retry, resume from the saved byte, sender reconnect with a
+  held room, checkpoints so a closed tab keeps most of the file, Unfinished transfers list
 - Nearby radar: opt-in Receive mode, sender picks one or many people, Accept / Decline / Block
 - `/beam` page: send, receive, PIN + copy + QR, accept/decline, progress, speed, ETA, route badge,
   cancel, results, all error states above, phone layout, links from the home page, about page and the
@@ -348,11 +406,11 @@ Left:
 - **Service-worker streaming download** so Firefox/Safari can receive more than 2 GB.
 - **Nearby by Wi-Fi network instead of IP**, and a receiver-initiated "ask for files" (the lobby
   already carries the needed identities, but senders are deliberately invisible today).
+- **Resume in Firefox/Safari after a reload** (needs a service-worker streaming download; not possible with plain downloads).
 - **Multiple files** in one Beam (queue over the same channel, or zip on the fly).
 - **Send once, relay to many:** each receiver currently costs the sender one full upload; receivers
   that already have the file could pass it on.
 - **Hashing in a Web Worker**: SHA-256 runs on the main thread; fine at today's speeds, worth moving
   for multi-gigabit links.
-- **Resume** after a dropped connection (needs ranges plus a way to reopen the partial file).
 - "Beam this file" shortcuts from Live Pad and clip pages, completion sound.
 - Optional passphrase layer on top of DTLS.

@@ -9,6 +9,7 @@ import {
 import {
   BeamLobbyRoom, LOBBY_MAX_MEMBERS, LOBBY_STALE_MS, LOBBY_INVITES_PER_MIN,
 } from '../worker/src/lib/beamLobby.ts'
+import { createSHA256 } from '../frontend/node_modules/hash-wasm/dist/index.esm.js'
 import { SpeedTracker } from '../frontend/src/beam/speedTracker.ts'
 import { parsePin, formatPin, formatBytes, formatDuration, formatEta, avatarFor } from '../frontend/src/beam/beamFormat.ts'
 
@@ -17,6 +18,12 @@ let failed = 0
 function test(name, fn) {
   try { fn(); passed++; console.log(`  \x1b[32m✓\x1b[0m ${name}`) }
   catch (err) { failed++; console.error(`  \x1b[31m✗\x1b[0m ${name}\n    ${err.stack || err}`) }
+}
+
+async function atest(name, fn) {
+  try { await fn(); passed++; console.log(`  [32m✓[0m ${name}`) }
+  catch (err) { failed++; console.error(`  [31m✗[0m ${name}
+    ${err.stack || err}`) }
 }
 
 class FakePeer {
@@ -66,7 +73,10 @@ test('sender gets room_created with its PIN; a second sender on the same PIN is 
   const room = new BeamSignalRoom()
   const a = new FakePeer()
   assert.equal(room.addSender(a, '000042', 0), true)
-  assert.deepEqual(a.last(), { type: 'room_created', pin: '000042', name: 'Sender' })
+  assert.equal(a.last().type, 'room_created')
+  assert.equal(a.last().pin, '000042')
+  assert.equal(a.last().name, 'Sender')
+  assert.match(a.last().token, /^[0-9a-f-]{36}$/)
   assert.equal(room.addSender(new FakePeer(), '000042', 0), false)
 })
 
@@ -82,7 +92,7 @@ test('a receiver sees the file offer; the sender is told its id', () => {
   const { room, sender } = openRoom()
   const { peer, id } = join(room)
   assert.equal(id, 'r1')
-  assert.deepEqual(peer.sent[0], { type: 'joined', offer: OFFER, name: 'Guest', sender: 'Sender' })
+  assert.deepEqual(peer.sent[0], { type: 'joined', offer: OFFER, name: 'Guest', sender: 'Sender', away: false })
   assert.deepEqual(sender.last(), { type: 'peer_joined', id: 'r1', name: 'Guest' })
 })
 
@@ -494,6 +504,19 @@ test('sample history stays bounded on a very long transfer', () => {
   assert.ok(tr.samples.length < 200, `kept ${tr.samples.length} samples`)
 })
 
+await atest('resume maths: a SHA-256 saved at byte N and loaded later gives the same digest as hashing straight through', async () => {
+  const data = Buffer.alloc(3_000_000)
+  for (let i = 0; i < data.length; i++) data[i] = (i * 31 + (i >> 8)) & 255
+  const whole = await createSHA256(); whole.init(); whole.update(data)
+  const expected = whole.digest('hex')
+  for (const cut of [0, 1, 65_535, 1_048_576, 2_999_999, 3_000_000]) {
+    const first = await createSHA256(); first.init(); first.update(data.subarray(0, cut))
+    const saved = first.save()
+    const second = await createSHA256(); second.load(saved); second.update(data.subarray(cut))
+    assert.equal(second.digest('hex'), expected, `cut at ${cut}`)
+  }
+})
+
 test('formatting: PINs, sizes, durations and time left', () => {
   assert.equal(parsePin('748 219'), '748219')
   assert.equal(parsePin('748-219'), '748219')
@@ -511,6 +534,124 @@ test('formatting: PINs, sizes, durations and time left', () => {
   assert.equal(formatEta(Infinity), 'Calculating...')
   assert.equal(formatEta(42), '42s left')
   assert.equal(formatEta(0.4), '<1s left')
+})
+
+console.log('\n\x1b[1m\x1b[36mClip Beam reconnect (room held for a dropped sender)\x1b[0m')
+
+function heldRoom() {
+  const room = new BeamSignalRoom()
+  const sender = new FakePeer()
+  room.addSender(sender, '123456', 0, 'Mochi')
+  const token = sender.sent[0].token
+  room.handleMessage(sender, JSON.stringify({ type: 'file_offer', offer: OFFER }), 1)
+  return { room, sender, token }
+}
+
+test('a lost sender connection holds the room: receivers stay, are told, and the PIN stays taken', () => {
+  const { room, sender } = heldRoom()
+  const a = join(room)
+  const b = join(room)
+  room.remove(sender, 100, true)
+  assert.equal(room.senderAway, true)
+  assert.equal(room.receivers.size, 2)
+  assert.equal(a.peer.closed, null)
+  assert.equal(a.peer.last().type, 'sender_away')
+  assert.equal(b.peer.last().type, 'sender_away')
+  assert.equal(room.addSender(new FakePeer(), '123456', 101), false)
+})
+
+test('the sender reclaims its room with the token; receivers are told and re-announced to it', () => {
+  const { room, sender, token } = heldRoom()
+  const a = join(room)
+  const b = join(room)
+  room.remove(sender, 100, true)
+  const back = new FakePeer()
+  assert.equal(room.reclaimSender(back, token, 200), true)
+  assert.deepEqual(back.sent[0], { type: 'room_resumed', pin: '123456', name: 'Mochi' })
+  assert.deepEqual(back.ofType('peer_joined').map((m) => m.id), [a.id, b.id])
+  assert.equal(a.peer.last().type, 'sender_back')
+  // the room works as before: receiver messages reach the new socket, sender messages reach receivers
+  room.handleMessage(a.peer, JSON.stringify({ type: 'file_accept', data: { rk: 'x', have: 5 } }), 201)
+  assert.deepEqual(back.last(), { type: 'file_accept', from: a.id, data: { rk: 'x', have: 5 } })
+  room.handleMessage(back, JSON.stringify({ type: 'signal', to: a.id, data: { n: 1 } }), 202)
+  assert.deepEqual(a.peer.last(), { type: 'signal', data: { n: 1 } })
+  assert.equal(room.senderAway, false)
+})
+
+test('reclaiming needs the right token, only works while held, and only once', () => {
+  const { room, sender, token } = heldRoom()
+  join(room)
+  const wrong = new FakePeer()
+  assert.equal(room.reclaimSender(wrong, token, 5), false) // sender is still connected, not away
+  assert.equal(wrong.closed.code, 4004)
+  room.remove(sender, 100, true)
+  for (const bad of ['', 'nope', token + 'x']) {
+    const p = new FakePeer()
+    assert.equal(room.reclaimSender(p, bad, 200), false)
+    assert.equal(p.last().code, 'no_room')
+  }
+  assert.equal(room.reclaimSender(new FakePeer(), token, 200), true)
+  assert.equal(room.reclaimSender(new FakePeer(), token, 201), false)
+})
+
+test('a deliberate close still ends the room for everyone, even with a token', () => {
+  const { room, sender } = heldRoom()
+  const a = join(room)
+  room.remove(sender, 100, false)
+  assert.equal(room.senderAway, false)
+  assert.equal(a.peer.closed.code, 1000)
+  assert.equal(room.deadline(), null)
+})
+
+test('a held room admits only receivers coming back (resume); fresh ones are told the sender lost connection', () => {
+  const { room, sender, token } = heldRoom()
+  room.remove(sender, 100, true)
+  const fresh = new FakePeer()
+  assert.deepEqual(room.addReceiver(fresh, 150, 'Newbie'), { error: 'sender_away' })
+  assert.equal(fresh.last().code, 'sender_away')
+  assert.equal(fresh.closed.code, 4011)
+  const late = new FakePeer()
+  const res = room.addReceiver(late, 160, 'Biscuit', true)
+  assert.ok(res.id)
+  assert.equal(late.sent[0].away, true)
+  assert.deepEqual(late.sent[0].offer, OFFER)
+  const back = new FakePeer()
+  room.reclaimSender(back, token, 300)
+  assert.deepEqual(back.ofType('peer_joined').map((m) => m.id), [res.id])
+})
+
+test('a held room expires 10 minutes after the sender dropped, closing everyone', () => {
+  const { room, sender } = heldRoom()
+  const a = join(room)
+  room.remove(sender, 1000, true)
+  assert.equal(room.deadline(), 1000 + BEAM_IDLE_MS)
+  assert.equal(room.expireIfIdle(1000 + BEAM_IDLE_MS - 1), false)
+  room.handleMessage(a.peer, '{"type":"ping"}', 1000 + BEAM_IDLE_MS - 1) // receiver pings do not extend a held room
+  assert.equal(room.expireIfIdle(1000 + BEAM_IDLE_MS), true)
+  assert.equal(a.peer.closed.code, 4008)
+  assert.equal(room.senderAway, false)
+  assert.equal(room.addSender(new FakePeer(), '123456', 1000 + BEAM_IDLE_MS + 1), true)
+})
+
+test('receivers leaving while the sender is away are tracked, and the sender hears about the survivors only', () => {
+  const { room, sender, token } = heldRoom()
+  const a = join(room)
+  const b = join(room)
+  room.remove(sender, 100, true)
+  room.remove(a.peer, 110)
+  const back = new FakePeer()
+  room.reclaimSender(back, token, 200)
+  assert.deepEqual(back.ofType('peer_joined').map((m) => m.id), [b.id])
+})
+
+test('a receiver can rejoin under the same name after dropping, and the sender sees it as a new join', () => {
+  const { room, sender } = heldRoom()
+  const a = join(room, 1, 'Biscuit')
+  room.remove(a.peer, 50) // receiver's connection dropped
+  const again = join(room, 60, 'Biscuit')
+  assert.equal(again.name, 'Biscuit')
+  assert.notEqual(again.id, a.id)
+  assert.equal(sender.ofType('peer_joined').at(-1).id, again.id)
 })
 
 console.log('\n\x1b[1m\x1b[36mClip Beam nearby lobby\x1b[0m')

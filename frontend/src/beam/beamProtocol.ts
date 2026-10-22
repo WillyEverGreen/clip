@@ -39,13 +39,13 @@ export interface SignalData {
 
 /** Control messages on the DataChannel. File bytes are sent as binary messages in between. */
 export type ChannelMessage =
-  | { t: 'meta'; name: string; size: number; type: string }
+  | { t: 'meta'; name: string; size: number; type: string; start?: number }
   | { t: 'done'; sha256: string }
   | { t: 'ack'; bytes: number }
   | { t: 'verified'; ok: boolean }
   | { t: 'cancel' }
 
-export function beamWsUrl(pin: string | undefined, name: string): string {
+export function beamWsUrl(pin: string | undefined, name: string, token?: string, resume = false): string {
   let base: string
   if (BASE.startsWith('http')) {
     base = BASE.replace(/^http/, 'ws')
@@ -56,6 +56,8 @@ export function beamWsUrl(pin: string | undefined, name: string): string {
   const query = new URLSearchParams()
   if (pin) query.set('pin', pin)
   if (name) query.set('name', name)
+  if (token) query.set('token', token)
+  if (resume) query.set('resume', '1')
   const qs = query.toString()
   return `${base}/api/beam/ws${qs ? `?${qs}` : ''}`
 }

@@ -22,7 +22,7 @@ async function test(name, fn) {
 
 /** A signalling client that records every message and lets tests wait for a given type. */
 class Client {
-  constructor(pin, ip, name) {
+  constructor(pin, ip, name, token, resume) {
     this.messages = []
     this.waiters = []
     this.closed = null
@@ -31,6 +31,8 @@ class Client {
     const query = new URLSearchParams()
     if (pin) query.set('pin', pin)
     if (name) query.set('name', name)
+    if (token) query.set('token', token)
+    if (resume) query.set('resume', '1')
     const qs = query.toString()
     this.ws = new WebSocket(`${BASE}/api/beam/ws${qs ? `?${qs}` : ''}`, { headers: { 'CF-Connecting-IP': fakeIp } })
     this.ws.onmessage = (ev) => {
@@ -55,6 +57,8 @@ class Client {
 
   send(msg) { this.ws.send(JSON.stringify(msg)) }
   close() { try { this.ws.close() } catch {} }
+  /** Close the way a lost connection or closed tab looks to the server (any code but 1000 / no code). */
+  drop() { try { this.ws.close(4000, 'lost') } catch {} }
 }
 
 /** GET with arbitrary headers (fetch refuses Upgrade); resolves the status, 101 for a WebSocket upgrade. */
@@ -530,6 +534,86 @@ await test('nearby: lobby connections are rate limited per IP', async () => {
     else assert.equal(status, 101)
   }
   assert.ok(limited, 'expected a 429 within 300 connections')
+})
+
+await test('reconnect: a sender that loses its connection keeps its room; receivers stay and are told', async () => {
+  const sender = new Client(undefined, undefined, 'Mochi')
+  const created = await sender.next('room_created')
+  assert.ok(created.token)
+  sender.send({ type: 'file_offer', offer: OFFER })
+  const a = new Client(created.pin, undefined, 'Biscuit')
+  const b = new Client(created.pin, undefined, 'Pudding')
+  await a.next('joined'); await b.next('joined')
+  const ids = [(await sender.next('peer_joined')).id, (await sender.next('peer_joined')).id]
+  sender.drop()
+  assert.equal((await a.next('sender_away')).type, 'sender_away')
+  await b.next('sender_away')
+  await new Promise((r) => setTimeout(r, 300))
+  assert.equal(a.closed, null)
+  assert.equal(b.closed, null)
+
+  // a brand new receiver is told to try again; a returning one (resume) may wait
+  const fresh = new Client(created.pin, undefined, 'Newbie')
+  assert.equal((await fresh.next('error')).code, 'sender_away')
+  assert.equal(await fresh.closedPromise.then((c) => c.code), 4011)
+  const returning = new Client(created.pin, undefined, 'Biscuit', undefined, true)
+  const rejoin = await returning.next('joined')
+  assert.equal(rejoin.away, true)
+  assert.deepEqual(rejoin.offer, OFFER)
+
+  // the sender takes the room back with its token: same PIN, receivers re-announced, traffic flows again
+  const back = new Client(created.pin, undefined, 'Mochi', created.token)
+  const resumed = await back.next('room_resumed')
+  assert.equal(resumed.pin, created.pin)
+  const seen = []
+  for (let i = 0; i < 3; i++) seen.push((await back.next('peer_joined')).id)
+  assert.ok(ids.every((id) => seen.includes(id)))
+  await a.next('sender_back')
+  a.send({ type: 'file_accept', data: { rk: 'abc', have: 1234 } })
+  const accept = await back.next('file_accept')
+  assert.deepEqual(accept.data, { rk: 'abc', have: 1234 })
+  back.send({ type: 'signal', to: accept.from, data: { n: 1 } })
+  assert.deepEqual((await a.next('signal')).data, { n: 1 })
+  for (const x of [back, a, b, returning]) x.close()
+})
+
+await test('reconnect: only the right token takes a held room back, and only once; a deliberate close ends it', async () => {
+  const sender = new Client(undefined, undefined, 'Mochi')
+  const created = await sender.next('room_created')
+  const a = new Client(created.pin); await a.next('joined')
+  sender.drop()
+  await a.next('sender_away')
+  for (const bad of ['wrong', 'x'.repeat(30)]) {
+    const p = new Client(created.pin, undefined, 'Mochi', bad)
+    assert.equal((await p.next('error')).code, 'no_room')
+  }
+  const back = new Client(created.pin, undefined, 'Mochi', created.token)
+  await back.next('room_resumed')
+  const twice = new Client(created.pin, undefined, 'Mochi', created.token)
+  assert.equal((await twice.next('error')).code, 'no_room')
+  // a deliberate close (Stop sharing) is final: receivers are closed and the PIN is free
+  back.close()
+  assert.equal((await a.next('peer_left')).role, 'sender')
+  await a.closedPromise
+  const after = new Client(created.pin, undefined, 'Biscuit', undefined, true)
+  assert.equal((await after.next('error')).code, 'no_room')
+})
+
+await test('reconnect: a receiver that drops frees its slot and can come straight back under the same name', async () => {
+  const sender = new Client(undefined, undefined, 'Mochi')
+  const created = await sender.next('room_created')
+  sender.send({ type: 'file_offer', offer: OFFER })
+  const a = new Client(created.pin, undefined, 'Biscuit')
+  assert.equal((await a.next('joined')).name, 'Biscuit')
+  const first = await sender.next('peer_joined')
+  a.drop()
+  assert.equal((await sender.next('peer_left')).id, first.id)
+  const again = new Client(created.pin, undefined, 'Biscuit', undefined, true)
+  assert.equal((await again.next('joined')).name, 'Biscuit')
+  const second = await sender.next('peer_joined')
+  assert.notEqual(second.id, first.id)
+  assert.equal(second.name, 'Biscuit')
+  sender.close(); again.close()
 })
 
 await test('PIN guessing is rate limited per IP', async () => {

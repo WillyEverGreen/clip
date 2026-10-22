@@ -88,13 +88,21 @@ export class BeamSignalRoom {
   lastActivity = 0
   /** When the room last had no receivers; an unattended room expires from here, pings or not. */
   emptySince = 0
+  /** Secret the sender needs to take its room back after a dropped connection. */
+  senderToken = ''
+  /** The sender's socket dropped (not a deliberate stop); the room is held for it until `awaySince` + idle time. */
+  senderAway = false
+  awaySince = 0
   private nextId = 1
 
   /** Opens the room for a sender. Returns false when the PIN already has one. */
   addSender(peer: BeamPeer, pin: string, now: number, name?: unknown): boolean {
     if (this.sender) return false
     this.pin = pin
+    if (this.senderAway) return false // the PIN is being held for the sender that lost its connection
     this.sender = peer
+    this.senderToken = crypto.randomUUID()
+    this.senderAway = false
     this.senderName = cleanName(name) ?? 'Sender'
     this.receivers.clear()
     this.receiverNames.clear()
@@ -102,16 +110,42 @@ export class BeamSignalRoom {
     this.createdAt = now
     this.lastActivity = now
     this.emptySince = now
-    send(peer, { type: 'room_created', pin, name: this.senderName })
+    send(peer, { type: 'room_created', pin, name: this.senderName, token: this.senderToken })
+    return true
+  }
+
+  /**
+   * The sender came back after its connection dropped. Needs the token from room_created.
+   * Receivers that stayed are re-announced to it so it can pick their transfers up again.
+   */
+  reclaimSender(peer: BeamPeer, token: string, now: number): boolean {
+    if (!this.senderAway || this.sender || !token || token !== this.senderToken) {
+      send(peer, { type: 'error', code: 'no_room', message: 'That Beam is no longer open. Start a new one.' })
+      peer.close(4004, 'no_room')
+      return false
+    }
+    this.sender = peer
+    this.senderAway = false
+    this.lastActivity = now
+    if (this.receivers.size === 0) this.emptySince = now
+    send(peer, { type: 'room_resumed', pin: this.pin, name: this.senderName })
+    for (const [id, name] of this.receiverNames) send(peer, { type: 'peer_joined', id, name })
+    for (const r of this.receivers.values()) send(r, { type: 'sender_back' })
     return true
   }
 
   /** Lets a receiver in. Returns its id, or an error code (the peer has been told and closed). */
-  addReceiver(peer: BeamPeer, now: number, name?: unknown): { id: string; name: string } | { error: 'no_room' | 'room_full' } {
-    if (!this.sender) {
+  addReceiver(peer: BeamPeer, now: number, name?: unknown, resume = false): { id: string; name: string } | { error: 'no_room' | 'room_full' | 'sender_away' } {
+    if (!this.sender && !this.senderAway) {
       send(peer, { type: 'error', code: 'no_room', message: 'No transfer is waiting on that PIN.' })
       peer.close(4004, 'no_room')
       return { error: 'no_room' }
+    }
+    if (this.senderAway && !resume) {
+      // Only a receiver coming back to a transfer it already had may wait for the sender; a new one should retry
+      send(peer, { type: 'error', code: 'sender_away', message: 'The sender lost their connection. Ask them to check it, then try again.' })
+      peer.close(4011, 'sender_away')
+      return { error: 'sender_away' }
     }
     if (this.receivers.size >= BEAM_MAX_RECEIVERS) {
       send(peer, { type: 'error', code: 'room_full', message: 'This transfer already has the maximum number of receivers.' })
@@ -124,8 +158,8 @@ export class BeamSignalRoom {
     this.receivers.set(id, peer)
     this.receiverNames.set(id, shown)
     this.lastActivity = now
-    send(peer, { type: 'joined', offer: this.offer, name: shown, sender: this.senderName })
-    send(this.sender, { type: 'peer_joined', id, name: shown })
+    send(peer, { type: 'joined', offer: this.offer, name: shown, sender: this.senderName, away: this.senderAway })
+    if (this.sender) send(this.sender, { type: 'peer_joined', id, name: shown })
     return { id, name: shown }
   }
 
@@ -192,8 +226,18 @@ export class BeamSignalRoom {
     }
   }
 
-  /** Called when a socket closes or errors. */
-  remove(peer: BeamPeer, now = Date.now()): void {
+  /**
+   * Called when a socket closes or errors. `abrupt` means the connection was lost rather than closed
+   * on purpose; the sender's room is then held for it (with its receivers) so it can reconnect.
+   */
+  remove(peer: BeamPeer, now = Date.now(), abrupt = false): void {
+    if (peer === this.sender && abrupt && this.senderToken) {
+      this.sender = null
+      this.senderAway = true
+      this.awaySince = now
+      for (const r of this.receivers.values()) send(r, { type: 'sender_away' })
+      return
+    }
     if (peer === this.sender) {
       const receivers = [...this.receivers.values()]
       this.reset()
@@ -214,6 +258,7 @@ export class BeamSignalRoom {
 
   /** When the room should next be checked for expiry, or null if it is empty. */
   deadline(): number | null {
+    if (this.senderAway) return this.awaySince + BEAM_IDLE_MS
     if (!this.sender) return null
     return (this.receivers.size > 0 ? this.lastActivity : this.emptySince) + BEAM_IDLE_MS
   }
@@ -235,6 +280,9 @@ export class BeamSignalRoom {
   private reset(): void {
     this.pin = ''
     this.sender = null
+    this.senderToken = ''
+    this.senderAway = false
+    this.awaySince = 0
     this.senderName = ''
     this.receivers.clear()
     this.receiverNames.clear()

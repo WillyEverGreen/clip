@@ -20,11 +20,13 @@ export class BeamRoom extends DurableObject<Env> {
     const role = url.searchParams.get('role')
     const pin = url.searchParams.get('pin') ?? ''
     const name = url.searchParams.get('name')
+    const token = url.searchParams.get('token')
+    const resume = url.searchParams.get('resume') === '1'
     if ((role !== 'sender' && role !== 'receiver') || !BEAM_PIN_RE.test(pin)) {
       return new Response('Bad request', { status: 400 })
     }
-    // Lets the worker pick another PIN before any socket is opened
-    if (role === 'sender' && this.room.sender) {
+    // Lets the worker pick another PIN before any socket is opened (a held room keeps its PIN too)
+    if (role === 'sender' && !token && (this.room.sender || this.room.senderAway)) {
       return new Response('PIN in use', { status: 409 })
     }
 
@@ -43,11 +45,14 @@ export class BeamRoom extends DurableObject<Env> {
     }
 
     const now = Date.now()
-    if (role === 'sender') {
+    if (role === 'sender' && token) {
+      this.room.reclaimSender(peer, token, now)
+      await this.scheduleExpiry()
+    } else if (role === 'sender') {
       this.room.addSender(peer, pin, now, name)
       await this.scheduleExpiry()
     } else {
-      this.room.addReceiver(peer, now, name)
+      this.room.addReceiver(peer, now, name, resume)
       await this.scheduleExpiry()
     }
 
@@ -55,16 +60,18 @@ export class BeamRoom extends DurableObject<Env> {
       const raw = typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data)
       this.room.handleMessage(peer, raw, Date.now())
     })
-    const drop = () => {
-      this.room.remove(peer)
-      if (!this.room.sender) this.ctx.storage.deleteAlarm().catch(() => {})
+    const drop = (abrupt: boolean) => {
+      this.room.remove(peer, Date.now(), abrupt)
+      if (!this.room.sender && !this.room.senderAway) this.ctx.storage.deleteAlarm().catch(() => {})
+      else this.scheduleExpiry().catch(() => {})
     }
-    server.addEventListener('close', () => {
-      drop()
+    // 1000 (or 1005, close() with no code) is a deliberate close (Stop sharing); anything else is a lost connection or a closed tab
+    server.addEventListener('close', (event) => {
+      drop(event.code !== 1000 && event.code !== 1005)
       // Finish the close handshake, or the client's socket never reports closed
       peer.close(1000, 'bye')
     })
-    server.addEventListener('error', drop)
+    server.addEventListener('error', () => drop(true))
 
     return new Response(null, { status: 101, webSocket: client })
   }
