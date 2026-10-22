@@ -117,6 +117,23 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       }
     }
 
+    const nowMs = Date.now()
+    if (retainedFiles.length > 0 && entry.fileExpiresAt && entry.fileExpiresAt <= nowMs) {
+      for (const f of retainedFiles) {
+        await deleteFileKV(c.env.PASTE_KV, slug, f.id)
+      }
+      await deleteFileKV(c.env.PASTE_KV, slug)
+      retainedFiles = []
+    }
+    const existingFileExpiry =
+      retainedFiles.length > 0 && entry.fileExpiresAt && entry.fileExpiresAt > nowMs
+        ? entry.fileExpiresAt
+        : undefined
+    const sharedFileExpiresAt = Math.min(
+      updated.expiresAt,
+      existingFileExpiry ?? nowMs + (FILE_TTL_SECONDS * 1000),
+    )
+
     // 3. New File Uploads
     const rawFiles = form.getAll('files')
     const rawSingle = form.getAll('file')
@@ -145,8 +162,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
         return c.json({ error: 'file_too_large' }, 400)
       }
 
-      const newFileExpiresAt = Math.min(updated.expiresAt, Date.now() + (FILE_TTL_SECONDS * 1000))
-      const fileTtl = Math.max(60, Math.ceil((newFileExpiresAt - Date.now()) / 1000))
+      const fileTtl = Math.max(60, Math.ceil((sharedFileExpiresAt - Date.now()) / 1000))
 
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i]
@@ -176,11 +192,10 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       updated.fileSize  = combinedFiles.reduce((acc, f) => acc + f.fileSize, 0)
       updated.files     = combinedFiles
       
-      const newFileExpiresAt = Math.min(updated.expiresAt, Date.now() + (FILE_TTL_SECONDS * 1000))
-      updated.fileExpiresAt = newFileExpiresAt
-      
+      updated.fileExpiresAt = sharedFileExpiresAt
+
       if (!updated.content) {
-        updated.expiresAt = newFileExpiresAt
+        updated.expiresAt = sharedFileExpiresAt
       }
     } else {
       updated.hasFile  = false
