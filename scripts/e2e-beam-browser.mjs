@@ -7,8 +7,8 @@
 //
 // Env: UI (default http://localhost:5199), CHROME (path to chrome.exe),
 //      BEAM_MB (size of the big transfer, default 200),
-//      BEAM_STRESS=1 (adds a 700 MB transfer to 2 receivers; slow on a loopback link. Kept under 1 GB because headless Chrome's
-//        private file system hit its storage quota at about 0.9 GB),
+//      BEAM_STRESS=1 (adds a 400 MB transfer to 2 receivers; slow on a loopback link. Kept under 1 GB because headless Chrome's
+//        private file system hit its storage quota at about 0.5 GB of a file, because a checkpoint briefly keeps a copy),
 //      ONLY=<text> (run only tests whose name contains it)
 //
 // The save dialog cannot be clicked in a headless browser, so the receiver's showSaveFilePicker is
@@ -998,8 +998,8 @@ await test('phone width: no sideways scrolling on the start screen, PIN screen, 
 })
 
 if (process.env.BEAM_STRESS) {
-  await test('stress: 700 MB to 2 receivers, hashes match on both', async (open) => {
-    const gig = await makeFile('beam-700mb.bin', 700)
+  await test('stress: 400 MB to 2 receivers, hashes match on both', async (open) => {
+    const gig = await makeFile('beam-400mb.bin', 400)
     const sender = await open()
     const pin = await startSending(sender.page, gig)
     const a = await joinReceiver(open, pin)

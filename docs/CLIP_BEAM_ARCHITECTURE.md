@@ -295,7 +295,9 @@ file handle, saved byte count and hash state, stays in that browser only, and ex
   come back); after a reload or closing the tab the transfer restarts from the beginning. They keep the
   2 GB limit.
 - A checkpoint closes and reopens the file, which copies what has been saved so far, so very large
-  files pay some extra disk work every 10%.
+  files pay some extra disk work every 10%, and the receiving disk needs free space for a temporary
+  copy of the part saved so far (at 50 GB saved, about 50 GB extra for a moment). If the disk is too full
+  the transfer stops with "Could not write to disk".
 - Cancelling, a sender that stops sharing, or a hash mismatch forget the record. A partly saved file
   from earlier checkpoints stays where it was saved and can be deleted by hand.
 
@@ -363,7 +365,7 @@ refused; a receiver vanishing mid-transfer; Stop sharing mid-transfer; cancellin
 damaged chunk (flipped byte) caught by the hash; 0-byte file; unicode / emoji / HTML file names; two
 independent transfers at once; Send/Receive another file; download fallback; QR link; PIN entry
 validation; wrong PIN; sender reload; decline then another receiver; sender tab closed mid-transfer;
-blocked network; phone width. `BEAM_STRESS=1` adds 700 MB to 2 receivers at once (headless Chrome's private file system, used as the save target, runs out of quota near 1 GB; real disk saves are not affected).
+blocked network; phone width. `BEAM_STRESS=1` adds 400 MB to 2 receivers at once (headless Chrome's private file system, used as the save target, allows about 1 GB and a checkpoint briefly holds a copy of the saved part, so bigger files hit its quota; real disks are not affected).
 
 `npm run test:beam` runs all three. The browser suite points the receiver's save dialog at the
 Origin Private File System (same streaming writable, readable by the test), gives each browser its
