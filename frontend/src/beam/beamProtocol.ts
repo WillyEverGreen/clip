@@ -32,21 +32,6 @@ export interface FileOffer {
   type: string
 }
 
-/** Server → client over the signalling WebSocket. */
-export type ServerMessage =
-  | { type: 'room_created'; pin: string }
-  | { type: 'joined'; offer: FileOffer | null }
-  | { type: 'peer_joined' }
-  | { type: 'peer_left'; role: 'sender' | 'receiver' }
-  | { type: 'file_offer'; offer: FileOffer }
-  | { type: 'file_accept' }
-  | { type: 'file_reject' }
-  | { type: 'signal'; data: SignalData }
-  | { type: 'transfer_complete' }
-  | { type: 'cancel' }
-  | { type: 'pong' }
-  | { type: 'error'; code: string; message: string }
-
 export interface SignalData {
   sdp?: RTCSessionDescriptionInit
   candidate?: RTCIceCandidateInit
@@ -60,7 +45,7 @@ export type ChannelMessage =
   | { t: 'verified'; ok: boolean }
   | { t: 'cancel' }
 
-export function beamWsUrl(pin?: string): string {
+export function beamWsUrl(pin: string | undefined, name: string): string {
   let base: string
   if (BASE.startsWith('http')) {
     base = BASE.replace(/^http/, 'ws')
@@ -68,38 +53,11 @@ export function beamWsUrl(pin?: string): string {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     base = `${proto}//${window.location.host}`
   }
-  return `${base}/api/beam/ws${pin ? `?pin=${pin}` : ''}`
+  const query = new URLSearchParams()
+  if (pin) query.set('pin', pin)
+  if (name) query.set('name', name)
+  const qs = query.toString()
+  return `${base}/api/beam/ws${qs ? `?${qs}` : ''}`
 }
 
-export function formatPin(pin: string): string {
-  return pin.length === 6 ? `${pin.slice(0, 3)}-${pin.slice(3)}` : pin
-}
-
-/** Pulls the six digits out of whatever was typed or pasted ("748 219", "748-219", a /beam?pin= link). */
-export function parsePin(input: string): string | null {
-  const fromLink = input.match(/[?&]pin=(\d{6})/)
-  if (fromLink) return fromLink[1]
-  const digits = input.replace(/\D/g, '')
-  return digits.length === 6 ? digits : null
-}
-
-export function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let v = bytes
-  let i = 0
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024
-    i++
-  }
-  return `${v.toFixed(i === 0 ? 0 : v < 10 ? 2 : 1)} ${units[i]}`
-}
-
-export function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds)) return '--'
-  const s = Math.max(0, Math.round(seconds))
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m}m ${s % 60}s`
-  return `${Math.floor(m / 60)}h ${m % 60}m`
-}
+export { formatPin, parsePin, formatBytes, formatDuration, formatEta } from './beamFormat'

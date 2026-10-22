@@ -4,7 +4,8 @@
 **Route:** `/beam`
 **What it is:** direct browser-to-browser file transfer over WebRTC for files too big for Clip's
 25 MB KV uploads. The file streams from the sender's disk to the receiver's disk. Clip's servers only
-introduce the two browsers to each other.
+introduce the browsers to each other. One sender can feed up to 8 receivers at once, and everyone gets
+a cute name like in Live Pad.
 
 Background and the wider tiered plan (KV, R2 "Vault", Beam) are in
 [`HYBRID_LARGE_FILE_TRANSFER_SPEC.md`](HYBRID_LARGE_FILE_TRANSFER_SPEC.md).
@@ -38,6 +39,11 @@ Sender browser            BeamRoom DO (per PIN)            Receiver browser
 
 The sender is always the WebRTC offerer and creates the channel, so there is no glare.
 
+With several receivers the sender runs the right-hand half once per receiver (a "leg"): its own
+`RTCPeerConnection`, its own pass over the file, its own progress and hash check. Legs are independent,
+so one receiver failing, leaving or being slow never affects the others. The room, and its PIN, stay
+open until the sender stops sharing, so late receivers can still join.
+
 ---
 
 ## 2. Server side
@@ -46,8 +52,9 @@ The sender is always the WebRTC offerer and creates the channel, so there is no 
 
 | Request | Meaning |
 |---|---|
-| no query | A sender opening a room. The **worker picks the PIN** (`generateBeamPin`, 6 digits, no modulo bias) and asks that PIN's `BeamRoom`. If the room already has a sender it answers 409 and the worker tries another PIN (up to 8 times, then 503). |
-| `?pin=123456` | A receiver joining. PIN must match `^\d{6}$` (else 400). Rate limited to 20 joins per 2 minutes per IP (`beam:join` in `lib/rateLimit.ts`) to slow PIN guessing (429). |
+| no `pin` | A sender opening a room. The **worker picks the PIN** (`generateBeamPin`, 6 digits, no modulo bias) and asks that PIN's `BeamRoom`. If the room already has a sender it answers 409 and the worker tries another PIN (up to 8 times, then 503). |
+| `?pin=123456` | A receiver joining. PIN must match `^\d{6}$` (else 400). Rate limited to 40 joins per 2 minutes per IP (`beam:join` in `lib/rateLimit.ts`) to slow PIN guessing (429). |
+| `name=...` (optional, either role) | Display name, see section 4. |
 | not a WebSocket upgrade | 426 |
 
 The PIN is chosen on the server rather than the client so a client cannot pick a PIN that is already
@@ -59,26 +66,35 @@ One instance per PIN (`BEAM_DO.idFromName(pin)`). It accepts the sockets and han
 `BeamSignalRoom` in `worker/src/lib/beam.ts`, which has no Cloudflare dependencies so it is unit
 tested in Node.
 
-- **State:** in memory only (sender socket, receiver socket, cleaned file offer, timestamps). Nothing
-  is written to storage except the expiry alarm.
+- **State:** in memory only (sender socket, a map of receiver sockets, names, cleaned file offer,
+  timestamps). Nothing is written to storage except the expiry alarm.
+- **Receivers:** up to 8 (`BEAM_MAX_RECEIVERS`). Each gets an id (`r1`, `r2`, ... never reused in a
+  room). The 9th gets `error {code: room_full}` and close 4009. A wrong PIN gets
+  `error {code: no_room}` and close 4004.
+- **Routing:** everything a receiver sends (`file_accept`, `file_reject`, `signal`, `cancel`) reaches
+  the sender rebuilt as `{type, from: <receiver id>, data}`, so a receiver cannot forge another's id
+  or add fields. The sender addresses a receiver with `to: <id>` on `signal` and `cancel`; `cancel`
+  with no `to` goes to everyone. `file_offer` is stored, cleaned, and sent to everyone already in; late
+  joiners get it in `joined`.
 - **Roles enforced:** each side may only send its own message types; anything else gets
   `error {code: bad_message}`.
-  - sender: `file_offer`, `signal`, `transfer_complete`, `cancel`
-  - receiver: `file_accept`, `file_reject`, `signal`, `transfer_complete`, `cancel`
+  - sender: `file_offer`, `signal`, `cancel`
+  - receiver: `file_accept`, `file_reject`, `signal`, `cancel`
   - either: `ping` (answered with `pong`, not relayed)
 - **Offer cleaning:** name has control characters and path separators replaced, capped at 255 chars;
   size must be a non-negative safe integer.
 - **Message cap:** 64 KB per message (SDP is a few KB).
-- **One receiver:** a second receiver gets `error {code: room_full}` and close 4009. Wrong PIN gets
-  `error {code: no_room}` and close 4004.
-- **Leaving:** receiver leaving tells the sender (`peer_left`) and frees the slot for another
-  receiver. Sender leaving tells and closes the receiver and frees the PIN.
-- **Expiry (alarm):** an unpaired room closes 10 minutes after it was created; a paired room closes
-  after 10 minutes without signalling traffic. Clients ping every 25 s, so a paired room lives as long
-  as both tabs are open. Expired peers get `error {code: expired}` and close 4008.
+- **Leaving:** a receiver leaving tells the sender (`peer_left {id}`) and frees its slot and name.
+  The sender leaving tells and closes every receiver and frees the PIN. The room always finishes the
+  close handshake when a client closes (without it the client's socket never reports closed; found by
+  the churn test).
+- **Expiry (alarm):** a room with no receivers closes 10 minutes after it opened or after its last
+  receiver left (pings do not extend this); a room with receivers closes after 10 minutes without
+  signalling traffic. Clients ping every 25 s, so a room with a receiver lives as long as the tabs
+  are open. Expired peers get `error {code: expired}` and close 4008.
 
-Server to client messages: `room_created {pin}`, `joined {offer}`, `peer_joined`,
-`peer_left {role}`, relayed messages, `pong`, `error {code, message}`.
+Server to client messages: `room_created {pin, name}`, `joined {offer, name, sender}`,
+`peer_joined {id, name}`, `peer_left {role, id?}`, relayed messages, `pong`, `error {code, message}`.
 
 ### `wrangler.toml`
 
@@ -102,28 +118,36 @@ free plan, which only offers SQLite-backed Durable Objects.
 ```
 frontend/src/beam/
 ├── BeamPage.tsx       /beam route: start panels, PIN share + QR, accept prompt, progress, results
-├── useBeam.ts         React wrapper owning one BeamSession at a time
-├── beamSession.ts     The transfer engine (signalling, WebRTC, sending, receiving, verification)
-├── beamProtocol.ts    Message types, tuning constants, PIN/size/time formatting, WS URL
+├── useBeam.ts         React wrapper: at most one BeamSender or BeamReceiver alive at a time
+├── beamSender.ts      Sender engine: room, one "leg" per receiver (WebRTC, streaming, hash check)
+├── beamReceiver.ts    Receiver engine: join, accept, answer, write to disk, verify
+├── beamProtocol.ts    Channel message types, tuning constants, WS URL
+├── beamFormat.ts      Pure text helpers (PIN, sizes, durations); unit tested in Node
 ├── diskWriter.ts      Where incoming bytes go (File System Access API, or download fallback)
-├── speedTracker.ts    Smoothed speed (EMA) and time remaining
+├── speedTracker.ts    Speed and time-left maths (see below)
 └── beam.css           Monochrome styles matching the rest of Clip
 ```
 
-`beamSession.ts` is a plain class rather than a hook so the hot path (chunks, acks, timers) never
-re-renders React. It publishes a `BeamState` snapshot at most every 200 ms during a transfer.
+The engines are plain classes rather than hooks so the hot path (chunks, acks, timers) never
+re-renders React. They publish a state snapshot at most every 200 ms during a transfer.
 
 ### Phases
 
-`idle → connecting → waiting → joined → peering → transferring → verifying → done` (sender)
-`idle → connecting → offered → peering → transferring → verifying → done` (receiver)
-Terminal: `done`, `rejected` (sender, receiver declined), `cancelled`, `error`.
+Receiver: `idle → connecting → offered → peering → transferring → verifying → done`.
+Terminal: `done`, `cancelled`, `error`.
 
-The page root carries `data-beam-phase` and `data-beam-role`; the browser tests key off these.
+Sender room: `idle → connecting → open → stopped` (or `error`). Each receiver leg:
+`joined → peering → transferring → verifying → done`, or `declined` / `error`.
 
-### Sending (`runSender`)
+The page root carries `data-beam-phase` (for the sender, a summary of its legs: `waiting`, `joined`,
+`peering`, `transferring`, `verifying`, `done`, `rejected`, `error`) and `data-beam-role`; each leg row
+carries `data-leg-phase`. The browser tests key off these.
 
-- Reads with `File.stream()`, so the file is never loaded whole into memory.
+### Sending (one leg per receiver)
+
+- Each leg reads the file with its own `File.stream()`, so the file is never loaded whole into memory
+  and a slow receiver cannot hold up a fast one. (The sender uploads once per receiver, so 3 receivers
+  means 3x the upload bandwidth.)
 - Message size: `min(128 KB, pc.sctp.maxMessageSize)`.
 - Two kinds of backpressure, both must allow before the next chunk goes out:
   1. DataChannel send buffer: pause above 8 MB `bufferedAmount`, resume on `bufferedamountlow` (1 MB).
@@ -131,6 +155,11 @@ The page root carries `data-beam-phase` and `data-beam-role`; the browser tests 
      piling data into the receiver's memory when its disk is slower.
 - Progress shown to the sender is bytes that have actually left the send buffer
   (`max(acked, sent - bufferedAmount)`), not bytes queued.
+- A receiver's signalling socket closing also happens when it simply finishes, and that notice can
+  arrive before its "verified" message on the data channel. A leg with an open channel therefore
+  waits 3 s for its own messages before it counts a closed socket as "lost" (same on the receiver
+  side for the sender). A cancel is sent over both the channel and the signalling socket so it lands
+  even while the connection is still being set up.
 
 ### Receiving
 
@@ -150,6 +179,22 @@ The page root carries `data-beam-phase` and `data-beam-role`; the browser tests 
 
 The service-worker streaming download (StreamSaver style) from the original plan is not built yet,
 so non-Chromium browsers are capped at 2 GB.
+
+### Speed and time left (`speedTracker.ts`)
+
+- **Speed** is measured over a sliding 3 s window of recent samples, so it follows real throughput
+  without jitter or the lag of a long average.
+- **Time left** is projected from a 6 s window, then kept as a countdown: each update first ticks the
+  previous estimate down by the time that passed, then pulls 25% toward the fresh projection. It counts
+  down smoothly and still corrects itself when the speed changes. A stalled transfer shows
+  "Calculating..." instead of a number that is no longer true.
+- Measuring starts at the **first byte**, not when the connection opens, so the idle lead-in (hash
+  set-up, buffers filling) does not make early estimates pessimistic. (An earlier version measured
+  from connection time and read 22 s with 13 s actually left at the 30% mark.)
+- Nothing is shown until 1.5 s of data has arrived.
+- On a real 200 MB tab-to-tab transfer the time left was within a median 4 to 12% of the real
+  remaining time (90th percentile 14 to 26%) from 30% onwards; the unit tests hold a steady 50 MB/s
+  transfer to within 3%.
 
 ### Integrity
 
@@ -184,25 +229,52 @@ networks) will hit the "direct connection" error. The UI shows which route was u
 
 ---
 
-## 4. What Beam stores
+## 4. Cute names
 
-Nothing. No `localStorage`/`sessionStorage`, no KV (apart from the rate-limit counter for joins), no
-R2, no Durable Object storage except the expiry alarm. The PIN lives in the room's memory and in the
-two tabs. Closing both tabs leaves nothing behind.
+Like Live Pad cursors, everyone in a Beam gets a friendly one-word name (Mochi, Biscuit, Pudding...)
+and a colour dot derived from it. The browser asks for its own name from `loadMyName()` (the same
+remembered Live Pad name, so a person is the same character in both) and sends it as `?name=`. The
+room cleans it (control characters, whitespace, 24 characters), defaults to `Sender` / `Guest` if
+missing, and makes names unique across the sender and all receivers by adding a number
+("Mochi 2"), exactly as Live Pad does. The sender sees each receiver's name on its row; each
+receiver sees its own name and the sender's ("Biscuit receiving from Mochi"). Names are display only:
+nothing is authenticated by them.
+
+## 5. What Beam stores
+
+Nothing of its own. No `sessionStorage`, no KV (apart from the rate-limit counter for joins), no R2, no
+Durable Object storage except the expiry alarm. The only `localStorage` touched is the display name
+Live Pad already keeps (`clip_live_name`), which Beam reads (and creates if missing) so you are the
+same character in both. The PIN lives in the room's memory and in the tabs. Closing every tab leaves
+nothing behind.
 
 ---
 
-## 5. Tests
+## 6. Tests
 
 | Suite | File | Runs in | Checks |
 |---|---|---|---|
-| Signalling logic | `scripts/test-beam.mjs` | `npm test` | 13: PINs, join/full/no-room, relay both ways, role enforcement, offer cleaning, size cap, leave handling, expiry |
-| Signalling route against a real worker | `scripts/e2e-beam-signal.mjs` | `npm run test:e2e` | 8: 426/400, PIN allocation, relay, wrong PIN, room full, roles, leave/close, rate limit |
-| Two real Chrome pages | `scripts/e2e-beam-browser.mjs` | `npm run test:browser` | 9: 300 MB straight to disk with progress on both ends and matching SHA-256, download fallback, QR link, wrong PIN, decline, receiver tab closed mid-transfer, sender cancel discards partial file, blocked network shows the connection error, phone width |
+| Room logic + speed/ETA maths | `scripts/test-beam.mjs` | `npm test` | 40: PINs (incl. even spread), pairing, up to 8 receivers, per-receiver routing, no id forging, offer and name cleaning, roles, size cap, leave handling, expiry clocks, a 20,000-message randomised fuzz, speed and time-left accuracy (steady, noisy, speed change, stall, finish, tiny files) |
+| Signalling route against a real worker | `scripts/e2e-beam-signal.mjs` | `npm run test:e2e` | 16: 426/400, PIN allocation, relay with ids, 8 receivers + 9th refused, no cross-talk, offer updates, roles, impersonation, leave/close, garbage frames, 40 concurrent rooms x 3 receivers, join/leave churn, cute names, rate limit |
+| Real Chrome pages | `scripts/e2e-beam-browser.mjs` | `npm run test:browser` | 21 (+1 with `BEAM_STRESS=1`): see below |
+
+Browser checks: 200 MB streamed to disk with matching SHA-256 and live speed / time-left compared with
+reality; one file to 3 receivers with a late 4th; cute names agree on both sides; 9th receiver
+refused; a receiver vanishing mid-transfer; Stop sharing mid-transfer; cancelling one receiver; a
+damaged chunk (flipped byte) caught by the hash; 0-byte file; unicode / emoji / HTML file names; two
+independent transfers at once; Send/Receive another file; download fallback; QR link; PIN entry
+validation; wrong PIN; sender reload; decline then another receiver; sender tab closed mid-transfer;
+blocked network; phone width. `BEAM_STRESS=1` adds 1 GB to 2 receivers at once.
 
 `npm run test:beam` runs all three. The browser suite points the receiver's save dialog at the
-Origin Private File System (same streaming writable, readable by the test) and launches Chrome with
-`--disable-features=WebRtcHideLocalIpsWithMdns` so two headless pages can reach each other.
+Origin Private File System (same streaming writable, readable by the test), gives each browser its
+own fake client IP (joins are rate limited per IP) and launches Chrome with
+`--disable-features=WebRtcHideLocalIpsWithMdns` so headless pages can reach each other.
+
+Bugs these tests found and that are fixed: the room never finished the close handshake when a client
+closed (sockets lingered); a receiver finishing could be marked failed on the sender because its
+socket-closed notice overtook its "verified" message; a cancel could be reported as "disconnected";
+time left was pessimistic early because it counted the idle lead-in.
 
 **Measured locally:** 300 MB tab to tab at ~8.8 MB/s written to disk (10.9 MB/s without disk writes).
 A bare DataChannel loopback benchmark on the same machine also tops out at ~10 MB/s, so that is the
@@ -210,13 +282,15 @@ local WebRTC ceiling, not Beam overhead. Real LAN numbers between two machines a
 
 ---
 
-## 6. Status and what is left
+## 7. Status and what is left
 
 Done:
 - `BeamRoom` DO, `/api/beam/ws`, `v2` migration, PIN allocation, join rate limit, expiry alarm
+- One sender to up to 8 receivers at once, with cute names (shared with Live Pad)
 - `/beam` page: send, receive, PIN + copy + QR, accept/decline, progress, speed, ETA, route badge,
   cancel, results, all error states above, phone layout, links from the home page, about page and the
   25 MB upload error
+- Live speed and an accurate time-left countdown, per receiver
 - Streaming send with two-level backpressure, disk-streaming receive, download fallback (≤2 GB)
 - SHA-256 verification on both ends
 - Unit, worker e2e and two-browser e2e tests
@@ -229,6 +303,8 @@ Left:
 - **TURN fallback** for the symmetric-NAT case (Cloudflare Calls TURN or similar; has a cost).
 - **Service-worker streaming download** so Firefox/Safari can receive more than 2 GB.
 - **Multiple files** in one Beam (queue over the same channel, or zip on the fly).
+- **Send once, relay to many:** each receiver currently costs the sender one full upload; receivers
+  that already have the file could pass it on.
 - **Hashing in a Web Worker**: SHA-256 runs on the main thread; fine at today's speeds, worth moving
   for multi-gigabit links.
 - **Resume** after a dropped connection (needs ranges plus a way to reopen the partial file).

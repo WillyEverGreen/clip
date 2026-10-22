@@ -591,9 +591,10 @@ app.get('/api/beam/ws', async (c) => {
   if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
     return c.json({ error: 'expected_websocket' }, 426)
   }
+  const name = c.req.query('name') ?? ''
   const roomRequest = (pin: string, role: 'sender' | 'receiver') =>
     c.env.BEAM_DO.get(c.env.BEAM_DO.idFromName(pin)).fetch(
-      new Request(`https://beam-do/ws?role=${role}&pin=${pin}`, { headers: c.req.raw.headers }),
+      new Request(`https://beam-do/ws?role=${role}&pin=${pin}&name=${encodeURIComponent(name.slice(0, 100))}`, { headers: c.req.raw.headers }),
     )
 
   const pin = c.req.query('pin')

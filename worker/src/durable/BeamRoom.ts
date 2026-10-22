@@ -19,6 +19,7 @@ export class BeamRoom extends DurableObject<Env> {
     const url = new URL(request.url)
     const role = url.searchParams.get('role')
     const pin = url.searchParams.get('pin') ?? ''
+    const name = url.searchParams.get('name')
     if ((role !== 'sender' && role !== 'receiver') || !BEAM_PIN_RE.test(pin)) {
       return new Response('Bad request', { status: 400 })
     }
@@ -43,10 +44,11 @@ export class BeamRoom extends DurableObject<Env> {
 
     const now = Date.now()
     if (role === 'sender') {
-      this.room.addSender(peer, pin, now)
+      this.room.addSender(peer, pin, now, name)
       await this.scheduleExpiry()
     } else {
-      this.room.addReceiver(peer, now)
+      this.room.addReceiver(peer, now, name)
+      await this.scheduleExpiry()
     }
 
     server.addEventListener('message', (event) => {
@@ -57,7 +59,11 @@ export class BeamRoom extends DurableObject<Env> {
       this.room.remove(peer)
       if (!this.room.sender) this.ctx.storage.deleteAlarm().catch(() => {})
     }
-    server.addEventListener('close', drop)
+    server.addEventListener('close', () => {
+      drop()
+      // Finish the close handshake, or the client's socket never reports closed
+      peer.close(1000, 'bye')
+    })
     server.addEventListener('error', drop)
 
     return new Response(null, { status: 101, webSocket: client })

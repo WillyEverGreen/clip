@@ -7,8 +7,10 @@ This document serves as a permanent reference archive of all architectural updat
 ## 🗓️ October 2026: Clip Beam (peer-to-peer file transfer)
 
 * **New `/beam` page:** send a file of any size straight to another browser. The sender gets a 6-digit PIN (and QR code); the receiver enters it, accepts, picks where to save, and the file streams disk to disk over an RTCDataChannel.
-* **Worker:** `GET /api/beam/ws` plus a new `BeamRoom` Durable Object (migration `v2`, `new_sqlite_classes`) that only relays the file offer, SDP and ICE between two browsers. Server-picked PINs, one receiver per room, role-checked messages, 20 joins / 2 min / IP, 10-minute idle expiry. `ClipRoom` is untouched.
+* **Worker:** `GET /api/beam/ws` plus a new `BeamRoom` Durable Object (migration `v2`, `new_sqlite_classes`) that only relays the file offer, SDP and ICE between browsers. Server-picked PINs, up to 8 receivers per room, role-checked messages with server-set sender ids, 40 joins / 2 min / IP, 10-minute idle expiry. `ClipRoom` is untouched.
 * **Transfer:** `File.stream()` sender with DataChannel backpressure plus a 32 MB receiver ack window; receiver writes through the File System Access API (download fallback up to 2 GB elsewhere); SHA-256 (hash-wasm) on both ends, partial files discarded on mismatch, cancel or disconnect.
+* **Many receivers, cute names:** one sender can send to up to 8 receivers at once (own connection, progress and hash check each); everyone gets a Live Pad style name and colour dot.
+* **Live speed and time left:** sliding-window speed and a self-correcting countdown that starts at the first byte (median error 4 to 12% on a real 200 MB transfer).
 * **Tests:** `scripts/test-beam.mjs` (in `npm test`), `scripts/e2e-beam-signal.mjs` (in `test:e2e`), `scripts/e2e-beam-browser.mjs` (in `test:browser`); `npm run test:beam` runs all three.
 * **Docs:** [`docs/CLIP_BEAM_ARCHITECTURE.md`](CLIP_BEAM_ARCHITECTURE.md).
 

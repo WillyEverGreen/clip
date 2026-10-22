@@ -1,18 +1,38 @@
 import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ArrowDownToLine, Check, Copy, File as FileIcon, QrCode, Radio, RotateCcw, Send, ShieldCheck, TriangleAlert, Upload, X } from 'lucide-react'
+import { ArrowDownToLine, Check, Copy, File as FileIcon, QrCode, Radio, RotateCcw, Send, ShieldCheck, TriangleAlert, Upload, Users, X } from 'lucide-react'
 import Logo from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
+import { colorForId } from '../lib/cuteNames'
 import { copyToClipboard } from '../lib/clipboard'
 import { useBeam } from './useBeam'
 import { canStreamToDisk, MEMORY_LIMIT } from './diskWriter'
-import { formatBytes, formatDuration, formatPin, parsePin } from './beamProtocol'
-import type { BeamState } from './beamSession'
+import { formatBytes, formatDuration, formatEta, formatPin, parsePin } from './beamProtocol'
+import type { SenderLeg, SenderState } from './beamSender'
+import type { ReceiverState } from './beamReceiver'
 import './beam.css'
 
 const QRCodeSVG = lazy(() =>
   import('qrcode.react').then(m => ({ default: m.QRCodeSVG }))
 )
+
+/** One word for the whole page that tests and styles can key off. */
+function summarisePhase(role: 'sender' | 'receiver' | null, sender: SenderState, receiver: ReceiverState): string {
+  if (role === 'receiver') return receiver.phase
+  if (role !== 'sender') return 'idle'
+  if (sender.phase === 'error' || sender.phase === 'connecting') return sender.phase
+  const legs = sender.legs
+  if (legs.length === 0) return sender.phase === 'open' ? 'waiting' : sender.phase
+  const has = (p: SenderLeg['phase']) => legs.some(l => l.phase === p)
+  if (has('transferring')) return 'transferring'
+  if (has('verifying')) return 'verifying'
+  if (has('peering')) return 'peering'
+  if (has('joined')) return 'joined'
+  if (legs.every(l => l.phase === 'done')) return 'done'
+  if (legs.every(l => l.phase === 'declined')) return 'rejected'
+  if (has('error')) return 'error'
+  return sender.phase
+}
 
 export default function BeamPage() {
   useSeo({
@@ -21,7 +41,8 @@ export default function BeamPage() {
     canonicalUrl: 'https://clip.foo.ng/beam',
   })
 
-  const { state, send, join, accept, decline, cancel, reset } = useBeam()
+  const beam = useBeam()
+  const { role, sender, receiver } = beam
   const [searchParams, setSearchParams] = useSearchParams()
   const autoJoined = useRef(false)
 
@@ -31,13 +52,15 @@ export default function BeamPage() {
     const pin = parsePin(searchParams.get('pin') ?? '')
     if (pin) {
       autoJoined.current = true
-      join(pin)
+      beam.join(pin)
       setSearchParams({}, { replace: true })
     }
-  }, [searchParams, join, setSearchParams])
+  }, [searchParams, beam, setSearchParams])
 
   // Closing the tab kills the transfer, so ask first
-  const busy = state.phase === 'transferring' || state.phase === 'verifying' || state.phase === 'peering'
+  const busy = role === 'sender'
+    ? sender.legs.some(l => l.phase === 'peering' || l.phase === 'transferring' || l.phase === 'verifying')
+    : role === 'receiver' && ['transferring', 'verifying', 'peering'].includes(receiver.phase)
   useEffect(() => {
     if (!busy) return
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -49,7 +72,7 @@ export default function BeamPage() {
   }, [busy])
 
   return (
-    <div className="beam-page" data-beam-phase={state.phase} data-beam-role={state.role ?? ''}>
+    <div className="beam-page" data-beam-phase={summarisePhase(role, sender, receiver)} data-beam-role={role ?? ''}>
       <nav className="beam-nav">
         <Logo size="sm" />
         <span className="beam-nav-tag">Beam</span>
@@ -62,16 +85,19 @@ export default function BeamPage() {
           <p>Send big files straight from one browser to another. Nothing is uploaded: the file streams over an encrypted peer-to-peer connection while both tabs stay open.</p>
         </header>
 
-        {state.phase === 'idle' ? (
-          <StartPanels onSend={send} onJoin={join} />
+        {role === null ? (
+          <StartPanels onSend={beam.send} onJoin={beam.join} />
         ) : (
           <section className="beam-card" aria-live="polite">
-            <TransferPanel state={state} onAccept={accept} onDecline={decline} onCancel={cancel} onReset={reset} />
+            {role === 'sender'
+              ? <SenderPanel state={sender} onStop={beam.stopSharing} onCancelLeg={beam.cancelLeg} onReset={beam.reset} />
+              : <ReceiverPanel state={receiver} onAccept={beam.accept} onDecline={beam.decline} onCancel={beam.cancelReceive} onReset={beam.reset} />}
           </section>
         )}
 
         <ul className="beam-facts">
           <li><Radio size={13} /> Peer to peer, no size cap in Chrome and Edge</li>
+          <li><Users size={13} /> Up to 8 receivers per file</li>
           <li><ShieldCheck size={13} /> DTLS encrypted, SHA-256 checked</li>
           <li><X size={13} /> Nothing stored on Clip servers</li>
         </ul>
@@ -159,19 +185,17 @@ function StartPanels({ onSend, onJoin }: { onSend: (f: File) => void; onJoin: (p
   )
 }
 
-// ── Everything after the first click ────────────────────────────────────────
+// ── Sender ──────────────────────────────────────────────────────────────────
 
-interface PanelProps {
-  state: BeamState
-  onAccept: () => void
-  onDecline: () => void
-  onCancel: () => void
+interface SenderPanelProps {
+  state: SenderState
+  onStop: () => void
+  onCancelLeg: (id: string) => void
   onReset: () => void
 }
 
-function TransferPanel({ state, onAccept, onDecline, onCancel, onReset }: PanelProps) {
-  const { phase, role, offer } = state
-  const sending = role === 'sender'
+function SenderPanel({ state, onStop, onCancelLeg, onReset }: SenderPanelProps) {
+  const { phase, offer, legs } = state
 
   if (phase === 'error') {
     return (
@@ -185,35 +209,8 @@ function TransferPanel({ state, onAccept, onDecline, onCancel, onReset }: PanelP
     )
   }
 
-  if (phase === 'cancelled' || phase === 'rejected') {
-    return (
-      <div className="beam-result">
-        <X size={32} />
-        <h2>{phase === 'rejected' ? 'The receiver declined the file' : 'Transfer cancelled'}</h2>
-        <button type="button" className="btn btn-primary" onClick={onReset}><RotateCcw size={16} /> Start over</button>
-      </div>
-    )
-  }
-
-  if (phase === 'done' && offer && state.result) {
-    const r = state.result
-    return (
-      <div className="beam-result is-done">
-        <Check size={32} />
-        <h2>{sending ? 'File sent' : 'File received'}</h2>
-        <p className="beam-file-line"><FileIcon size={15} /> {offer.name} · {formatBytes(offer.size)}</p>
-        <p className="beam-muted"><ShieldCheck size={14} /> SHA-256 verified on both ends</p>
-        <p className="beam-muted">
-          {formatDuration(r.seconds)} at {formatBytes(r.avgSpeed)}/s average
-          {r.savedAs === 'download' && ' · saved to your downloads'}
-        </p>
-        <code className="beam-hash" title="SHA-256">{r.sha256}</code>
-        <button type="button" className="btn btn-primary" onClick={onReset}>
-          <RotateCcw size={16} /> {sending ? 'Send another file' : 'Receive another file'}
-        </button>
-      </div>
-    )
-  }
+  const open = phase === 'open'
+  const done = legs.filter(l => l.phase === 'done').length
 
   return (
     <div className="beam-active">
@@ -227,53 +224,86 @@ function TransferPanel({ state, onAccept, onDecline, onCancel, onReset }: PanelP
         </div>
       )}
 
-      {sending && (phase === 'waiting' || phase === 'joined') && state.pin && <PinShare pin={state.pin} />}
-
-      {phase === 'offered' && offer && (
-        <div className="beam-offer">
-          <p>The sender wants to give you this file.</p>
-          {!canStreamToDisk() && offer.size > MEMORY_LIMIT ? (
-            <p className="error-msg">This browser can only receive files up to {formatBytes(MEMORY_LIMIT)}. Open this page in Chrome or Edge to receive it.</p>
-          ) : (
-            <p className="beam-muted">
-              {canStreamToDisk() ? 'You will choose where to save it, then it streams straight to disk.' : 'It will be saved to your downloads when it finishes.'}
-            </p>
-          )}
-          <div className="beam-actions">
-            <button type="button" className="btn btn-primary" onClick={onAccept}><ArrowDownToLine size={16} /> Accept and save</button>
-            <button type="button" className="btn btn-ghost" onClick={onDecline}>Decline</button>
-          </div>
-        </div>
+      {state.myName && phase !== 'connecting' && (
+        <p className="beam-who">Sharing as <Person name={state.myName} you /></p>
       )}
 
-      {(phase === 'transferring' || phase === 'verifying') && offer && <Progress state={state} />}
-
-      {phase !== 'offered' && <p className="beam-status"><span className="beam-dot" /> {statusText(state)}</p>}
-
-      {phase !== 'offered' && (
-        <div className="beam-actions">
-          <button type="button" className="btn btn-danger" onClick={onCancel}><X size={16} /> Cancel</button>
-        </div>
+      {open && state.pin && <PinShare pin={state.pin} count={legs.length} />}
+      {phase === 'connecting' && <p className="beam-status"><span className="beam-dot" /> Opening a Beam room...</p>}
+      {phase === 'stopped' && (
+        <p className="beam-muted" role="status">
+          {state.error ?? 'Sharing stopped.'} {done > 0 && `${done} ${done === 1 ? 'receiver' : 'receivers'} got the file.`}
+        </p>
       )}
-      {(phase === 'transferring' || phase === 'peering') && <p className="beam-hint">Keep this tab open until the transfer finishes.</p>}
+
+      {legs.length > 0 && (
+        <ul className="beam-legs" aria-label="Receivers">
+          {legs.map(leg => <LegRow key={leg.id} leg={leg} size={offer?.size ?? 0} onCancel={() => onCancelLeg(leg.id)} />)}
+        </ul>
+      )}
+
+      {open && legs.length === 0 && <p className="beam-status"><span className="beam-dot" /> Waiting for a receiver to enter the PIN...</p>}
+
+      <div className="beam-actions">
+        {open
+          ? <button type="button" className="btn btn-danger" onClick={onStop}><X size={16} /> Stop sharing</button>
+          : <button type="button" className="btn btn-primary" onClick={onReset}><RotateCcw size={16} /> Send another file</button>}
+      </div>
+      {open && legs.some(l => l.phase === 'transferring' || l.phase === 'peering') && (
+        <p className="beam-hint">Keep this tab open until every transfer finishes.</p>
+      )}
     </div>
   )
 }
 
-function statusText({ phase, role }: BeamState): string {
-  const sending = role === 'sender'
-  switch (phase) {
-    case 'connecting': return sending ? 'Opening a Beam room...' : 'Looking for the sender...'
-    case 'waiting': return 'Waiting for the receiver to enter the PIN...'
-    case 'joined': return 'Receiver connected. Waiting for them to accept...'
+/** A person's cute name with their colour dot, the same pairing Live Pad uses for cursors. */
+function Person({ name, you }: { name: string; you?: boolean }) {
+  return (
+    <span className="beam-person" data-person={name}>
+      <span className="beam-person-dot" style={{ background: colorForId(name) }} aria-hidden="true" />
+      <span className="beam-person-name">{name}</span>
+      {you && <span className="beam-person-you">you</span>}
+    </span>
+  )
+}
+
+function legStatus(leg: SenderLeg): string {
+  switch (leg.phase) {
+    case 'joined': return 'Looking at the file...'
     case 'peering': return 'Opening a direct connection...'
-    case 'transferring': return sending ? 'Sending...' : 'Receiving...'
-    case 'verifying': return sending ? 'Waiting for the receiver to check the file...' : 'Finishing and checking the file...'
-    default: return ''
+    case 'transferring': return 'Sending'
+    case 'verifying': return 'Receiver is checking the file...'
+    case 'done': return 'Received and verified'
+    case 'declined': return 'Declined or left'
+    case 'error': return leg.error ?? 'Failed'
   }
 }
 
-function PinShare({ pin }: { pin: string }) {
+function LegRow({ leg, size, onCancel }: { leg: SenderLeg; size: number; onCancel: () => void }) {
+  const live = leg.phase === 'transferring' || leg.phase === 'verifying'
+  const finished = leg.phase === 'done' || leg.phase === 'declined' || leg.phase === 'error'
+  return (
+    <li className={`beam-leg is-${leg.phase}`} data-leg-phase={leg.phase} data-leg-id={leg.id}>
+      <div className="beam-leg-head">
+        <span className="beam-leg-name"><Person name={leg.name} /></span>
+        <span className="beam-leg-status">{legStatus(leg)}</span>
+        {!finished && (
+          <button type="button" className="beam-leg-cancel" onClick={onCancel} aria-label={`Cancel transfer to ${leg.name}`}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      {live && <Progress bytes={leg.bytes} total={size} speed={leg.speed} eta={leg.eta} verifying={leg.phase === 'verifying'} route={leg.route} />}
+      {leg.phase === 'done' && leg.result && (
+        <div className="beam-muted beam-leg-done">
+          <ShieldCheck size={14} /> Verified · {formatDuration(leg.result.seconds)} at {formatBytes(leg.result.avgSpeed)}/s average
+        </div>
+      )}
+    </li>
+  )
+}
+
+function PinShare({ pin, count }: { pin: string; count: number }) {
   const [copied, setCopied] = useState<'pin' | 'link' | null>(null)
   const [showQr, setShowQr] = useState(false)
   const link = `${window.location.origin}/beam?pin=${pin}`
@@ -285,7 +315,7 @@ function PinShare({ pin }: { pin: string }) {
   }
   return (
     <div className="beam-pin-share">
-      <span className="label">Share this PIN with the receiver</span>
+      <span className="label">Share this PIN with up to 8 receivers</span>
       <div className="beam-pin" data-testid="beam-pin" aria-label={`PIN ${pin.split('').join(' ')}`}>{formatPin(pin)}</div>
       <div className="beam-actions">
         <button type="button" className="btn btn-ghost" onClick={() => copy('pin')}>
@@ -305,14 +335,135 @@ function PinShare({ pin }: { pin: string }) {
           </Suspense>
         </div>
       )}
-      <p className="beam-hint">The PIN works once and expires after 10 minutes without a receiver.</p>
+      <p className="beam-hint">
+        {count === 0
+          ? 'The PIN expires after 10 minutes without a receiver. It stays valid while you keep sharing.'
+          : `${count} ${count === 1 ? 'receiver has' : 'receivers have'} joined. The PIN stays valid until you stop sharing.`}
+      </p>
     </div>
   )
 }
 
-function Progress({ state }: { state: BeamState }) {
-  const total = state.offer?.size ?? 0
-  const pct = total > 0 ? Math.min(100, (state.bytes / total) * 100) : 100
+// ── Receiver ────────────────────────────────────────────────────────────────
+
+interface ReceiverPanelProps {
+  state: ReceiverState
+  onAccept: () => void
+  onDecline: () => void
+  onCancel: () => void
+  onReset: () => void
+}
+
+function ReceiverPanel({ state, onAccept, onDecline, onCancel, onReset }: ReceiverPanelProps) {
+  const { phase, offer } = state
+
+  if (phase === 'error') {
+    return (
+      <div className="beam-result is-error" role="alert">
+        <TriangleAlert size={32} />
+        <h2>Transfer failed</h2>
+        <p className="beam-error-text">{state.error}</p>
+        {offer && <p className="beam-muted">{offer.name} · {formatBytes(offer.size)}</p>}
+        <button type="button" className="btn btn-primary" onClick={onReset}><RotateCcw size={16} /> Start over</button>
+      </div>
+    )
+  }
+
+  if (phase === 'cancelled') {
+    return (
+      <div className="beam-result">
+        <X size={32} />
+        <h2>Transfer cancelled</h2>
+        <button type="button" className="btn btn-primary" onClick={onReset}><RotateCcw size={16} /> Start over</button>
+      </div>
+    )
+  }
+
+  if (phase === 'done' && offer && state.result) {
+    const r = state.result
+    return (
+      <div className="beam-result is-done">
+        <Check size={32} />
+        <h2>File received</h2>
+        <p className="beam-file-line"><FileIcon size={15} /> {offer.name} · {formatBytes(offer.size)}</p>
+        <p className="beam-muted"><ShieldCheck size={14} /> SHA-256 verified on both ends</p>
+        <p className="beam-muted">
+          {formatDuration(r.seconds)} at {formatBytes(r.avgSpeed)}/s average
+          {r.savedAs === 'download' && ' · saved to your downloads'}
+        </p>
+        <code className="beam-hash" title="SHA-256">{r.sha256}</code>
+        <button type="button" className="btn btn-primary" onClick={onReset}><RotateCcw size={16} /> Receive another file</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="beam-active">
+      {offer && (
+        <div className="beam-file">
+          <FileIcon size={22} />
+          <div>
+            <div className="beam-file-name">{offer.name}</div>
+            <div className="beam-muted">{formatBytes(offer.size)}{offer.type ? ` · ${offer.type}` : ''}</div>
+          </div>
+        </div>
+      )}
+
+      {state.myName && state.senderName && (
+        <p className="beam-who"><Person name={state.myName} you /> receiving from <Person name={state.senderName} /></p>
+      )}
+
+      {phase === 'offered' && offer && (
+        <div className="beam-offer">
+          <p>{state.senderName || 'The sender'} wants to give you this file.</p>
+          {!canStreamToDisk() && offer.size > MEMORY_LIMIT ? (
+            <p className="error-msg">This browser can only receive files up to {formatBytes(MEMORY_LIMIT)}. Open this page in Chrome or Edge to receive it.</p>
+          ) : (
+            <p className="beam-muted">
+              {canStreamToDisk() ? 'You will choose where to save it, then it streams straight to disk.' : 'It will be saved to your downloads when it finishes.'}
+            </p>
+          )}
+          <div className="beam-actions">
+            <button type="button" className="btn btn-primary" onClick={onAccept}><ArrowDownToLine size={16} /> Accept and save</button>
+            <button type="button" className="btn btn-ghost" onClick={onDecline}>Decline</button>
+          </div>
+        </div>
+      )}
+
+      {(phase === 'transferring' || phase === 'verifying') && offer && (
+        <Progress bytes={state.bytes} total={offer.size} speed={state.speed} eta={state.eta} verifying={phase === 'verifying'} route={state.route} />
+      )}
+
+      {phase !== 'offered' && (
+        <p className="beam-status"><span className="beam-dot" /> {receiverStatus(phase)}</p>
+      )}
+
+      {phase !== 'offered' && (
+        <div className="beam-actions">
+          <button type="button" className="btn btn-danger" onClick={onCancel}><X size={16} /> Cancel</button>
+        </div>
+      )}
+      {(phase === 'transferring' || phase === 'peering') && <p className="beam-hint">Keep this tab open until the transfer finishes.</p>}
+    </div>
+  )
+}
+
+function receiverStatus(phase: ReceiverState['phase']): string {
+  switch (phase) {
+    case 'connecting': return 'Looking for the sender...'
+    case 'peering': return 'Opening a direct connection...'
+    case 'transferring': return 'Receiving...'
+    case 'verifying': return 'Saving the file and checking it...'
+    default: return ''
+  }
+}
+
+// ── Shared progress readout ─────────────────────────────────────────────────
+
+function Progress({ bytes, total, speed, eta, verifying, route }: {
+  bytes: number; total: number; speed: number; eta: number; verifying: boolean; route: string | null
+}) {
+  const pct = total > 0 ? Math.min(100, (bytes / total) * 100) : 100
   return (
     <div className="beam-progress">
       <div
@@ -327,13 +478,13 @@ function Progress({ state }: { state: BeamState }) {
       </div>
       <div className="beam-stats">
         <span className="beam-pct">{pct.toFixed(pct < 10 ? 1 : 0)}%</span>
-        <span>{formatBytes(state.bytes)} of {formatBytes(total)}</span>
+        <span>{formatBytes(bytes)} of {formatBytes(total)}</span>
       </div>
       <div className="beam-stats beam-muted">
-        <span>{state.speed > 0 ? `${formatBytes(state.speed)}/s` : 'Measuring speed...'}</span>
-        <span>{state.phase === 'verifying' ? 'Checking...' : `${formatDuration(state.eta)} left`}</span>
+        <span data-testid="beam-speed" data-bytes-per-sec={Math.round(speed)}>{speed > 0 ? `${formatBytes(speed)}/s` : 'Measuring speed...'}</span>
+        <span data-testid="beam-eta" data-seconds={Number.isFinite(eta) ? eta.toFixed(1) : ''}>{verifying ? 'Checking...' : formatEta(eta)}</span>
       </div>
-      {state.route && <div className="beam-route">{state.route}</div>}
+      {route && <div className="beam-route">{route}</div>}
     </div>
   )
 }
