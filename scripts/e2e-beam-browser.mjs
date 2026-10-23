@@ -778,7 +778,7 @@ await test('the QR code link joins straight away, shows the sender, and removes 
   const sender = await open()
   const pin = await startSending(sender.page, small)
   // the QR code is shown by default; the button only toggles it
-  if (!(await sender.page.locator('.beam-qr svg').count())) await sender.page.getByRole('button', { name: /QR code/ }).click()
+  if (!(await sender.page.locator('.beam-qr').count())) await sender.page.getByRole('button', { name: /QR code/ }).click()
   await sender.page.locator('.beam-qr svg').waitFor()
   const receiver = await open(SAVE_TO_OPFS)
   await receiver.page.goto(`${UI}/beam?pin=${pin}`)
