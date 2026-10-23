@@ -6,8 +6,9 @@ What is already in the code, what only you can do, and what to expect. Nothing h
 
 - Each public page has its own title, description, canonical, Open Graph and Twitter tags: `/`, `/about`, `/live`, `/beam`.
 - `/about`, `/live` and `/beam` are pre-rendered at build time (`scripts/generate-seo-pages.mjs`), so crawlers get real HTML and text before any JavaScript runs.
-- `/beam` has its own visible "How it works" and FAQ section. The FAQ text lives in `frontend/src/beam/beamFaq.json` and feeds the page, the pre-rendered HTML and the FAQ structured data, so they always match.
-- Structured data: `WebSite` everywhere, `WebApplication` + `FAQPage` on the home page, `WebApplication` + `FAQPage` + `BreadcrumbList` on `/beam`.
+- The `/about` landing page carries the full FAQ (general questions plus six about Clip Beam). The text lives in `frontend/src/lib/faq.json` and feeds the page, the pre-rendered HTML and the FAQ structured data, so they always match. `/beam` stays a clean tool page.
+- Structured data: `WebSite` everywhere, `WebApplication` on the home page, `WebApplication` + `BreadcrumbList` on `/beam`, `FAQPage` on `/about` only (markup must match visible text, and FAQ rich results are limited to government and health sites anyway).
+- The crawler text inside the page shell is visually hidden so it never flashes before the app loads; visitors without JavaScript still see it.
 - Private and temporary pages are kept out of results: view pages (`/:slug`), edit pages, the not-found page get `noindex`. Live Pad rooms all point their canonical at `/live`. `robots.txt` blocks `/api`, `/admin`, `/r`, `/f`, `/z`.
 - `sitemap.xml`, `llms.txt`, IndexNow key file.
 - Claims are accurate: Beam does not say "any size" any more (Chrome and Edge stream to disk, Firefox and Safari about 2 GB, both people online). Wrong claims in structured data can get rich results removed.
