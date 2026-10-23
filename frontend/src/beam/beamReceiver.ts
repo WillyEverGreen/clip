@@ -24,7 +24,7 @@ import {
   beamWsUrl, type ChannelMessage, type SignalData,
 } from './beamProtocol'
 import {
-  canPickFolder, createDiskWriter, createFolderWriter, createMemoryWriter, hasWritePermission, pickFolder,
+  canPickFolder, createDiskWriter, createFolderWriter, createMemoryWriter, discardToken, hasWritePermission, pickFolder,
   reopenWriter, ResumeUnavailableError, UnsupportedSizeError,
   type DiskWriter, type ResumeToken,
 } from './diskWriter'
@@ -829,7 +829,8 @@ export class BeamReceiver {
     x.gen += 1
     const writer = x.writer
     x.writer = null
-    if (writer) writer.abort().catch(() => undefined)
+    if (writer) writer.discard().catch(() => undefined)
+    else void discardToken(x.token)
     void deleteRecord(x.rk)
     if (this.x === x) this.x = null
     this.stopTick()
@@ -915,7 +916,8 @@ export class BeamReceiver {
       x.gen += 1
       const writer = x.writer
       x.writer = null
-      if (writer) writer.abort().catch(() => undefined)
+      if (writer) writer.discard().catch(() => undefined)
+      else void discardToken(x.token)
       void deleteRecord(x.rk)
       this.x = null
       this.addHistory({ f: x.f, name: x.name, size: x.size, status: 'cancelled', error: reason })

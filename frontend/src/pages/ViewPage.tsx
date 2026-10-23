@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, Edit3, Download, Eye, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap, Paperclip } from 'lucide-react'
+import { ArrowLeft, Copy, Check, Edit3, Download, Eye, FileText, Image as ImageIcon, FileArchive, Film, Music, File as FileIcon, LayoutList, LayoutGrid, Grid, HardDrive, Terminal, X, QrCode, Lock, Unlock, Upload, Monitor, Sparkles, Folder, RefreshCw, AlertCircle, Clock, Zap } from 'lucide-react'
 import { getEntry, getLiveState, updateEntryWithProgress, fileUrl, rawUrl, zipUrl, formatBytes, formatLocalDate, setLiveSecurity, seedLiveRoom, uploadLiveFile, type PublicEntry, type FileItem } from '../lib/api'
 import { isEncrypted, decryptContent, computeAuthHash, generateSalt, isEncryptedFileBuffer, decryptFileBuffer, encryptFile } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'

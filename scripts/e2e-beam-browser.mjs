@@ -1043,8 +1043,14 @@ await test('Reconnect: the receiver loses its connection mid-file, reconnects by
   await dropNetwork(receiver.page)
   await waitPhase(receiver.page, 'interrupted', 20_000)
   const card = receiver.page.getByTestId('beam-interrupted')
-  const text = await card.innerText()
-  const m = text.match(/\(([\d.]+)%\) is saved/)
+  // the saved part is written a moment after the card appears: wait for it rather than reading once
+  let text = await card.innerText()
+  let m = text.match(/\(([\d.]+)%\) is saved/)
+  for (let i = 0; i < 40 && !m; i++) {
+    await sleep(250)
+    text = await card.innerText()
+    m = text.match(/\(([\d.]+)%\) is saved/)
+  }
   if (!m || Number(m[1]) < 25) throw new Error(`interrupted card does not show the saved part: ${text}`)
   await receiver.page.getByRole('button', { name: 'Reconnect' }).waitFor()
   await receiver.page.getByTestId('beam-reconnect-status').getByText(/Reconnecting automatically|Trying to reconnect/).waitFor()

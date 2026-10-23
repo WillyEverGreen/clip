@@ -23,6 +23,8 @@ export interface DiskWriter {
   close(): Promise<void>
   /** Throws away whatever was written. */
   abort(): Promise<void>
+  /** Throws away everything, including data already committed by an earlier checkpoint (the transfer is over for good). */
+  discard(): Promise<void>
   /** Commits what has been written so far and lets go of the file, so it can be reopened and continued. */
   suspend(): Promise<ResumeToken>
 }
@@ -50,12 +52,36 @@ export class UnsupportedSizeError extends Error {}
 /** The partial file cannot be continued (moved, changed, or permission refused). */
 export class ResumeUnavailableError extends Error {}
 
+/** Removes a partly saved file the person chose (or at least empties it where the browser cannot remove it). */
+async function clearHandle(handle: FileSystemFileHandle): Promise<void> {
+  try {
+    const removable = handle as FileSystemFileHandle & { remove?: () => Promise<void> }
+    if (typeof removable.remove === 'function') {
+      await removable.remove()
+      return
+    }
+    const w = await handle.createWritable()
+    await w.truncate(0)
+    await w.close()
+  } catch { /* nothing more can be done: the file stays as it was */ }
+}
+
+/** The transfer is over for good: delete what an earlier checkpoint saved. */
+export async function discardToken(token: ResumeToken | null): Promise<void> {
+  if (token?.kind === 'disk') await clearHandle(token.handle)
+  else if (token?.kind === 'download') token.parts.length = 0
+}
+
 function diskWriter(handle: FileSystemFileHandle, writable: FileSystemWritableFileStream): DiskWriter {
   return {
     kind: 'disk',
     write: (data) => writable.write(data),
     close: () => writable.close(),
     abort: () => writable.abort().catch(() => undefined),
+    discard: async () => {
+      await writable.abort().catch(() => undefined)
+      await clearHandle(handle)
+    },
     suspend: async () => {
       await writable.close() // commits everything written so far to the real file
       return { kind: 'disk', handle }
@@ -82,6 +108,9 @@ function memoryWriter(name: string, type: string, parts: Blob[]): DiskWriter {
       setTimeout(() => URL.revokeObjectURL(url), 60_000)
     },
     abort: async () => {
+      parts.length = 0
+    },
+    discard: async () => {
       parts.length = 0
     },
     suspend: async () => ({ kind: 'download', parts }),
