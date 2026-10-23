@@ -520,3 +520,13 @@
 /* The first screen fits the window: the drop zone gives way before the page scrolls */
 .beam-page { gap: 0.9rem; }
 .beam-drop { min-height: clamp(180px, 36vh, 340px); }
+
+/* Use the height: the card grows to the bottom of the window and the drop zone grows with it */
+.beam-card { flex: 1 1 auto !important; display: flex; flex-direction: column; min-height: 0; }
+.beam-card > .beam-start-wrap, .beam-card > .beam-session { flex: 1 1 auto; }
+.beam-start-wrap, .beam-scroll { display: flex; flex-direction: column; flex: 1 1 auto; }
+.beam-start-inner { display: flex; flex-direction: column; flex: 1 1 auto; }
+.beam-start-grid { flex: 1 1 auto; align-items: stretch; }
+.beam-start-panel { display: flex; flex-direction: column; }
+.beam-drop { flex: 1 1 auto; min-height: clamp(180px, 30vh, 320px); }
+@media (max-width: 900px) { .beam-drop { flex: none; } }
