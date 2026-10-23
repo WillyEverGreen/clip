@@ -1032,6 +1032,7 @@ export default function LivePage() {
             <Link
               to="/"
               className="btn btn-ghost"
+              aria-label="Home"
               style={{ padding: '0.4rem 0.65rem', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
             >
               <ArrowLeft size={16} /> {!isMobile && 'Home'}

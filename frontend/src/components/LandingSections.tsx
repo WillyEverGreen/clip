@@ -102,7 +102,9 @@ export default function LandingSections() {
       root.current?.querySelectorAll<HTMLElement>('.sx-reveal').forEach(el => { el.style.opacity = '1' })
       return
     }
-    const ctx = gsap.context(() => {
+    let ctx: gsap.Context | undefined
+    // Set up the scroll animations once the first screen has painted, so they do not delay it
+    const start = () => ctx = gsap.context(() => {
       gsap.utils.toArray<HTMLElement>('.sx-reveal').forEach(el => {
         gsap.from(el, {
           y: 40, opacity: 0, filter: 'blur(8px)', duration: 1, ease: 'expo.out', clearProps: 'filter,transform,opacity',
@@ -123,7 +125,13 @@ export default function LandingSections() {
         scale: 1.12, opacity: 0.8, duration: 4, yoyo: true, repeat: -1, ease: 'sine.inOut',
       })
     }, root)
-    return () => ctx.revert()
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }
+    const id = w.requestIdleCallback ? w.requestIdleCallback(start, { timeout: 1200 }) : window.setTimeout(start, 400)
+    return () => {
+      if (w.requestIdleCallback) w.cancelIdleCallback?.(id)
+      else clearTimeout(id)
+      ctx?.revert()
+    }
   }, [])
 
   return (

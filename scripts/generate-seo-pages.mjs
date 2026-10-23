@@ -13,7 +13,25 @@ if (!fs.existsSync(templatePath)) {
   process.exit(1)
 }
 
-const template = fs.readFileSync(templatePath, 'utf8')
+// The app stylesheet no longer blocks the first paint: the splash in index.html is styled inline and covers the page until the CSS is in.
+const template = fs.readFileSync(templatePath, 'utf8').replace(
+  /<link rel="stylesheet" crossorigin href="(\/assets\/[^"]+\.css)">/,
+  `<link rel="stylesheet" crossorigin href="$1" media="print" onload="this.media='all'">\n    <noscript><link rel="stylesheet" href="$1"></noscript>`,
+)
+// Each page's code starts downloading with the document instead of after the entry script has run
+const assetsDir = path.join(distDir, 'assets')
+const chunkHref = (prefix) => {
+  const file = fs.readdirSync(assetsDir).find((f) => f.startsWith(`${prefix}-`) && f.endsWith('.js'))
+  return file ? `/assets/${file}` : null
+}
+const withPreload = (html, prefix) => {
+  const href = chunkHref(prefix)
+  if (!href || html.includes(`href="${href}"`)) return html
+  return html.replace('</head>', `<link rel="modulepreload" crossorigin href="${href}">
+  </head>`)
+}
+const homeHtml = withPreload(template, 'CreatePage')
+fs.writeFileSync(templatePath, homeHtml, 'utf8')
 const faq = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../frontend/src/lib/faq.json'), 'utf8'))
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const ldScript = (obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`
@@ -149,7 +167,7 @@ const routes = [
 
 for (const route of routes) {
 
-  let html = template
+  let html = withPreload(template, { about: 'AboutPage', live: 'LivePage', beam: 'BeamPage' }[route.path])
 
   // Replace Title
   html = html.replace(/<title>.*?<\/title>/s, `<title>${route.title}</title>`)

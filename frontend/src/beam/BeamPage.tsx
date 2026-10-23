@@ -88,7 +88,7 @@ export default function BeamPage() {
       {/* Same top bar as Live Pad: Home, logo with a mode pill, status chip and actions on the right */}
       <header className="beam-topbar">
         <div className="beam-topbar-left">
-          <Link to="/" className="btn btn-ghost beam-home"><ArrowLeft size={16} /><span>Home</span></Link>
+          <Link to="/" className="btn btn-ghost beam-home" aria-label="Home"><ArrowLeft size={16} /><span>Home</span></Link>
           <Logo />
           <span className="beam-pill"><Radio size={13} /> Beam</span>
         </div>

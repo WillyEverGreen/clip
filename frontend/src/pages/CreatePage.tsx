@@ -546,6 +546,7 @@ export default function CreatePage() {
                 <label className="label">Expiration <span style={{color:'var(--text-muted)'}}>*</span></label>
                 <select
                   className="input"
+                  aria-label="Expiration"
                   value={ttl}
                   onChange={e => setTtl(e.target.value)}
                   style={{ height:'42px', boxSizing:'border-box', padding: '0 0.75rem', cursor: 'pointer', background: '#000000', color: '#ffffff', border: '1px solid var(--border)' }}

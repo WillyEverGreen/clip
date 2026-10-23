@@ -538,3 +538,14 @@
 /* Only when there is spare height: on shorter windows the first screen must still fit without scrolling */
 .beam-steps { display: none; }
 @media (min-width: 901px) and (min-height: 900px) { .beam-steps { display: grid; } }
+
+/* Nearby radar as a dropdown, open by default */
+.beam-nearby > summary { list-style: none; cursor: pointer; }
+.beam-nearby > summary::-webkit-details-marker { display: none; }
+.beam-nearby-head { flex-wrap: wrap; }
+.beam-nearby-head .beam-muted { margin-left: auto; }
+.beam-chevron { flex: none; color: var(--text-muted); transition: transform .2s ease; }
+.beam-nearby[open] .beam-chevron { transform: rotate(180deg); }
+.beam-nearby[open] > summary { margin-bottom: 0.25rem; }
+.beam-nearby { display: flex; flex-direction: column; gap: 0.75rem; }
+.beam-lan { margin-left: 0.5rem; padding: 0.1rem 0.5rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; color: var(--text-muted); text-transform: uppercase; }

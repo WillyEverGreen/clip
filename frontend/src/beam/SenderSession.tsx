@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type DragEvent } from 'react'
-import { Check, Copy, File as FileIcon, Plus, QrCode, RotateCcw, Send, ShieldCheck, TriangleAlert, Users, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, File as FileIcon, Plus, QrCode, RotateCcw, Send, ShieldCheck, TriangleAlert, Users, X } from 'lucide-react'
 import { copyToClipboard } from '../lib/clipboard'
 import { formatBytes, formatDuration, formatPin } from './beamProtocol'
 import { Person, Progress } from './BeamBits'
@@ -87,8 +87,8 @@ export default function SenderSession({ state, actions }: { state: SenderState; 
             {state.myName && phase !== 'connecting' && (
               <p className="beam-who">Sharing as <Person name={state.myName} you /></p>
             )}
-            {open && <NearbySection state={state} onInvite={actions.onInvite} />}
             {open && state.pin && <PinShare pin={state.pin} count={legs.length} />}
+            {open && <NearbySection state={state} onInvite={actions.onInvite} />}
             {open && files.length > 0 && legs.some(l => l.transfers.some(t => IN_FLIGHT.includes(t.status))) && (
               <p className="beam-hint beam-center">Keep this tab open while files are sending. You can add more files at any time.</p>
             )}
@@ -266,13 +266,15 @@ function NearbySection({ state, onInvite }: { state: SenderState; onInvite: (ids
   }
 
   return (
-    <div className="beam-panel beam-nearby" data-nearby-count={state.nearby.length}>
-      <div className="beam-nearby-head">
-        <span className="beam-panel-title"><Send size={15} /> Connect to people nearby</span>
+    <details className="beam-panel beam-nearby" data-nearby-count={state.nearby.length} open>
+      <summary className="beam-nearby-head">
+        <span className="beam-panel-title"><Send size={15} /> Connect to people nearby <span className="beam-lan">Same network</span></span>
         <span className="beam-muted">
           {state.nearbyStatus === 'offline' ? 'Discovery is offline' : state.nearby.length === 0 ? 'Looking...' : `${state.nearby.length} ${state.nearby.length === 1 ? 'person' : 'people'} here`}
         </span>
-      </div>
+        <ChevronDown size={16} className="beam-chevron" aria-hidden="true" />
+      </summary>
+      <p className="beam-hint">For people on the same Wi-Fi or LAN as you. They show up here on their own, and you can use the PIN or QR code too. Anywhere else, share the PIN or QR code above.</p>
       <Radar people={state.nearby} selected={selected} connected={connected} onToggle={toggle} />
       {state.nearby.length === 0 ? (
         <p className="beam-hint beam-center">Nobody yet. Ask people on your network to open clip.foo.ng/beam and switch on &quot;Show me to nearby senders&quot;. They never need a PIN: you pick them, they tap Accept.</p>
@@ -284,13 +286,13 @@ function NearbySection({ state, onInvite }: { state: SenderState; onInvite: (ids
           </button>
         </div>
       )}
-    </div>
+    </details>
   )
 }
 
 function PinShare({ pin, count }: { pin: string; count: number }) {
   const [copied, setCopied] = useState<'pin' | 'link' | null>(null)
-  const [showQr, setShowQr] = useState(false)
+  const [showQr, setShowQr] = useState(true)
   const link = `${window.location.origin}/beam?pin=${pin}`
   const copy = async (what: 'pin' | 'link') => {
     if (await copyToClipboard(what === 'pin' ? pin : link)) {
@@ -300,7 +302,7 @@ function PinShare({ pin, count }: { pin: string; count: number }) {
   }
   return (
     <div className="beam-panel beam-pin-share">
-      <span className="beam-panel-title"><QrCode size={15} /> Or share a PIN (up to 8 people)</span>
+      <span className="beam-panel-title"><QrCode size={15} /> Share a PIN or QR code (up to 8 people, anywhere)</span>
       <div className="beam-pin" data-testid="beam-pin" aria-label={`PIN ${pin.split('').join(' ')}`}>{formatPin(pin)}</div>
       <div className="beam-actions">
         <button type="button" className="btn btn-ghost" onClick={() => copy('pin')}>

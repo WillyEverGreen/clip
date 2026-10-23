@@ -30,8 +30,10 @@ function useWarmPages() {
     if (conn?.saveData || /(^|-)2g$/.test(conn?.effectiveType ?? '')) return
     const warm = () => { for (const load of [loaders.create, loaders.about, loaders.beam, loaders.live]) load().catch(() => undefined) }
     const w = window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }
-    if (w.requestIdleCallback) w.requestIdleCallback(warm, { timeout: 4000 })
-    else setTimeout(warm, 2500)
+    // Wait until the page is loaded and a few seconds have passed, so this never competes with the first screen
+    const later = () => setTimeout(() => (w.requestIdleCallback ? w.requestIdleCallback(warm, { timeout: 5000 }) : warm()), 5000)
+    if (document.readyState === 'complete') later()
+    else window.addEventListener('load', later, { once: true })
   }, [])
 }
 
@@ -40,9 +42,19 @@ function useDismissSplash() {
   useEffect(() => {
     const el = document.getElementById('boot')
     if (!el) return
-    el.classList.add('is-gone')
-    const t = setTimeout(() => el.remove(), 300)
-    return () => clearTimeout(t)
+    let removeTimer: ReturnType<typeof setTimeout> | undefined
+    const dismiss = () => {
+      el.classList.add('is-gone')
+      removeTimer = setTimeout(() => el.remove(), 300)
+    }
+    // The app stylesheet loads without blocking the first paint, so keep the splash up until it is in
+    const cssPending = () => !!document.querySelector('link[rel="stylesheet"][media="print"][href^="/assets/"]')
+    let waited = 0
+    const poll = setInterval(() => {
+      waited += 40
+      if (!cssPending() || waited >= 3000) { clearInterval(poll); dismiss() }
+    }, 40)
+    return () => { clearInterval(poll); clearTimeout(removeTimer) }
   }, [])
 }
 
