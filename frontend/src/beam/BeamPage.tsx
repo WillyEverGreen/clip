@@ -112,11 +112,7 @@ export default function BeamPage() {
         </div>
       </header>
 
-      <header className="beam-heading beam-heading-big">
-        <h1>Clip Beam</h1>
-        <p>Send big files straight from one browser to another. Nothing is uploaded: files stream over an encrypted peer-to-peer connection while both tabs stay open.</p>
-      </header>
-
+      <h1 className="beam-sr-only">Clip Beam: send big files from one browser to another</h1>
       <section className="card card-glow card-content beam-card" aria-live="polite">
         {role === null ? (
           <StartPanels onSend={beam.send} onJoin={(pin) => beam.join(pin)} visible={beam.visible} onVisible={beam.setVisible} onRespond={beam.respondInvite} unfinished={beam.unfinished} onResume={beam.resumeUnfinished} onDiscard={beam.discardUnfinished} />
