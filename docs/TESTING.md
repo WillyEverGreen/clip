@@ -1,6 +1,6 @@
 # Testing Clip
 
-Unit-level suites run anywhere; the rest need the site and worker running locally. Clip Beam has its own three (see `docs/CLIP_BEAM_ARCHITECTURE.md`); `npm run test:beam` runs just those. Large files have three more (`npm run test:big`, see `docs/LARGE_FILES.md`).
+Unit-level suites run anywhere; the rest need the site and worker running locally. Clip Beam has its own three (see `docs/CLIP_BEAM_ARCHITECTURE.md`); `npm run test:beam` runs just those. File sharing beyond KV has three more (`npm run test:big`, see `docs/LARGE_FILES.md`).
 
 | Suite | Command | What it covers | Needs |
 |---|---|---|---|
@@ -10,9 +10,9 @@ Unit-level suites run anywhere; the rest need the site and worker running locall
 | Live pad | `npm run test:e2e` (part 2) | Real-time sync against the worker (8 checks) | worker on `8787`, `BASE=ws://127.0.0.1:8787` |
 | Beam logic | `npm test` (part 3) | Beam room (pairing, routing, names, fuzz) and speed / time-left maths (69 checks, incl. the nearby lobby and the held-room rules) | nothing |
 | Beam route | `npm run test:e2e` (part 3) | `/api/beam/ws` against the real `BeamRoom` DO: 8 receivers, 40 rooms at once, garbage, churn plus the nearby lobby: IP groups, invites, block, 60 receivers and sender reconnect (29 checks) | worker, `BASE=ws://127.0.0.1:8787` |
-| Large-file logic | `npm test` (part 4) | SigV4 signing checked against AWS's published example, size / expiry / name / part rules, XML (13 checks) | nothing |
-| Large-file API | `node scripts/e2e-big.mjs` | The real B2 bucket through a local worker: refusals, token checks, 30 MB single and 110 MB multipart uploads that download identical, CORS, size-mismatch cleanup, early delete, the scheduled sweep (10 checks, about 150 MB) | worker on `8799` with `--test-scheduled`, B2 keys in `worker/.dev.vars` |
-| Large-file browser | `node scripts/e2e-big-browser.mjs` | Real Chrome through the upload screen: 30 MB and 110 MB uploads with progress, identical downloads, delete, refusals, the normal flow still works (5 checks). Also runs against the live site with `UI=https://clip.foo.ng` | worker on `8787`, Vite on `5199` (or the live site) |
+| File-bucket logic | `npm test` (part 4) | SigV4 signing checked against AWS's published example, MD5, upload rules (count, total, names, parts), expiry, version-listing and multi-delete XML, clip bundle helpers (15 checks) | nothing |
+| File-bucket API | `node scripts/e2e-big.mjs` | The real B2 bucket through a local worker: refusals, token checks, three files incl. a 110 MB multipart one, attaching to a custom URL, `/f/` hand-over, adding and removing files later, the 500 MB cap, deleting the clip deletes its files, the expiry sweep (12 checks; the byte-for-byte download check is SKIPPED when the daily download allowance is used up) | worker on `8799` with `--test-scheduled`, B2 keys in `worker/.dev.vars` |
+| File-bucket browser | `node scripts/e2e-big-browser.mjs` | Real Chrome through the real pages: three files on a custom URL listed one by one, per-file download and Download all as a zip (or the daily-limit message), adding and removing files in the editor, a taken URL caught before uploading, over-500 MB and password-lock refusals, small sets keep the normal flow (6 checks). Also runs against the live site with `UI=https://clip.foo.ng` | worker on `8787`, Vite on `5199` (or the live site) |
 | Browser | `npm run test:browser` (part 1) | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
 | Beam browser | `npm run test:browser` (part 2) | Many Chrome pages: 200 MB transfer with SHA-256 check and speed / time-left accuracy, 1 to 8 receivers, names, nearby radar and invites, corruption, cancel, disconnects, odd files, blocked network, phone width (39 checks, incl. 9 reconnect/resume) | Vite on `5199` and worker on `8787` |
 

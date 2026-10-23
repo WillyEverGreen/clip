@@ -4,13 +4,14 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
-## 🗓️ October 2026: Large files (25 MB to 500 MB)
+## 🗓️ October 2026: Any number of files, up to 500 MB per link
 
-* **What:** one file above 25 MB, up to 500 MB, is sent straight from the browser to a private Backblaze B2 bucket with short-lived signed links (in 64 MB parts above 100 MB, three parts at a time, each retried). The result lives at `/b/<id>` with a Download button, a countdown, and Delete now for the sender.
-* **Expiry:** 1 hour, 6 hours or 1 day. A worker job runs every 10 minutes and deletes expired files; the bucket also removes anything the job misses within days.
-* **Limits:** 500 MB per file, 8 GB stored in total, 6 uploads started per 2 minutes per network. Password lock is not offered for large files.
-* **Safety:** the storage key is bucket-scoped, the bucket is private, downloads are always forced to save as a file, and the sender's delete token is stored only as a hash.
-* **Setup and operations:** see `docs/LARGE_FILES.md`.
+* **One flow:** the File tab takes any number of files, up to 500 MB in total, on your own custom URL with your edit code. There is no separate "large file" path and no 25 MB rule visible to users.
+* **Where they go:** small sets (each file up to 25 MB, 50 MB in total) stay in Workers KV with previews and password lock. Bigger sets go straight from the browser to a private Backblaze B2 bucket, each file its own object, four uploads at a time, files over 100 MB in parts. Nothing is zipped.
+* **Later changes:** the owner can add more files to the same link, or remove some, from the editor.
+* **Downloads:** each file has its own Download button; Download all packs them into one zip in the browser. `/f/<slug>` redirects to the first file.
+* **Lifetime:** files are deleted 2 hours after upload (was 48 hours), by a 10-minute cron job and when read; deleting a clip deletes its files at once. Deletes remove every stored version.
+* **Details and setup:** `docs/LARGE_FILES.md`.
 
 ---
 

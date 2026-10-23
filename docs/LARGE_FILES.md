@@ -1,16 +1,32 @@
-# Large files (25 MB to 500 MB)
+# Files on a Clip link (up to 500 MB)
 
-Files above the 25 MB share limit are stored in a **private Backblaze B2 bucket** instead of Workers KV. The browser uploads straight to the bucket with short-lived signed links, so the worker never carries the file and Cloudflare's 100 MB request limit does not apply.
+One Clip link can hold **any number of files, up to 500 MB in total**, on its own custom URL. The owner can add or remove files later with the edit code. Files are deleted **2 hours** after they are uploaded.
 
-## How it works
+## Where files are kept
 
-1. `POST /api/big/start` checks size (25 MB to 500 MB), expiry (1, 6 or 24 hours), the per-IP rate limit and the 8 GB total cap, then returns signed upload links (one link up to 100 MB, otherwise 64 MB parts).
-2. The browser uploads, three parts at a time, retrying each part.
-3. `POST /api/big/:id/complete` (with the sender's token) finishes the upload, checks the stored size against the announced size, and starts the expiry clock.
-4. The page `/b/<id>` shows details and a Download button (`GET /api/big/:id/download` redirects to a 5-minute signed link that forces a download). The sender can `DELETE /api/big/:id` with the token (kept in their browser).
-5. A cron job (every 10 minutes) deletes expired files and abandoned uploads. The bucket lifecycle rule is the safety net: it hides files 3 days after upload, deletes hidden versions after 1 day, and cancels unfinished multipart uploads after 1 day.
+- **Small sets** (each file 25 MB or less, 50 MB or less in total) are stored with the clip in Workers KV, as before. They keep previews, ZIP browsing and password lock.
+- **Bigger sets** go to a private **Backblaze B2** bucket. The browser uploads each file straight to the bucket with short-lived signed links, several at a time (files over 100 MB in 64 MB parts). Nothing is zipped, so there is no waiting and no memory spike. The worker never carries the bytes, so Cloudflare's 100 MB request limit does not apply.
 
-Records (name, size, expiry, hashed token) live in Workers KV under `big:<id>`. Nothing about the storage key is ever sent to visitors.
+The person sharing never chooses: the page decides from the sizes.
+
+## How a bigger set flows
+
+1. `POST /api/big/start` with the list of files checks the total (500 MB), the count (500), the per-IP rate limit and the 8 GB storage cap, opens multipart uploads for files over 100 MB, and returns an upload id and a token.
+2. `POST /api/big/:id/sign` (with the token) returns upload links for up to 50 files at a time.
+3. The browser uploads every piece, four at a time, retrying each.
+4. `POST /api/big/:id/complete` assembles multipart files and checks every stored size against what was announced, using a version listing (a listing is not a download, so this works even when the daily download allowance is used up). A brief "storage busy" answer is retried by the browser.
+5. The clip is created (`POST /api/entry`) or edited (`PATCH /api/entry/:slug`) with `bundleId` and `bundleToken`. The worker checks the token and attaches the upload to the clip; from then on only the clip's edit code can change or delete it.
+6. The clip page lists every file with its own **Download** button. `GET /api/big/:id/download?n=<file>` gives a 5-minute signed link that forces a download. **Download all** fetches the files in the browser and packs them into one zip as they arrive.
+7. `/f/<slug>` (the command-line file link) redirects to the first file's download.
+
+Records live in Workers KV under `big:<id>`; a clip keeps only file names, sizes and the upload id (`bundles` on the entry). Storage keys never reach visitors.
+
+## Deleting
+
+- **2 hours after upload**, a cron job (every 10 minutes) deletes the upload; the clip stops listing the files the next time it is read.
+- **Deleting a clip** or **removing files** in the editor deletes them at once.
+- Deletes remove **every stored version** in one multi-object request (a plain delete on this bucket would only hide a file and keep the data).
+- Safety net: the bucket's lifecycle rule hides anything 3 days after upload, deletes hidden versions after 1 day, and cancels unfinished multipart uploads after 1 day.
 
 ## One-time setup
 
@@ -18,7 +34,7 @@ Records (name, size, expiry, hashed token) live in Workers KV under `big:<id>`. 
 2. Bucket CORS rules: allow `PUT`, `GET`, `HEAD` (S3 operations) from `https://clip.foo.ng`, `https://*.clip-1pm.pages.dev` and local dev origins, all headers, expose `ETag`.
 3. Bucket lifecycle rule as described above.
 4. Create an **application key restricted to that one bucket** with `listFiles`, `readFiles`, `writeFiles`, `deleteFiles`. Do not use the master key in the app.
-5. Set the secrets, then deploy the worker:
+5. Set the secrets, then deploy the worker (this also schedules the cleanup job):
 
 ```bash
 cd worker
@@ -32,21 +48,25 @@ npm run deploy
 ## Tests
 
 ```bash
-node scripts/test-big.mjs        # signing (checked against AWS's published example) and rules, no network
+node scripts/test-big.mjs        # signing (checked against AWS's published example), MD5, rules, storage XML; no network
 cd worker && npx wrangler dev --local --port 8799 --test-scheduled
-node scripts/e2e-big.mjs         # real bucket: single and multipart uploads, CORS, delete, sweep (about 150 MB)
-node scripts/e2e-big-browser.mjs # real browser through the upload screen (needs the worker on 8787 and vite on 5199)
+node scripts/e2e-big.mjs         # real bucket: many files incl. multipart, attach to a custom URL, add/remove later, delete, expiry sweep
+node scripts/e2e-big-browser.mjs # real browser through the real pages (worker on 8787, Vite on 5199, or UI=https://clip.foo.ng)
 ```
+
+Download checks are reported as SKIPPED, not passed, when the bucket's daily download allowance is used up.
 
 ## Limits to know
 
-- B2's free allowance is 10 GB of storage; the 8 GB cap leaves headroom. Short expiry keeps the bucket small.
-- Downloads come from B2 (US East) rather than Cloudflare's edge, so they are slower than small KV files.
-- Raising the 500 MB cap is one constant (`BIG_MAX_BYTES` in `worker/src/lib/big.ts` and `frontend/src/lib/bigUpload.ts`).
+- **Daily download allowance.** On Backblaze's free plan, downloads are capped per day. When the cap is reached, Download shows "paused for today" until it resets. Uploading, listing and deleting are not affected. Raising the cap needs a payment method in Backblaze.
+- **Storage.** B2's free allowance is 10 GB; the worker refuses new uploads past 8 GB stored. The 2-hour lifetime keeps usage low.
+- **Speed.** Uploads go straight to B2 and are typically faster than through the worker; downloads come from B2 (US East), so they are slower than small files served from Cloudflare.
+- **Password lock** is only for sets that fit in KV (50 MB or less).
+- The limits are constants: `BIG_MAX_BYTES`, `BIG_MAX_FILES`, `FILE_TTL_SECONDS` in `worker/src/lib/big.ts`, and the matching ones in `frontend/src/lib/bigUpload.ts`.
 
 ## Things learned in production
 
-- **Deleting must remove every version.** The bucket keeps old versions, and a plain delete only hides a file. The worker lists the versions of the key and deletes each by id, so a deleted file is really gone straight away. The bucket's lifecycle rule is only the safety net.
-- **Sizes are read with a one-byte Range request**, not HEAD: on the deployed Workers runtime a signed HEAD gets a 403, while a ranged GET works everywhere.
-- **Storage can answer a moment late right after an upload.** The worker retries the size check a few times, and if it still cannot read the file it answers `503 storage_busy` without discarding anything; the browser then asks again (up to 5 times).
-- **Rotating the key:** create a new bucket-scoped key, run `wrangler secret put B2_KEY_ID` and `B2_APP_KEY` with it, redeploy, then delete the old key. Never use the account's master key in the app.
+- A signed `HEAD` gets a 403 on the deployed Workers runtime, so sizes are read from a version listing.
+- The multi-object delete request needs a `Content-MD5` header; Web Crypto has no MD5, so the worker carries a small implementation (`worker/src/lib/md5.ts`).
+- Free Workers allow 50 outgoing requests per invocation, so deletes use one listing plus one multi-delete, and the sweep handles at most 12 uploads per run.
+- Rotating the key: create a new bucket-scoped key, `wrangler secret put` both values, redeploy, then delete the old key. Never use the account's master key in the app.

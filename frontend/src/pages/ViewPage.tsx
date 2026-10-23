@@ -13,6 +13,7 @@ import QuoteWidget from '../components/QuoteWidget'
 import { useSeo } from '../lib/useSeo'
 import { copyToClipboard } from '../lib/clipboard'
 import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
+import BundleFilesCard from '../components/BundleFilesCard'
 
 // Heavy components lazy-loaded: their library chunks are only downloaded when needed
 const MarkdownRenderer = lazy(() => import('../components/MarkdownRenderer'))
@@ -571,11 +572,15 @@ export default function ViewPage() {
             {/* Subtitle & Type */}
             <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', marginTop:'0.4rem', flexWrap:'wrap' }}>
               <span style={{ fontSize:'0.75rem', color:'var(--text-dim)' }}>
-                {entry.content && (entry.hasFile || entry.fileName)
-                  ? `Text & File · ${formatBytes(entry.fileSize ?? 0)}`
-                  : (entry.hasFile || entry.fileName)
-                    ? `File · ${formatBytes(entry.fileSize ?? 0)}`
-                    : 'Text · Markdown'}
+                {(() => {
+                  // Files kept with the clip plus files in the file bucket
+                  const live = (entry.bundles ?? []).filter((bd) => bd.expiresAt > Date.now())
+                  const count = (entry.hasFile || entry.fileName ? (entry.files?.length || 1) : 0) + live.reduce((a, bd) => a + bd.files.length, 0)
+                  const bytes = (entry.hasFile || entry.fileName ? (entry.fileSize ?? 0) : 0) + live.reduce((a, bd) => a + bd.files.reduce((x, f) => x + f.size, 0), 0)
+                  const files = count > 1 ? `${count} Files` : 'File'
+                  if (count === 0) return 'Text · Markdown'
+                  return entry.content ? `Text & ${files} · ${formatBytes(bytes)}` : `${files} · ${formatBytes(bytes)}`
+                })()}
               </span>
               <span style={{ color:'var(--text-dim)', fontSize:'0.75rem' }}>·</span>
               <Countdown expiresAt={entry.expiresAt} />
@@ -1267,13 +1272,20 @@ export default function ViewPage() {
                 </div>
               )}
 
+              {/* Files kept in the file bucket */}
+              {(entry.bundles ?? []).some((b) => b.expiresAt > Date.now()) && (
+                <div style={{ marginTop: hasActualText || entry.hasFile ? '2rem' : 0, paddingTop: hasActualText || entry.hasFile ? '2rem' : 0, borderTop: hasActualText || entry.hasFile ? '1px solid var(--border)' : 'none' }}>
+                  <BundleFilesCard entry={entry} />
+                </div>
+              )}
+
               {/* Expired file notice if temporary file retention period passed */}
-              {!hasActualText && !entry.hasFile && !entry.fileName && (
+              {!hasActualText && !entry.hasFile && !entry.fileName && !(entry.bundles ?? []).some((b) => b.expiresAt > Date.now()) && (
                 <div style={{ textAlign: 'center', padding: '2.5rem 1rem' }}>
                   <Clock size={32} style={{ color: 'var(--text-dim)', marginBottom: '0.85rem' }} />
                   <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#ffffff', marginBottom: '0.4rem' }}>Attached File Expired</h3>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto', lineHeight: 1.6 }}>
-                    Files uploaded to temporary clips are retained for 48 hours to preserve storage. The file attachment for this clip has expired and been cleaned up.
+                    Files are kept for 2 hours after they are uploaded. The file attachment for this clip has expired and been cleaned up.
                   </p>
                 </div>
               )}

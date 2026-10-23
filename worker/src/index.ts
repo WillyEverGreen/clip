@@ -17,12 +17,13 @@ import { zipSync, strToU8 } from 'fflate'
 import { isEncryptedFileBuffer, decryptFileArrayBuffer, isEncrypted, decryptContent } from './lib/crypto'
 import { BEAM_PIN_RE, generateBeamPin } from './lib/beam'
 import { checkRateLimit, getClientIp } from './lib/rateLimit'
-import { handleBigStart, handleBigComplete, handleBigInfo, handleBigDownload, handleBigDelete, sweepBigFiles } from './handlers/big'
+import { handleBigStart, handleBigSign, handleBigComplete, handleBigInfo, handleBigDownload, handleBigDelete, sweepBigFiles } from './handlers/big'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
 export { BeamRoom } from './durable/BeamRoom'
 export { BeamLobby } from './durable/BeamLobby'
+export { BigUploadStore } from './durable/BigUploadStore'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -674,6 +675,7 @@ app.get('/api/beam/lobby/ws', async (c) => {
 
 // Large files (over 25 MB): the browser uploads straight to the bucket with signed links
 app.post('/api/big/start',               handleBigStart)
+app.post('/api/big/:slug/sign',          handleBigSign)
 app.post('/api/big/:slug/complete',      handleBigComplete)
 app.get('/api/big/:slug',                handleBigInfo)
 app.get('/api/big/:slug/download',       handleBigDownload)
@@ -685,6 +687,6 @@ app.get('/api/health', (c) => c.json({ ok: true }))
 export default {
   fetch: app.fetch.bind(app),
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(sweepBigFiles(env).then((r) => console.log('big sweep', JSON.stringify(r))))
+    ctx.waitUntil(sweepBigFiles(env, Date.now() + (Number(env.SWEEP_CLOCK_SKEW_MS) || 0)).then((r) => console.log('big sweep', JSON.stringify(r))))
   },
 }

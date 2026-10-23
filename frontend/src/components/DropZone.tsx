@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { formatBytes } from '../lib/api'
-import { BIG_MAX_BYTES } from '../lib/bigUpload'
+import { MAX_FILES } from '../lib/bigUpload'
 import { Plus, X, Check } from 'lucide-react'
 import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
@@ -15,7 +15,7 @@ interface Props {
   uploadProgress?: number | null
   /** File names shown in the progress bar */
   uploadingFileNames?: string[]
-  /** Let one file above 25 MB through (it is shared on its own, as a large file) */
+  /** No per-file size rule: any number of files of any size, up to `maxBytes` in total */
   allowLarge?: boolean
 }
 
@@ -47,43 +47,28 @@ export default function DropZone({
     (newFiles: File[]) => {
       setError('')
       
-      // Check per-file size limit
+      // Without allowLarge, each file must fit a normal KV share
       const oversizedFiles = newFiles.filter(f => f.size > MAX_PER_FILE)
-      if (oversizedFiles.length > 0) {
-        if (!allowLarge) {
-          setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit. Use Clip Beam (clip.foo.ng/beam) to send big files directly.`)
-          return
-        }
-        if (oversizedFiles.some(f => f.size > BIG_MAX_BYTES)) {
-          setError(`"${oversizedFiles.find(f => f.size > BIG_MAX_BYTES)!.name}" is over ${formatBytes(BIG_MAX_BYTES)}. Use Clip Beam (clip.foo.ng/beam) to send files that big directly.`)
-          return
-        }
-        if (newFiles.length > 1) {
-          setError('A file over 25 MB is shared on its own. Choose just that file.')
-          return
-        }
-        // A large file replaces whatever was selected: it travels separately from normal shares
-        setSelectedFiles(() => {
-          if (onFiles) onFiles(newFiles)
-          if (onFile) onFile(newFiles[0] || null)
-          return newFiles
-        })
+      if (!allowLarge && oversizedFiles.length > 0) {
+        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit. Use Clip Beam (clip.foo.ng/beam) to send big files directly.`)
         return
       }
 
       setSelectedFiles((prev) => {
-        if (prev.some(f => f.size > MAX_PER_FILE)) {
-          setError('A file over 25 MB is shared on its own. Remove it first to add other files.')
-          return prev
-        }
         const deduped = newFiles.filter(
           (nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size),
         )
         const updated = [...prev, ...deduped]
         const totalSize = updated.reduce((acc, f) => acc + f.size, 0)
 
+        if (updated.length > MAX_FILES) {
+          setError(`You can share up to ${MAX_FILES} files at once.`)
+          return prev
+        }
         if (totalSize > maxBytes) {
-          setError(`Total files size exceeds ${formatBytes(maxBytes)} limit.`)
+          setError(allowLarge
+            ? `Files can be up to ${formatBytes(maxBytes)} in total. Use Clip Beam (clip.foo.ng/beam) to send more directly.`
+            : `Total files size exceeds ${formatBytes(maxBytes)} limit.`)
           return prev
         }
 
@@ -175,7 +160,7 @@ export default function DropZone({
                   transition: 'color 300ms ease',
                 }}
               >
-                {uploadProgress}%
+                {Math.round(uploadProgress)}%
               </span>
             </div>
 
@@ -332,7 +317,11 @@ export default function DropZone({
           <div className="dropzone__empty">
             <UploadIcon />
             <p>Drop file(s) here or <span className="dropzone__link">browse</span></p>
-            <p className="dropzone__hint">Attach multiple files · Max {formatBytes(maxBytes)} total</p>
+            <p className="dropzone__hint">
+              {allowLarge
+                ? `Any number of files · Up to ${formatBytes(maxBytes)} in total`
+                : `Attach multiple files · Max ${formatBytes(maxBytes)} total`}
+            </p>
           </div>
         )}
       </div>

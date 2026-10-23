@@ -17,7 +17,7 @@ Clip is for developers, students and anyone who needs to move code, text, docume
 ### 2. Text and file sharing (encrypted pastebin) - https://clip.foo.ng/
 - No account. Paste text or drop files and get a short link, with custom slugs, secret edit codes and expiry from 1 hour to permanent.
 - Optional password: text and files are encrypted in the browser with AES-256-GCM (PBKDF2 key derivation) before upload, so the server only holds ciphertext. Without a password, shares are stored as plain content.
-- Normal file uploads take up to 25 MB each and are deleted after 48 hours. One file from 25 MB up to 500 MB can be shared as a large file, deleted after 1 hour, 6 hours or 1 day. Use Clip Beam for anything bigger.
+- Any number of files on one link, up to 500 MB in total, on a custom URL if you like. Files are deleted 2 hours after upload; the link's owner can add or remove files later with the edit code. Use Clip Beam for anything bigger.
 - Preview ZIP contents in the browser, paste screenshots from the clipboard, markdown with syntax highlighting.
 
 ### 3. Live Pad (real-time shared notepad) - https://clip.foo.ng/live

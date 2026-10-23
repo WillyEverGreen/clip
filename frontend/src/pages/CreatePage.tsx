@@ -3,12 +3,12 @@ import { useNavigate, Link } from 'react-router-dom'
 import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangle, Check, File as FileIcon, X, Plus, Info, Radio } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
-import { createEntryWithProgress, getUniqueLiveSlug, setLiveSecurity, seedLiveRoom, uploadLiveFile, formatBytes, type ApiError } from '../lib/api'
+import { BASE, createEntry, createEntryWithProgress, getUniqueLiveSlug, setLiveSecurity, seedLiveRoom, uploadLiveFile, formatBytes, type ApiError } from '../lib/api'
 import { encryptContent, computeAuthHash, generateSalt, encryptFile } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
 import { useSeo } from '../lib/useSeo'
-import { uploadBig, isBigFile, rememberBigToken, BigUploadError, BIG_TTL_CHOICES } from '../lib/bigUpload'
+import { uploadToFileBucket, needsFileBucket, discardUpload, BigUploadError, MAX_TOTAL_BYTES, FILE_LIFETIME_HOURS } from '../lib/bigUpload'
 
 type Mode = 'text' | 'file' | 'live'
 
@@ -86,14 +86,19 @@ export default function CreatePage() {
     missing_edit_code:   'Edit code must be 4–128 characters.',
     view_password_short: 'Password must be at least 4 characters.',
     file_too_large:      'File exceeds 50 MB limit.',
-    too_large:           'That file is over 500 MB. Use Clip Beam to send files that big directly.',
+    too_large:           'Files can be up to 500 MB in total. Use Clip Beam to send more directly.',
     storage_full:        'Large-file storage is full right now. Try again in a little while, or use Clip Beam.',
     big_unavailable:     'Large files are not available right now. Use Clip Beam to send this file directly.',
     storage_error:       'The upload to storage failed. Please try again.',
     storage_busy:        'Storage is busy right now. Please try again in a moment.',
     size_mismatch:       'The upload did not arrive complete. Please try again.',
     aborted:             'The upload was cancelled.',
-    big_no_lock:         'Password lock is not available for files over 25 MB. Turn it off to continue.',
+    big_no_lock:         'Password lock works for files up to 50 MB in total. Turn it off to share more.',
+    bundle_not_found:    'The upload expired before the link was made. Please try again.',
+    bundle_forbidden:    'That upload belongs to someone else.',
+    bundle_not_ready:    'The upload did not finish. Please try again.',
+    bundle_taken:        'That upload is already attached to another link.',
+    too_many:            'You can share up to 500 files at once.',
     text_too_large:      'Text exceeds 2 MB limit.',
     no_content:          'Please add some content or upload a file.',
     mime_mismatch:       'File type does not match its content.',
@@ -108,36 +113,19 @@ export default function CreatePage() {
   // Anything not listed above still gets a readable message instead of a raw error code
   const errorText = (code: string) => errorLabels[code] ?? 'Something went wrong. Please try again.'
 
-  // One file over 25 MB goes straight to storage, with its own expiry choices
-  const bigFile = mode === 'file' && files.length === 1 && isBigFile(files[0]!)
-  useEffect(() => {
-    if (bigFile && !BIG_TTL_CHOICES.some((c) => String(c.value) === ttl)) setTtl('21600')
-  }, [bigFile, ttl])
+  /** A custom URL that is already in use, checked before a long upload starts. */
+  async function slugTaken(wanted: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${BASE}/api/entry/${encodeURIComponent(wanted)}`, { headers: { Accept: 'application/json' } })
+      return res.ok
+    } catch {
+      return false // the server checks again when the clip is created
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-
-    // ── Large file flow (over 25 MB, one file) ───────────────────────────────
-    if (bigFile) {
-      if (lockContent) { setError('big_no_lock'); return }
-      setLoading(true)
-      setUploadProgress(0)
-      try {
-        const keepFor = BIG_TTL_CHOICES.some((c) => String(c.value) === ttl) ? Number(ttl) : 21600
-        const { slug: bigSlug, token } = await uploadBig(files[0]!, keepFor, (pct) => setUploadProgress(pct))
-        rememberBigToken(bigSlug, token)
-        setUploadProgress(100)
-        await new Promise((r) => setTimeout(r, 800))
-        navigate(`/b/${bigSlug}`)
-      } catch (err) {
-        setError(err instanceof BigUploadError ? err.code : 'internal_error')
-      } finally {
-        setLoading(false)
-        setUploadProgress(null)
-      }
-      return
-    }
 
     // ── Live Pad Hosting flow ────────────────────────────────────────────────
     if (mode === 'live') {
@@ -187,6 +175,42 @@ export default function CreatePage() {
     if (mode === 'text' && !content.trim()) { setError('no_content'); return }
     if (mode === 'file' && files.length === 0) { setError('no_content'); return }
     if (lockContent && viewPassword.length < 4) { setError('view_password_short'); return }
+
+    // ── Files too big to keep in the clip go straight to the file bucket, then the clip points at them ──
+    if (mode === 'file' && needsFileBucket(files)) {
+      if (lockContent) { setError('big_no_lock'); return }
+      const wanted = slug.trim().toLowerCase()
+      if (wanted && wanted.length < 3) { setError('slug_invalid'); return }
+      if (wanted && await slugTaken(wanted)) { setError('slug_taken'); return }
+      setLoading(true)
+      setUploadProgress(0)
+      let upload: { slug: string; token: string } | null = null
+      try {
+        upload = await uploadToFileBucket(files, (pct) => setUploadProgress(Math.round(pct)))
+        const form = new FormData()
+        form.append('type', 'file')
+        form.append('editCode', editCode)
+        form.append('ttl', ttl)
+        if (wanted) form.append('slug', wanted)
+        if (content.trim()) form.append('content', content)
+        form.append('bundleId', upload.slug)
+        form.append('bundleToken', upload.token)
+        const { slug: newSlug } = await createEntry(form)
+        upload = null // the clip owns the files now
+        setUploadProgress(100)
+        await new Promise((r) => setTimeout(r, 800))
+        sessionStorage.setItem('clip_edit_code_' + newSlug, editCode)
+        sessionStorage.removeItem('clip_decrypt_' + newSlug)
+        navigate(`/${newSlug}`)
+      } catch (err) {
+        if (upload) discardUpload(upload.slug, upload.token)
+        setError(err instanceof BigUploadError ? err.code : ((err as ApiError).error ?? 'internal_error'))
+      } finally {
+        setLoading(false)
+        setUploadProgress(null)
+      }
+      return
+    }
 
     const form = new FormData()
     form.append('type', mode)
@@ -379,6 +403,7 @@ export default function CreatePage() {
                     files={files}
                     onFiles={setFiles}
                     allowLarge
+                    maxBytes={MAX_TOTAL_BYTES}
                     height="100%"
                     uploadProgress={uploadProgress}
                     uploadingFileNames={files.map(f => f.name)}
@@ -388,9 +413,7 @@ export default function CreatePage() {
                   <p style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
                     <AlertTriangle size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                     <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>
-                      {bigFile
-                        ? 'Large file: kept for the time you choose (up to 1 day), then deleted. One file at a time, up to 500 MB.'
-                        : 'Files auto-delete after 48 hours, regardless of expiration setting. Over 25 MB? Choose one file up to 500 MB.'}
+                      {`Files are deleted ${FILE_LIFETIME_HOURS} hours after upload, whatever the expiration setting. Any number of files, up to 500 MB in total.`}
                     </span>
                   </p>
                   <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, paddingLeft: '1.15rem' }}>
@@ -558,10 +581,10 @@ export default function CreatePage() {
                   maxLength={50}
                   spellCheck={false}
                 />
-                {slugHint && (
-                  <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{slugHint}</p>
-                )}
               </div>
+              {slugHint && (
+                <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{slugHint}</p>
+              )}
             </div>
 
             {/* Edit code (only for text/file modes) */}
@@ -592,19 +615,13 @@ export default function CreatePage() {
                   onChange={e => setTtl(e.target.value)}
                   style={{ height:'42px', boxSizing:'border-box', padding: '0 0.75rem', cursor: 'pointer', background: '#000000', color: '#ffffff', border: '1px solid var(--border)' }}
                 >
-                  {bigFile ? (
-                    BIG_TTL_CHOICES.map((c) => <option key={c.value} value={String(c.value)}>{c.label}</option>)
-                  ) : (
-                    <>
-                      <option value="600">10 Minutes</option>
-                      <option value="3600">1 Hour</option>
-                      <option value="21600">6 Hours (Default)</option>
-                      <option value="86400">1 Day</option>
-                      <option value="604800">7 Days</option>
-                      <option value="2592000">30 Days</option>
-                      <option value="permanent">Permanent</option>
-                    </>
-                  )}
+                  <option value="600">10 Minutes</option>
+                  <option value="3600">1 Hour</option>
+                  <option value="21600">6 Hours (Default)</option>
+                  <option value="86400">1 Day</option>
+                  <option value="604800">7 Days</option>
+                  <option value="2592000">30 Days</option>
+                  <option value="permanent">Permanent</option>
                 </select>
               </div>
             )}

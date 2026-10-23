@@ -31,9 +31,10 @@ export function toPublic(entry: Entry): PublicEntry {
 
 // Compact metadata for KV list (must be under Cloudflare 1,024 bytes limit)
 export function toPublicMetadata(entry: Entry): PublicEntry {
-  const { editCodeHash: _h, editCodeSalt: _s, content, files, ...pub } = entry
+  const { editCodeHash: _h, editCodeSalt: _s, content, files, bundles, ...pub } = entry
   return {
     ...pub,
+    bundles: bundles ? bundles.map(b => ({ id: b.id, expiresAt: b.expiresAt, files: [] })) : undefined,
     content: content ? content.slice(0, 80) : undefined,
     files: files ? files.map(f => ({ id: f.id, fileName: f.fileName, fileMime: f.fileMime, fileSize: f.fileSize })).slice(0, 3) : undefined,
   }

@@ -138,5 +138,27 @@ export async function s3Fetch(
   if (body !== undefined) headers['content-type'] = 'application/xml'
   // Unsigned extras such as Range are allowed: only the headers listed in SignedHeaders are covered by the signature
   Object.assign(headers, extraHeaders)
-  return fetch(`${cfg.endpoint}${path}${cq ? `?${cq}` : ''}`, { method, headers, body })
+  const url = `${cfg.endpoint}${path}${cq ? `?${cq}` : ''}`
+  // Connections to storage occasionally drop or answer "busy": try again a couple of times before giving up.
+  // (Starting a multipart upload is the one call that is not safe to repeat blindly; a stray one is cancelled by the bucket's rule.)
+  const retryStatus = (s: number) => s === 500 || s === 502 || s === 503 || s === 504
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, { method, headers, body })
+      if (attempt < 3 && retryStatus(res.status)) {
+        await res.body?.cancel().catch(() => undefined)
+        await new Promise((r) => setTimeout(r, 300 * attempt))
+        continue
+      }
+      return res
+    } catch (err) {
+      if (attempt >= 3) throw err
+      await new Promise((r) => setTimeout(r, 300 * attempt))
+    }
+  }
+}
+
+/** Read and discard a response body we do not need, so the connection is released cleanly. */
+export async function drain(res: Response): Promise<void> {
+  await res.body?.cancel().catch(() => undefined)
 }

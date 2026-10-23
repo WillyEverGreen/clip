@@ -5,6 +5,7 @@ import { verifyCode } from '../lib/crypto'
 import { log } from '../lib/logger'
 import { checkRateLimit, getClientIp } from '../lib/rateLimit'
 import { notifyRoom } from '../lib/notify'
+import { releaseUpload } from './big'
 
 export async function handleRemove(c: Context<{ Bindings: Env }>) {
   const slug = c.req.param('slug') ?? ''
@@ -49,6 +50,7 @@ export async function handleRemove(c: Context<{ Bindings: Env }>) {
     return c.json({ error: 'wrong_edit_code' }, 403)
   }
 
+  for (const b of entry.bundles ?? []) await releaseUpload(c.env, b.id)
   await deleteEntry(c.env.PASTE_KV, slug)
 
   c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
