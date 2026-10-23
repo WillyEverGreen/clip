@@ -413,7 +413,7 @@ export default function CreatePage() {
                   <p style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
                     <AlertTriangle size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                     <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>
-                      {`Files are deleted ${FILE_LIFETIME_HOURS} hours after upload, whatever the expiration setting. Any number of files, up to 500 MB in total.`}
+                      {`Files are deleted ${FILE_LIFETIME_HOURS} hours after upload, whatever the expiration setting.`}
                     </span>
                   </p>
                   <p style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0, paddingLeft: '1.15rem' }}>
@@ -759,7 +759,7 @@ export default function CreatePage() {
             <Lock size={13} style={{ color: 'var(--text-muted)' }} /> AES-256 Client-Side Encryption
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-            <Upload size={13} style={{ color: 'var(--text-muted)' }} /> Files up to 500 MB
+            <Upload size={13} style={{ color: 'var(--text-muted)' }} /> Multi-File Uploads
           </span>
           <Link to="/beam" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', textDecoration: 'none' }}>
             <Radio size={13} /> Bigger files? Clip Beam

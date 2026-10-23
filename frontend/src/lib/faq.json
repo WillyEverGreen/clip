@@ -21,7 +21,7 @@
   },
   {
     "q": "What are the limits?",
-    "a": "Any number of files, up to 500 MB in total per link, and text up to 2 MB. Files are deleted 2 hours after upload, whatever the link's own expiry, and you can add more files to your link later with its edit code. For anything bigger use Clip Beam, which sends files straight from one browser to another. You can also paste screenshots straight from your clipboard.",
+    "a": "You can share many files on one link, and text up to 2 MB. Files are deleted 2 hours after upload, whatever the link's own expiry, and you can add more files to your link later with its edit code. For very large files use Clip Beam, which sends them straight from one browser to another. You can also paste screenshots straight from your clipboard.",
     "group": "Sharing"
   },
   {

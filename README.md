@@ -30,7 +30,7 @@
 ### ⭐ Key Features
 
 - 🚀 **Zero Friction, No Sign-up**: Open the site, paste text or drop files, and get a link in seconds. No account, email, or credentials.
-- 📦 **Any number of files, up to 500 MB per link**: share as many files as you like on your own custom URL, and add or remove files later with the edit code. Small sets stay in Workers KV (with previews and password lock); bigger sets go straight from the browser to a private Backblaze B2 bucket, one file at a time and several in parallel, with nothing zipped. Files are deleted 2 hours after upload. See [docs/LARGE_FILES.md](docs/LARGE_FILES.md).
+- 📦 **Many files on one link**: share as many files as you like on your own custom URL, and add or remove files later with the edit code. Small sets stay in Workers KV (with previews and password lock); bigger sets go straight from the browser to a private Backblaze B2 bucket, one file at a time and several in parallel, with nothing zipped. Files are deleted 2 hours after upload. See [docs/LARGE_FILES.md](docs/LARGE_FILES.md).
 - 📡 **Clip Beam (`/beam`), files of any size, browser to browser**: Send multi-gigabyte files straight from your disk to someone else's over an encrypted WebRTC connection. Nothing is uploaded or stored.
   - **Connect once, keep sending**: the connection stays open, so the sender can keep adding files and the receiver chooses **Accept**, **Decline** or **Accept all** for each. Either side can end the connection at any time.
   - **Send to up to 8 people at once**, each with their own progress, speed, and a live time-left countdown.
@@ -50,7 +50,7 @@
 - 🗜️ **Client-Side ZIP Archive Inspector**: Click any attached `.zip` to explore its folders and files, search inside it, and extract single files without downloading the whole archive.
 - 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files as one ZIP, decrypted on the fly when encrypted.
 - 📱 **Phone Pair via QR Code**: Connect your phone to a Live Pad or a Beam in one second by scanning a QR code.
-- 📋 **Clipboard & Drag-and-Drop**: Paste screenshots straight from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop any number of files, up to 500 MB in total. Use Beam for anything bigger.
+- 📋 **Clipboard & Drag-and-Drop**: Paste screenshots straight from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop as many files as you need. Use Beam for very large files.
 - 🔑 **Secret Edit Code**: Protect a link with a custom edit password to modify content, add or remove files, or delete early.
 - 🔗 **Custom & Retained Slugs**: Pick your own readable slug (`clip.foo.ng/my-notes`) or convert a live room into a permanent clip with the same slug.
 - 📁 **Rich Markdown & KaTeX Math**: GitHub Flavored Markdown, task lists, tables, and KaTeX typesetting (LaTeX, matrices, piecewise functions, integrals).
@@ -64,7 +64,7 @@
 
 ### 📦 Sharing files
 
-1. On the home page open the **File** tab and drop **any number of files**, up to 500 MB in total.
+1. On the home page open the **File** tab and drop **as many files as you need** (the drop area shows how much room is left).
 2. Optionally pick your own **Custom URL**, set an **Edit code**, and choose how long the link itself lasts. The files are deleted 2 hours after upload.
 3. Tap **Create Link**. Small sets are stored with the link (with previews and optional password lock); bigger sets upload straight to storage, several files at once, with a progress bar. Either way you land on your link.
 4. Visitors see every file with its own **Download** button, plus **Download all** (packed into one zip in their browser).
