@@ -14,7 +14,6 @@ import type { SenderState } from './beamSender'
 import type { ReceiverState } from './beamReceiver'
 import SenderSession from './SenderSession'
 import ReceiverSession from './ReceiverSession'
-import BeamInfo from './BeamInfo'
 import './beam.css'
 
 const IN_FLIGHT = ['offered', 'transferring', 'verifying']
@@ -140,8 +139,6 @@ export default function BeamPage() {
         <li><ShieldCheck size={13} /> DTLS encrypted, SHA-256 checked</li>
         <li><X size={13} /> Nothing stored on Clip servers</li>
       </ul>
-
-      {role === null && <BeamInfo />}
     </div>
   )
 }

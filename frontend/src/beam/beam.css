@@ -514,12 +514,3 @@
   .beam-toggle-btn, .beam-actions .btn, .beam-top-btn, .beam-add { min-height: 40px; }
   .beam-hist-name { max-width: 100%; }
 }
-
-/* ── Explainer under the tool (also what search engines read) ───────────────────────────── */
-.beam-info { width: 100%; max-width: 860px; margin: 2.5rem auto 0; color: var(--text-muted); line-height: 1.65; }
-.beam-info h2 { font-size: 1.25rem; font-weight: 700; color: var(--text); margin: 0 0 0.9rem; }
-.beam-info-steps { margin: 0 0 2rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.beam-info-steps strong { color: var(--text); }
-.beam-info-q { border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1.1rem; margin-bottom: 0.6rem; background: var(--bg-card, transparent); }
-.beam-info-q summary { cursor: pointer; font-weight: 600; color: var(--text); list-style-position: inside; }
-.beam-info-q p { margin: 0.7rem 0 0; font-size: 0.95rem; }

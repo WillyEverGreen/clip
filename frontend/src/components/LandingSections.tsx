@@ -8,20 +8,13 @@ import {
   ClipboardPaste, Share2, Flame, Code2, QrCode,
 } from 'lucide-react'
 
+import FAQ from '../lib/faq.json'
+
 gsap.registerPlugin(ScrollTrigger)
 
 const MARQUEE = [
   'Code snippets', 'Markdown notes', 'Screenshots', 'PDFs', 'ZIP archives', 'Passwords & keys',
   'Math with KaTeX', 'Voice notes', 'Meeting links', 'Lab files', 'Homework',
-]
-
-const FAQ = [
-  { q: 'Do I need an account?', a: 'No. Open Clip, paste text or drop a file, and you get a link. No sign-up, no email, nothing to log into on a shared computer.' },
-  { q: 'How does encryption work?', a: 'When you set a password, your text and files are encrypted in your browser with PBKDF2 + AES-256-GCM before upload. The server only ever stores ciphertext and never sees the password.' },
-  { q: 'How long do links last?', a: 'You choose: 10 minutes, 1 hour, 6 hours (default), 1 day, 7 days, 30 days, or permanent. Expired clips are removed automatically.' },
-  { q: 'What is the Live Pad?', a: 'A shared room at /live/your-name where everyone connected sees text and files update instantly over WebSockets. Scan the QR code to pair your phone in a second.' },
-  { q: 'What are the limits?', a: 'Files up to 25 MB each and text up to 2 MB. You can also paste screenshots straight from your clipboard.' },
-  { q: 'Can I use it from a terminal?', a: 'Yes. Fetch raw text, files or a full ZIP with a single curl command, with optional password support.' },
 ]
 
 function Spotlight({ children, className = '' }: { children: React.ReactNode; className?: string }) {

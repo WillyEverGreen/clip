@@ -14,7 +14,7 @@ if (!fs.existsSync(templatePath)) {
 }
 
 const template = fs.readFileSync(templatePath, 'utf8')
-const beamFaq = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../frontend/src/beam/beamFaq.json'), 'utf8'))
+const faq = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../frontend/src/lib/faq.json'), 'utf8'))
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const ldScript = (obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`
 // The home page carries WebApplication and FAQPage markup that describes the home page; other routes get their own.
@@ -28,6 +28,13 @@ const routes = [
     description: 'Learn how Clip gives you instant file sharing with no account, optional browser-side encryption, a collaborative live pad, and peer-to-peer file transfer.',
     keywords: 'about clip, file sharing features, encrypted pastebin, zero-account upload, anonymous share, webrtc file transfer',
     heading: 'About Clip - Free File Sharing, Encrypted Pastebin & Live Sync',
+    ld: () => [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+      },
+    ],
     fallbackHtml: `
       <header style="max-width:800px;margin:2rem auto;padding:0 1rem;font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;line-height:1.6">
         <h1>About Clip - Free File Sharing &amp; Text Sharing</h1>
@@ -48,6 +55,10 @@ const routes = [
             <li><strong>Real-Time Collaborative Pad:</strong> Operational Transformation (OT) powered Live Pad enables simultaneous typing and file drops.</li>
             <li><strong>Global Edge Performance:</strong> Powered by Cloudflare Edge for sub-50ms response times worldwide.</li>
           </ul>
+        </section>
+        <section>
+          <h2>Questions</h2>
+          ${faq.map((f) => `<details><summary><strong>${esc(f.q)}</strong></summary><p>${esc(f.a)}</p></details>`).join('\n          ')}
         </section>
       </main>
     `,
@@ -103,11 +114,6 @@ const routes = [
       },
       {
         '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: beamFaq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
-      },
-      {
-        '@context': 'https://schema.org',
         '@type': 'BreadcrumbList',
         itemListElement: [
           { '@type': 'ListItem', position: 1, name: 'Clip', item: 'https://clip.foo.ng/' },
@@ -135,10 +141,6 @@ const routes = [
             <li><strong>Checked and resumable:</strong> Every file is verified with SHA-256, and a dropped connection picks up where it stopped.</li>
             <li><strong>Big files:</strong> Chrome and Edge save straight to disk, so multi-gigabyte files work. Firefox and Safari handle up to about 2 GB.</li>
           </ul>
-        </section>
-        <section>
-          <h2>Questions</h2>
-          ${beamFaq.map((f) => `<details><summary><strong>${esc(f.q)}</strong></summary><p>${esc(f.a)}</p></details>`).join('\n          ')}
         </section>
       </main>
     `,
