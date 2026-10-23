@@ -162,3 +162,8 @@
 .a-pad .mock-pad-body { flex: 1; }
 .a-ring .mock-ring { margin-top: auto; margin-bottom: 0; }
 .a-files .mock-files { align-content: flex-end; }
+
+.sx-faq-group { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 22px 4px 4px; font-size: .78rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: #a1a1aa; }
+.sx-faq-group:first-child { margin-top: 0; }
+.sx-faq-group a { display: inline-flex; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: .85rem; color: #fff; text-decoration: none; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.04); transition: background .25s, border-color .25s; }
+.sx-faq-group a:hover { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.3); }

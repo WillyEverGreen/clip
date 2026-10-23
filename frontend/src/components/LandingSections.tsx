@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
 import Logo from './Logo'
@@ -74,13 +74,21 @@ function Faq() {
   return (
     <div className="sx-faq">
       {FAQ.map((f, i) => (
-        <div key={f.q} className={`sx-faq-item sx-reveal ${open === i ? 'is-open' : ''}`}>
-          <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
-            {f.q}
-            <Plus size={18} />
-          </button>
-          <div className="sx-faq-body"><p>{f.a}</p></div>
-        </div>
+        <Fragment key={f.q}>
+          {(i === 0 || FAQ[i - 1].group !== f.group) && (
+            <h3 className="sx-faq-group">
+              {f.group}
+              {f.group === 'Clip Beam' && <Link to="/beam">Open Clip Beam <ArrowRight size={14} /></Link>}
+            </h3>
+          )}
+          <div className={`sx-faq-item sx-reveal ${open === i ? 'is-open' : ''}`}>
+            <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
+              {f.q}
+              <Plus size={18} />
+            </button>
+            <div className="sx-faq-body"><p>{f.a}</p></div>
+          </div>
+        </Fragment>
       ))}
     </div>
   )
