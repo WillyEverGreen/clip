@@ -27,29 +27,36 @@
 
 ---
 
-### ✨ Features
+### ⭐ Key Features
 
-- 🚀 **Zero Friction & No Sign-up**: Open the site, paste your text or drop your files, get your link instantly. No account, email, or credentials required.
-- ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file sharing room with instant WebSocket synchronization powered by Cloudflare Durable Objects (SQLite). Everything synchronizes live across devices as you type.
-- 🖱️ **Type Together with Multi-Cursor**: Several people can edit the same Live Pad at once without overwriting each other (operational transform, tested with randomized multi-client simulations). Opt in to multi-cursor to see everyone's caret with a random cute name like *Mochi* or *Biscuit*; it is off by default.
-- 🎬 **Universal Media & Document Viewer**: Full-screen theater viewer for both LivePad and URL pastes. Generous cinematic video player, uncompromised high-res image lightbox with 25%–500% zoom and pan, line-numbered syntax-highlighted code with search and copy, and embedded PDF / audio playback.
-- 🗜️ **Client-Side ZIP Archive Inspector**: Click on any attached `.zip` to explore its internal directories and files in real-time, search inside the archive, and extract/download individual files without downloading the full archive.
-- 🛡️ **Admin Live Pad & Expiration Monitor**: Dedicated admin section to track all active Live Pad rooms, view exact 24-hour rolling expiration countdowns and timestamps, monitor live connected peers, and terminate rooms.
-- 📡 **Clip Beam (`/beam`)**: Send files of any size straight from one browser to another (or up to 8 at once) over an encrypted WebRTC connection. Share a 6-digit PIN or QR code; everyone gets a cute name, you see live speed and time left, people on your network can appear on a radar so you can send without a PIN, and a dropped connection can be reconnected and continued from where it stopped; the file streams disk to disk, is checked with SHA-256 on both ends, and never touches Clip's servers.
-- 📱 **Phone Pair via QR Code**: Connect your phone to any Live Pad room in one second by scanning a QR code with your camera.
-- 📋 **Direct Clipboard & Drag-and-Drop Sharing**: Paste images or screenshots directly from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop any file up to 25 MB.
-- 🖥️ **Zero-Scroll Viewport Layout**: Desktop workspace dynamically adapts to 100% viewport height with no vertical page scroll. Seamlessly collapses into dedicated mobile tabs on narrow screens.
-- 🎨 **Pure Monochrome (Black & White) Aesthetics**: Clean, distraction-free solid black (`#000000`) and pure white theme with Lucide iconography and zero emojis.
-- 💻 **Terminal / CLI Downloads**: Fetch pastes and files straight from Linux, macOS, or Windows terminals using simple `curl` commands with optional password flags.
-- 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive, decrypted on-the-fly when encrypted.
-- 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` (files cleanly auto-purge after 48h to optimize storage).
-- 🔒 **Zero-Knowledge Client-Side Encryption**: Secure text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption across creation, edits, and live rooms. The server never sees your password or plaintext data.
-- 🔑 **Secret Edit Code**: Protect your links with a custom edit password to modify content, add/remove files, or delete early.
-- 🔗 **Custom & Retained Slugs**: Pick your own readable URL slug (`clip.foo.ng/my-notes`) or convert live rooms into permanent clips while preserving the same slug.
-- 📁 **Rich Markdown & KaTeX Math**: Full support for GitHub Flavored Markdown (GFM), task lists, tables, and KaTeX mathematical typesetting ($\LaTeX$, matrices, piecewise functions, integrals).
-- 🔤 **Developer Typography & Code Blocks**: Crisp syntax highlighting for 40+ languages with **JetBrains Mono** / **Fira Code** fonts and 1-click code block **Copy** buttons.
-- 🌐 **Comprehensive SEO & Rich Snippets**: Schema.org `WebApplication` & `FAQPage` rich snippets, dynamic OpenGraph/Twitter social cards, `robots.txt`, and `sitemap.xml`.
-- ⚡ **Edge-Powered Speed**: Built on Cloudflare Workers + KV + Durable Objects + Pages for near-instant global response times.
+- 🚀 **Zero Friction, No Sign-up**: Open the site, paste text or drop files, and get a link in seconds. No account, email, or credentials.
+- 📡 **Clip Beam (`/beam`), files of any size, browser to browser**: Send multi-gigabyte files straight from your disk to someone else's over an encrypted WebRTC connection. Nothing is uploaded or stored.
+  - **Send to up to 8 people at once**, each with their own progress, speed, and a live time-left countdown.
+  - **Nearby radar**: people on your network who switch on Receive mode appear as avatars with cute names. Tap one or several, and they just tap Accept. No PIN needed (a 6-digit PIN and QR code still work). Receive mode is off by default, and they can Decline or Block.
+  - **Reconnect and resume**: if the connection drops, press Reconnect (or let it retry by itself) and the transfer continues from where it stopped, even after a reload in Chrome and Edge.
+  - **Verified**: SHA-256 is checked on both ends, and a damaged transfer is caught instead of saved.
+- ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file room with instant WebSocket sync (Cloudflare Durable Objects). Several people can type together with multi-cursor and random cute names like *Mochi* or *Biscuit*, without overwriting each other.
+- 🔒 **Zero-Knowledge Encryption**: Browser-side **PBKDF2 + AES-256-GCM** for pastes, files, edits, and live rooms. The server never sees your password or plaintext.
+- 🕒 **Flexible Expiry**: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` for text (attached files auto-purge after 48h).
+- 💻 **Terminal / CLI**: Fetch pastes and files from Linux, macOS, or Windows with simple `curl` commands, plus a 1-command ZIP download.
+- ⚡ **Edge-Powered**: Cloudflare Workers + KV + Durable Objects + Pages for fast global responses.
+
+### ➕ More Features
+
+- 🖱️ **Multi-Cursor Editing**: Opt in to see everyone's caret in a Live Pad (operational transform, tested with randomized multi-client simulations). Off by default.
+- 🎬 **Universal Media & Document Viewer**: Full-screen theater viewer for both LivePad and URL pastes. Cinematic video player, high-res image lightbox with 25%-500% zoom and pan, line-numbered syntax-highlighted code with search and copy, and embedded PDF / audio playback.
+- 🗜️ **Client-Side ZIP Archive Inspector**: Click any attached `.zip` to explore its folders and files, search inside it, and extract single files without downloading the whole archive.
+- 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files as one ZIP, decrypted on the fly when encrypted.
+- 📱 **Phone Pair via QR Code**: Connect your phone to a Live Pad or a Beam in one second by scanning a QR code.
+- 📋 **Clipboard & Drag-and-Drop**: Paste screenshots straight from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop files up to 25 MB (use Beam for bigger ones).
+- 🔑 **Secret Edit Code**: Protect a link with a custom edit password to modify content, add or remove files, or delete early.
+- 🔗 **Custom & Retained Slugs**: Pick your own readable slug (`clip.foo.ng/my-notes`) or convert a live room into a permanent clip with the same slug.
+- 📁 **Rich Markdown & KaTeX Math**: GitHub Flavored Markdown, task lists, tables, and KaTeX typesetting (LaTeX, matrices, piecewise functions, integrals).
+- 🔤 **Developer Typography & Code Blocks**: Syntax highlighting for 40+ languages with JetBrains Mono / Fira Code and 1-click Copy buttons.
+- 🛡️ **Admin Live Pad & Expiration Monitor**: Admin section to track active Live Pad rooms, 24-hour rolling expiry countdowns, connected peers, and to terminate rooms.
+- 🖥️ **Zero-Scroll Viewport Layout**: The desktop workspace fits 100% of the viewport height and collapses into mobile tabs on narrow screens.
+- 🎨 **Pure Monochrome Look**: Solid black (`#000000`) and pure white with Lucide icons.
+- 🌐 **SEO & Rich Snippets**: Schema.org `WebApplication` and `FAQPage` snippets, OpenGraph / Twitter cards, `robots.txt`, and `sitemap.xml`.
 
 ---
 
