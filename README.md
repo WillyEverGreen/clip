@@ -60,6 +60,19 @@
 
 ---
 
+### 📡 Using Clip Beam
+
+Open `/beam` (for example `https://clip.foo.ng/beam`) in Chrome or Edge on both devices.
+
+1. **Send**: drop a file. You get a radar of people nearby, and a 6-digit PIN with a QR code underneath.
+2. **Receive, with the radar**: switch on **Show me to nearby senders**. When someone picks you, tap **Accept** (or **Decline** / **Block**) and choose where to save. No PIN.
+3. **Receive, with a PIN**: type the sender's PIN (or scan the QR code) and tap **Accept and save**.
+4. **If the connection drops**: press **Reconnect** (it also retries by itself). It continues from where it stopped, and the sender keeps their page open. After a reload, `/beam` lists **Unfinished transfers** you can continue (Chrome and Edge).
+
+Good to know: the file goes straight between the two browsers and is never stored on Clip's servers. One sender can send to up to 8 people at once. Chrome and Edge save straight to disk with no size limit; Firefox and Safari keep the file in memory (up to 2 GB) and can only resume while the page stays open. Both devices need a direct connection (same Wi-Fi works best); very strict networks may need a relay, which is not built yet. Full design: [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md).
+
+---
+
 ### 💻 Terminal / CLI Usage
 
 Download your pastes & files directly from any terminal without opening a browser:
@@ -99,7 +112,8 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 | :--- | :--- |
 | **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Pure Monochrome), Lucide Icons, Marked, KaTeX, Prism.js, fflate |
 | **Backend API** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
-| **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed WebSocket state synchronization) |
+| **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed): `ClipRoom` for Live Pad sync, `BeamRoom` for Beam connection setup, `BeamLobby` for the nearby radar |
+| **Clip Beam** | WebRTC data channels (peer to peer), File System Access API, IndexedDB (resume), `hash-wasm` (SHA-256) |
 | **Hosting & CDN** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
 | **Search & SEO** | Schema.org JSON-LD (WebApplication & FAQPage), XML Sitemap, Robots.txt, OpenGraph |
 
@@ -118,18 +132,22 @@ npm run dev
 ```
 
 For a detailed breakdown of the codebase architecture, environment setup, and contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide.  
-For the high-speed 100MB–100GB+ file transfer architecture plan, see [docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md](docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md).  
+For how Clip Beam works (rooms, radar, resume, tests), see [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md). The wider large-file plan is in [docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md](docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md).  
 For a full history of bug fixes and architectural updates, see [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
 
 ### 🧪 Automated Testing
 
-Clip includes an end-to-end automated test suite covering crypto, file uploads, expiration, CLI curl generation, and real-time live sync:
+Clip includes automated tests for crypto, uploads, expiration, CLI generation, live sync, and Clip Beam (room and radar logic, speed and time-left maths, a real worker, and real Chrome pages sending files to each other, including dropped connections):
 
 ```bash
-npm test
+npm test                 # unit tests, nothing needs to be running
+npm run test:beam        # all Clip Beam tests (needs the worker and site running locally)
+npm run test:all         # everything
 ```
+
+See [docs/TESTING.md](docs/TESTING.md) for what each suite covers and how to run the ones that need the worker and site.
 
 ---
 
@@ -143,6 +161,8 @@ npm run deploy
 
 * Deploy worker only: `npm run deploy:worker`
 * Deploy frontend only: `npm run deploy:frontend`
+* The first deploy that includes Clip Beam also creates the `BeamRoom` and `BeamLobby` Durable Objects (migrations `v2` and `v3`); nothing else needs configuring.
+* Run it from the `main` branch: Cloudflare Pages only treats `main` as production, and any other branch is published as a preview.
 
 ---
 
