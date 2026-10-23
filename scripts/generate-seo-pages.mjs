@@ -175,6 +175,11 @@ for (const route of routes) {
   html = html.replace(/<meta name="twitter:description" content=".*?" \/>/, `<meta name="twitter:description" content="${route.description}" />`)
   html = html.replace(/<meta name="twitter:url" content=".*?" \/>/, `<meta name="twitter:url" content="${route.canonical}" />`)
 
+  // The landing page's hero images are its largest paint: start them with the document
+  if (route.path === 'about') html = html.replace('</head>', '<link rel="preload" as="image" href="/hero-left.webp" fetchpriority="high" />
+    <link rel="preload" as="image" href="/hero-right.webp" fetchpriority="high" />
+  </head>')
+
   // Structured data that belongs to this page, not the home page
   html = stripPageLd(html)
   if (route.ld) html = html.replace('</head>', `${route.ld().map(ldScript).join('\n')}\n  </head>`)

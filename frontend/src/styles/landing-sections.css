@@ -130,7 +130,7 @@
 .sx-cta-note { display: inline-flex; align-items: center; gap: 6px; margin-top: 22px; font-size: .82rem; color: #8a8a92; }
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
-.sx-footer { width: min(100% - 48px, 1120px); margin: 64px auto 0; padding: 32px 0 40px; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,.07); color: #71717a; font-size: .88rem; }
+.sx-footer { width: min(100% - 48px, 1120px); margin: 64px auto 0; padding: 32px 0 40px; display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,.07); color: #9a9aa4; font-size: .88rem; }
 .sx-footer > div { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .sx-footer .lp-brand { display: inline-flex; align-items: center; gap: 8px; color: #fff; font-weight: 600; text-decoration: none; }
 .sx-footer .lp-brand img { border-radius: 6px; }

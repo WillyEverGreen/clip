@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { ArrowRight, Check } from 'lucide-react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import Lenis from 'lenis'
@@ -93,6 +94,12 @@ export default function AboutPage() {
           <Link to="/" className="lp-btn lp-btn-primary">Create a clip</Link>
           <Link to="/live" className="lp-btn lp-btn-ghost">Start a live pad</Link>
         </div>
+        <ul className="lp-reveal lp-trust" aria-label="Why people use Clip">
+          <li><Check size={14} /> Free</li>
+          <li><Check size={14} /> No sign-up</li>
+          <li><Check size={14} /> Password lock built in</li>
+        </ul>
+        <p className="lp-reveal lp-beam-hint">Sending something over 25 MB? <Link to="/beam">Beam it browser to browser <ArrowRight size={14} /></Link></p>
       </header>
     </div>
     <LandingSections />
