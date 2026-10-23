@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import PageLoader from './components/PageLoader'
+import ErrorBoundary from './components/ErrorBoundary'
+import { lazyWithRetry } from './lib/lazyWithRetry'
 
 // All pages are lazy-loaded so the initial JS bundle stays tiny.
 // Each page chunk is only downloaded when the user navigates to it.
@@ -13,13 +15,13 @@ const loaders = {
   about: () => import('./pages/AboutPage'),
   beam: () => import('./beam/BeamPage'),
 }
-const CreatePage  = lazy(loaders.create)
-const ViewPage    = lazy(loaders.view)
-const EditPage    = lazy(loaders.edit)
-const LivePage    = lazy(loaders.live)
-const ExpiredPage = lazy(loaders.expired)
-const AboutPage   = lazy(loaders.about)
-const BeamPage    = lazy(loaders.beam)
+const CreatePage  = lazyWithRetry(loaders.create)
+const ViewPage    = lazyWithRetry(loaders.view)
+const EditPage    = lazyWithRetry(loaders.edit)
+const LivePage    = lazyWithRetry(loaders.live)
+const ExpiredPage = lazyWithRetry(loaders.expired)
+const AboutPage   = lazyWithRetry(loaders.about)
+const BeamPage    = lazyWithRetry(loaders.beam)
 
 /** Once the page in front of the visitor is up, fetch the main pages quietly so moving between them is instant. */
 function useWarmPages() {
@@ -50,12 +52,20 @@ const AdminPage = lazy(() =>
   }))
 )
 
+/** Fades each page in so switching pages does not pop. Keyed on the first path segment so in-page changes do not replay it. */
+function RouteFade({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  return <div className="route-fade" key={pathname.split('/')[1] ?? ''}>{children}</div>
+}
+
 export default function App() {
   useDismissSplash()
   useWarmPages()
   return (
     <BrowserRouter>
+      <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
+        <RouteFade>
         <Routes>
           <Route path="/"            element={<CreatePage />} />
           <Route path="/live"        element={<LivePage />} />
@@ -68,7 +78,9 @@ export default function App() {
           <Route path="/404"         element={<ExpiredPage />} />
           <Route path="*"            element={<ExpiredPage />} />
         </Routes>
+        </RouteFade>
       </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }
