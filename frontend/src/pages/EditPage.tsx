@@ -19,6 +19,7 @@ export default function EditPage() {
     title: slug ? `Edit Clip /${slug} | Clip` : 'Edit Clip | Clip',
     description: 'Edit or manage your shared paste and files using your secret edit code.',
     canonicalUrl: slug ? `https://clip.foo.ng/${slug}/edit` : undefined,
+    noindex: true,
   })
 
   // Existing Entry Data

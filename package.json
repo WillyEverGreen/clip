@@ -13,6 +13,8 @@
     "test:browser": "node scripts/e2e-browser.mjs && node scripts/e2e-beam-browser.mjs",
     "test:beam": "node scripts/test-beam.mjs && node scripts/e2e-beam-signal.mjs && node scripts/e2e-beam-browser.mjs",
     "test:all": "npm test && npm run test:e2e && npm run test:browser",
+    "audit:seo": "node scripts/audit-seo-performance.mjs",
+    "audit:lighthouse": "npx @lhci/cli collect && npx @lhci/cli assert",
     "postinstall": "node scripts/postinstall.js",
     "lint": "node \"%npm_execpath%\" --prefix frontend run lint && node \"%npm_execpath%\" --prefix worker run lint",
     "lint:fix": "node \"%npm_execpath%\" --prefix frontend run lint:fix && node \"%npm_execpath%\" --prefix worker run lint:fix",

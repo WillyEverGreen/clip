@@ -142,6 +142,7 @@ export default function ViewPage() {
     title: pageTitle,
     description: pageDescription,
     canonicalUrl: `https://clip.foo.ng/${slug}`,
+    noindex: true,
   })
 
   const fetchEntry = useCallback(async (isManual = false, expectedUpdatedAt?: number) => {

@@ -429,3 +429,97 @@
   .beam-hist-name { max-width: 100%; }
   .beam-toggle { max-width: none; }
 }
+
+/* ── Centred layout: big title, centred card, everything stacked in one column ───────────── */
+.beam-page { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; align-items: center; padding: 1.25rem 1.5rem 2rem; }
+.beam-topbar { max-width: 1100px; }
+.beam-heading-big { text-align: center; margin-top: 0.5rem; }
+.beam-heading-big h1 { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 0.6rem; }
+.beam-heading-big p { font-size: 1.05rem; max-width: 640px; margin: 0 auto; line-height: 1.6; color: var(--text-muted); }
+.beam-card { flex: none; max-width: 1100px; overflow: visible; padding: 2rem !important; }
+.beam-start-wrap, .beam-scroll { overflow: visible; display: block; }
+.beam-start-inner { max-width: none; margin: 0; padding: 0; gap: 1.5rem; }
+.beam-start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+.beam-start-panel { padding: 1.5rem; gap: 1rem; }
+.beam-card-title { display: flex; align-items: center; gap: 0.6rem; font-size: 1.25rem; font-weight: 700; }
+.beam-drop { min-height: 280px; }
+.beam-drop-title { font-size: 1.15rem; }
+.beam-drop-sub { font-size: 0.9rem; }
+.beam-pin-input { font-size: 1.9rem; padding: 0.9rem 1rem; }
+.beam-start-panel .btn-full { padding: 0.95rem 1.5rem; font-size: 1.05rem; }
+.beam-panel { padding: 1.25rem 1.4rem; gap: 1rem; }
+.beam-panel-title { font-size: 1rem; }
+.beam-hint { font-size: 0.85rem; }
+.beam-muted { font-size: 0.92rem; }
+.beam-grid { display: flex; flex-direction: column; gap: 1.25rem; flex: none; }
+.beam-col { overflow: visible; gap: 1.25rem; }
+.beam-session { overflow: visible; max-width: 860px; margin: 0 auto; width: 100%; }
+.beam-session-narrow .beam-col { max-width: none; }
+.beam-leg { padding: 1.1rem 1.2rem; }
+.beam-leg-name { font-size: 1rem; }
+.beam-hist-row { font-size: 0.9rem; }
+.beam-hist-text { font-size: 0.82rem; }
+.beam-pin { font-size: clamp(2.2rem, 8vw, 3rem); }
+.beam-radar { width: min(100%, 400px); }
+.beam-peer-avatar { width: 52px; height: 52px; font-size: 1.6rem; }
+.beam-incoming { padding: 1.4rem; }
+.beam-file-name { font-size: 1.02rem; }
+.beam-facts { margin-top: 0.5rem; font-size: 0.78rem; }
+@media (max-width: 900px) {
+  .beam-start-grid { grid-template-columns: 1fr; }
+  .beam-heading-big h1 { font-size: 2rem; }
+  .beam-card { padding: 1.25rem !important; }
+}
+@media (max-width: 720px) {
+  .beam-page { padding: 0.75rem 0.6rem 1.25rem; }
+  .beam-card { padding: 1rem 0.85rem !important; }
+  .beam-start-panel { padding: 1rem; }
+}
+
+/* ── Use the space: thin frame, wide panels ───────────────────────────────── */
+.beam-page { padding: 1rem 1.25rem 1.5rem; gap: 0.6rem; }
+.beam-topbar, .beam-card { max-width: 1500px; }
+.beam-card { padding: 0.7rem !important; }
+.beam-session { max-width: none; }
+.beam-start-inner { gap: 0.9rem; }
+.beam-start-grid { gap: 0.9rem; }
+.beam-start-panel { padding: 1.5rem 1.75rem; }
+.beam-panel { padding: 1.1rem 1.35rem; }
+.beam-col { gap: 0.9rem; }
+.beam-grid { gap: 0.9rem; }
+.beam-drop { min-height: 320px; }
+.beam-radar { width: min(100%, 440px); }
+.beam-hist-name { max-width: 70%; }
+@media (min-width: 1000px) {
+  .beam-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 720px) {
+  .beam-card { padding: 0.6rem !important; }
+  .beam-panel { padding: 0.9rem; }
+}
+
+/* One vertical stack at every width (wide panels, no side column) */
+@media (min-width: 1000px) {
+  .beam-grid { display: flex; flex-direction: column; }
+}
+.beam-grid { align-items: stretch !important; }
+.beam-grid > .beam-col, .beam-col > .beam-panel, .beam-col > .beam-banner { width: 100%; align-self: stretch; box-sizing: border-box; }
+
+/* Touch and narrow screens: roomier buttons, rows that wrap instead of cutting text */
+.beam-leg-cancel { margin-left: auto; }
+@media (max-width: 720px), (pointer: coarse) {
+  .beam-leg-cancel { width: 36px; height: 36px; }
+  .beam-leg-status { white-space: normal; flex: 1 1 8rem; overflow: visible; }
+  .beam-leg-head { align-items: flex-start; }
+  .beam-toggle-btn, .beam-actions .btn, .beam-top-btn, .beam-add { min-height: 40px; }
+  .beam-hist-name { max-width: 100%; }
+}
+
+/* ── Explainer under the tool (also what search engines read) ───────────────────────────── */
+.beam-info { width: 100%; max-width: 860px; margin: 2.5rem auto 0; color: var(--text-muted); line-height: 1.65; }
+.beam-info h2 { font-size: 1.25rem; font-weight: 700; color: var(--text); margin: 0 0 0.9rem; }
+.beam-info-steps { margin: 0 0 2rem; padding-left: 1.3rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.beam-info-steps strong { color: var(--text); }
+.beam-info-q { border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1.1rem; margin-bottom: 0.6rem; background: var(--bg-card, transparent); }
+.beam-info-q summary { cursor: pointer; font-weight: 600; color: var(--text); list-style-position: inside; }
+.beam-info-q p { margin: 0.7rem 0 0; font-size: 0.95rem; }

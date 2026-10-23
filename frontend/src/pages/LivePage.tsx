@@ -186,7 +186,8 @@ export default function LivePage() {
   useSeo({
     title: slug ? `Live Pad /${slug} - Real-Time Text & File Sync | Clip` : 'Live Pad - Real-Time Collaborative Sync | Clip',
     description: 'Instant collaborative notepad and live file sharing room. Type and drop files with real-time WebSocket synchronization across devices.',
-    canonicalUrl: slug ? `https://clip.foo.ng/live/${slug}` : 'https://clip.foo.ng/live',
+    // Every room is the same tool: point them all at the landing page rather than indexing each room
+    canonicalUrl: 'https://clip.foo.ng/live',
   })
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)

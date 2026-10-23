@@ -51,3 +51,13 @@ worker/src/handlers/admin/
 frontend/src/pages/AdminPage.tsx
 frontend/src/components/Admin/
 ADMIN_GUIDE.md
+
+# Local SEO & MCP Tools
+seo-monster/
+tools/
+lighthouse-ci/
+satori/
+reader/
+
+
+.lighthouseci/

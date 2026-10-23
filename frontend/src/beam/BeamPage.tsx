@@ -14,6 +14,7 @@ import type { SenderState } from './beamSender'
 import type { ReceiverState } from './beamReceiver'
 import SenderSession from './SenderSession'
 import ReceiverSession from './ReceiverSession'
+import BeamInfo from './BeamInfo'
 import './beam.css'
 
 const IN_FLIGHT = ['offered', 'transferring', 'verifying']
@@ -45,7 +46,7 @@ function summarisePhase(role: 'sender' | 'receiver' | null, sender: SenderState,
 export default function BeamPage() {
   useSeo({
     title: 'Clip Beam - Send big files browser to browser',
-    description: 'Send files of any size straight from one browser to another over an encrypted peer-to-peer connection. Nothing is uploaded.',
+    description: 'Send big files straight from one browser to another over an encrypted peer-to-peer connection. Nothing is uploaded, no account needed.',
     canonicalUrl: 'https://clip.foo.ng/beam',
   })
 
@@ -112,6 +113,11 @@ export default function BeamPage() {
         </div>
       </header>
 
+      <header className="beam-heading beam-heading-big">
+        <h1>Clip Beam</h1>
+        <p>Send big files straight from one browser to another. Nothing is uploaded: files stream over an encrypted peer-to-peer connection while both tabs stay open.</p>
+      </header>
+
       <section className="card card-glow card-content beam-card" aria-live="polite">
         {role === null ? (
           <StartPanels onSend={beam.send} onJoin={(pin) => beam.join(pin)} visible={beam.visible} onVisible={beam.setVisible} onRespond={beam.respondInvite} unfinished={beam.unfinished} onResume={beam.resumeUnfinished} onDiscard={beam.discardUnfinished} />
@@ -134,6 +140,8 @@ export default function BeamPage() {
         <li><ShieldCheck size={13} /> DTLS encrypted, SHA-256 checked</li>
         <li><X size={13} /> Nothing stored on Clip servers</li>
       </ul>
+
+      {role === null && <BeamInfo />}
     </div>
   )
 }
@@ -156,7 +164,6 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
   const [dragging, setDragging] = useState(false)
   const [pinText, setPinText] = useState('')
   const [pinError, setPinError] = useState('')
-  const [tab, setTab] = useState<'send' | 'receive'>('send')
 
   const pick = (list: FileList | null) => {
     const files = [...(list ?? [])]
@@ -181,11 +188,6 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
     <div className="beam-start-wrap">
       <div className="beam-scroll">
         <div className="beam-start-inner">
-          <header className="beam-heading">
-            <h1>Send big files, browser to browser</h1>
-            <p>Nothing is uploaded. Files stream over an encrypted peer-to-peer connection while both tabs stay open.</p>
-          </header>
-
           {unfinished.length > 0 && (
             <section className="beam-panel beam-unfinished" aria-label="Unfinished transfers">
               <div className="beam-panel-title"><RotateCcw size={15} /> Unfinished transfers <span className="beam-count">{unfinished.length}</span></div>
@@ -208,16 +210,9 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
             </section>
           )}
 
-          <div className="toggle-pill beam-toggle" role="tablist" aria-label="Send or receive">
-            <button type="button" role="tab" aria-selected={tab === 'send'} className={`beam-toggle-btn${tab === 'send' ? ' is-active' : ''}`} onClick={() => setTab('send')}>
-              <Send size={16} /> Send
-            </button>
-            <button type="button" role="tab" aria-selected={tab === 'receive'} className={`beam-toggle-btn${tab === 'receive' ? ' is-active' : ''}`} onClick={() => setTab('receive')}>
-              <ArrowDownToLine size={16} /> Receive
-            </button>
-          </div>
-
-          <section className="beam-panel beam-start-panel" hidden={tab !== 'send'}>
+          <div className="beam-start-grid">
+          <section className="beam-panel beam-start-panel">
+            <h2 className="beam-card-title"><Send size={18} /> Send files</h2>
             <button
               type="button"
               className={`beam-drop${dragging ? ' is-dragging' : ''}`}
@@ -228,7 +223,7 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
             >
               <Upload size={30} />
               <span className="beam-drop-title">Drop files here</span>
-              <span className="beam-drop-sub">or click to choose. Any size, any number. You can add more later.</span>
+              <span className="beam-drop-sub">or click to choose. Big files are fine, and you can add more later.</span>
             </button>
             <input
               ref={inputRef}
@@ -241,7 +236,8 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
             <p className="beam-hint beam-center">You will get a PIN, a QR code and a radar of people nearby. Add more files whenever you like.</p>
           </section>
 
-          <section className="beam-panel beam-start-panel" hidden={tab !== 'receive'}>
+          <section className="beam-panel beam-start-panel">
+            <h2 className="beam-card-title"><ArrowDownToLine size={18} /> Receive files</h2>
             <form className="beam-join" onSubmit={onSubmit}>
               <label className="label" htmlFor="beam-pin">PIN from the sender</label>
               <input
@@ -264,6 +260,7 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
             </p>
             <ReceiveMode visible={visible} onVisible={onVisible} onRespond={onRespond} />
           </section>
+          </div>
         </div>
       </div>
     </div>

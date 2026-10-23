@@ -236,8 +236,14 @@ async function startSending(page, files) {
 }
 const addFiles = (page, files) => page.getByTestId('beam-add-input').setInputFiles([].concat(files).map((f) => f.path))
 
+/** The start screen shows Send and Receive side by side; older layouts had a Receive tab. */
+async function openReceive(page) {
+  const tab = page.getByRole('tab', { name: 'Receive' })
+  if (await tab.count()) await tab.click()
+}
+
 async function joinWithPin(page, pin) {
-  await page.getByRole('tab', { name: 'Receive' }).click()
+  await openReceive(page)
   await page.locator('#beam-pin').fill(`${pin.slice(0, 3)} ${pin.slice(3)}`)
   await page.getByRole('button', { name: 'Connect' }).click()
 }
@@ -783,7 +789,7 @@ await test('PIN entry: a pasted link works; letters, short and long input are re
   const sender = await open()
   const pin = await startSending(sender.page, small)
   const r = await open(SAVE_TO_OPFS)
-  await r.page.getByRole('tab', { name: 'Receive' }).click()
+  await openReceive(r.page)
   for (const bad of ['abcdef', '12345', '1234567', '', '   ']) {
     await r.page.locator('#beam-pin').fill(bad)
     await r.page.getByRole('button', { name: 'Connect' }).click()
@@ -838,7 +844,7 @@ const newNetwork = () => `10.${150 + Math.floor(Math.random() * 40)}.${Math.floo
 /** A receiver tab on `ip` with Receive mode switched on and listed. Returns its visible name too. */
 async function nearbyReceiver(open, ip, init = SAVE_TO_OPFS) {
   const r = await open(init, { ip })
-  await r.page.getByRole('tab', { name: 'Receive' }).click()
+  await openReceive(r.page)
   await r.page.getByRole('switch', { name: 'Show me to nearby senders' }).check({ force: true })
   await r.page.getByText('Waiting for requests').waitFor()
   const raw = await r.page.getByTestId('beam-visible-name').innerText()
@@ -856,7 +862,7 @@ await test('Nearby: Receive mode is off by default and does not even open a conn
   const r = await open()
   const sockets = []
   r.page.on('websocket', (ws) => sockets.push(ws.url()))
-  await r.page.getByRole('tab', { name: 'Receive' }).click()
+  await openReceive(r.page)
   await sleep(800)
   if (await r.page.getByRole('switch', { name: 'Show me to nearby senders' }).isChecked()) throw new Error('Receive mode starts on')
   if (sockets.some((u) => u.includes('/lobby/'))) throw new Error('lobby socket opened without opting in')

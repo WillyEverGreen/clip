@@ -1,0 +1,46 @@
+# Clip (clip.foo.ng)
+
+> Free file and text sharing with no account. Short links, optional password encryption in the browser, a real-time shared notepad, and peer-to-peer large file transfer between browsers.
+
+Clip is for developers, students and anyone who needs to move code, text, documents or large files between devices quickly, without signing up.
+
+## What Clip does
+
+### 1. Clip Beam: browser to browser file transfer - https://clip.foo.ng/beam
+- Sends files directly from one browser to another over an encrypted WebRTC connection. Nothing is uploaded to or stored on a server.
+- Pair with a 6-digit PIN or a link, or pick people nearby on the same network from the radar.
+- Send to several receivers at once, keep adding files while connected, receivers accept each file or accept all.
+- Chrome and Edge stream received files straight to disk, so multi-gigabyte files work. Firefox and Safari keep the file in memory and handle up to about 2 GB.
+- Shows live speed and time left, checks every file with SHA-256, and resumes after a dropped connection (full resume where the browser can save to disk).
+- Both people need to keep their tabs open until the transfer finishes.
+
+### 2. Text and file sharing (encrypted pastebin) - https://clip.foo.ng/
+- No account. Paste text or drop files and get a short link, with custom slugs, secret edit codes and expiry from 1 hour to permanent.
+- Optional password: text and files are encrypted in the browser with AES-256-GCM (PBKDF2 key derivation) before upload, so the server only holds ciphertext. Without a password, shares are stored as plain content.
+- File uploads are limited to 25 MB each and are deleted after 48 hours. Use Clip Beam for bigger files.
+- Preview ZIP contents in the browser, paste screenshots from the clipboard, markdown with syntax highlighting.
+
+### 3. Live Pad (real-time shared notepad) - https://clip.foo.ng/live
+- Several devices edit the same pad at once, powered by Cloudflare Durable Objects and operational transformation.
+- Scan the Phone Pair QR code to move text and photos between phone and computer.
+- Live markdown preview with math and code highlighting.
+
+### 4. Command line
+- Plain text: `curl -sL clip.foo.ng/r/<slug>`
+- Files: `curl -sL clip.foo.ng/f/<slug>`
+- ZIP bundles: `curl -sL clip.foo.ng/z/<slug>`
+
+## How Clip compares
+
+- Versus WeTransfer and similar: no email addresses and no account. Clip Beam has no upload step or size cap from a server, but both people must be online at the same time. WeTransfer-style services keep the file for later.
+- Versus Google Drive and Dropbox: nothing to sign in to on either side, so nothing is left on a shared computer.
+- Versus Pastebin and Rentry: handles binary files too, adds a live collaborative pad, and can encrypt in the browser.
+- Versus PairDrop and Snapdrop: similar nearby browser-to-browser idea, plus shareable links, text sharing, resume and multi-receiver sessions.
+
+## Pages
+
+- https://clip.foo.ng/ : create a share
+- https://clip.foo.ng/beam : Clip Beam
+- https://clip.foo.ng/live : Live Pad
+- https://clip.foo.ng/about : overview
+- Source: https://github.com/WillyEverGreen/clip

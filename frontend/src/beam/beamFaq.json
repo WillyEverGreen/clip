@@ -1,0 +1,26 @@
+[
+  {
+    "q": "How do I send a large file to someone without uploading it?",
+    "a": "Open Clip Beam, drop your files and share the 6-digit PIN or link. The other person opens it, enters the PIN and accepts the file. It goes straight from your browser to theirs over an encrypted peer-to-peer WebRTC connection, so nothing is uploaded and no account is needed."
+  },
+  {
+    "q": "Is there a file size limit on Clip Beam?",
+    "a": "Clip Beam has no server-side limit because nothing passes through a server. In Chrome and Edge the receiver streams the file straight to disk, so multi-gigabyte files work. Firefox and Safari hold the file in memory, so they handle files up to about 2 GB."
+  },
+  {
+    "q": "Do both people need to be online at the same time?",
+    "a": "Yes. Clip Beam sends directly between two browsers, so both tabs must stay open until the transfer finishes. If the connection drops it reconnects and continues from where it stopped, and a receiver using Chrome or Edge can also resume after closing the tab."
+  },
+  {
+    "q": "Is Clip Beam safe and private?",
+    "a": "The two browsers talk over WebRTC, which encrypts the connection with DTLS, and every file is checked with SHA-256 when it arrives. Clip only passes the small handshake messages that let the browsers find each other. Your files are never stored on Clip servers."
+  },
+  {
+    "q": "Can I send files to several people at once, or to someone nearby?",
+    "a": "Yes. One sender can serve up to 8 receivers at the same time, keep adding files while connected, and each receiver can accept file by file or accept all. People on the same network who choose to be visible show up on the radar so you can invite them without a PIN."
+  },
+  {
+    "q": "How is Clip Beam different from WeTransfer, Snapdrop or PairDrop?",
+    "a": "WeTransfer uploads your file to a server first and keeps it for later, while Clip Beam sends it directly and needs both people online. Compared with Snapdrop and PairDrop, Clip Beam adds PIN and link pairing that works across networks, multi-file sessions, speed and time-left display, SHA-256 checks and resume after a dropped connection."
+  }
+]

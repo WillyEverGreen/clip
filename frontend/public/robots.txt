@@ -1,11 +1,17 @@
 # robots.txt for Clip File Sharing & Text Sharing
 User-agent: *
 Allow: /
+Allow: /about
 Allow: /live
+Allow: /beam
+Allow: /llms.txt
 Disallow: /api/
 Disallow: /admin
 Disallow: /r/
 Disallow: /z/
 Disallow: /f/
+
+# AI Search & Citation policy: Content-Signal: search=yes, ai-input=yes, ai-train=no
+# See https://clip.foo.ng/llms.txt for AI assistant context
 
 Sitemap: https://clip.foo.ng/sitemap.xml
