@@ -99,7 +99,7 @@ export default function AboutPage() {
           <li><Check size={14} /> No sign-up</li>
           <li><Check size={14} /> Password lock built in</li>
         </ul>
-        <p className="lp-reveal lp-beam-hint">Sending something over 25 MB? <Link to="/beam">Beam it browser to browser <ArrowRight size={14} /></Link></p>
+        <p className="lp-reveal lp-beam-hint">Files up to 500 MB work too. <Link to="/beam">Anything bigger? Beam it browser to browser <ArrowRight size={14} /></Link></p>
       </header>
     </div>
     <LandingSections />

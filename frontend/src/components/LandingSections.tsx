@@ -198,8 +198,8 @@ export default function LandingSections() {
 
           <Spotlight className="a-files sx-reveal">
             <div className="sx-ico"><FileUp size={18} /></div>
-            <h3>Files up to 25 MB</h3>
-            <p>Drag, drop or paste a screenshot. Peek inside ZIPs without downloading.</p>
+            <h3>Files up to 500 MB</h3>
+            <p>Drag, drop or paste a screenshot. Peek inside ZIPs without downloading. One big file at a time is kept for up to a day.</p>
             <div className="mock-files">
               <span>report.pdf</span><span>diagram.png</span><span>dataset.zip</span>
             </div>

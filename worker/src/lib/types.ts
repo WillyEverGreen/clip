@@ -10,6 +10,12 @@ export interface Env {
   ADMIN_SECRET?: string     // set via wrangler.toml [vars] or secret
   TURN_KEY_ID?: string      // Cloudflare Realtime TURN key id (optional; enables the relay fallback)
   TURN_API_TOKEN?: string   // its API token: wrangler secret put TURN_API_TOKEN
+  // Large files (over 25 MB) go to a private S3-compatible bucket (Backblaze B2)
+  B2_KEY_ID?: string        // bucket-scoped application key id: wrangler secret put B2_KEY_ID
+  B2_APP_KEY?: string       // its secret: wrangler secret put B2_APP_KEY
+  B2_BUCKET?: string        // wrangler.toml [vars]
+  B2_S3_ENDPOINT?: string   // wrangler.toml [vars], e.g. https://s3.us-east-005.backblazeb2.com
+  B2_REGION?: string        // wrangler.toml [vars], e.g. us-east-005
 }
 
 

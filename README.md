@@ -30,6 +30,7 @@
 ### ⭐ Key Features
 
 - 🚀 **Zero Friction, No Sign-up**: Open the site, paste text or drop files, and get a link in seconds. No account, email, or credentials.
+- 📦 **Large files, 25 MB to 500 MB (`/b/<id>`)**: one file above the 25 MB share limit goes straight from your browser to a private Backblaze B2 bucket, in parts with automatic retry, and is deleted after the time you choose (1 hour, 6 hours or 1 day). The sender gets a **Delete now** button, and a cleanup job removes expired files every 10 minutes. See [docs/LARGE_FILES.md](docs/LARGE_FILES.md).
 - 📡 **Clip Beam (`/beam`), files of any size, browser to browser**: Send multi-gigabyte files straight from your disk to someone else's over an encrypted WebRTC connection. Nothing is uploaded or stored.
   - **Connect once, keep sending**: the connection stays open, so the sender can keep adding files and the receiver chooses **Accept**, **Decline** or **Accept all** for each. Either side can end the connection at any time.
   - **Send to up to 8 people at once**, each with their own progress, speed, and a live time-left countdown.
@@ -49,7 +50,7 @@
 - 🗜️ **Client-Side ZIP Archive Inspector**: Click any attached `.zip` to explore its folders and files, search inside it, and extract single files without downloading the whole archive.
 - 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files as one ZIP, decrypted on the fly when encrypted.
 - 📱 **Phone Pair via QR Code**: Connect your phone to a Live Pad or a Beam in one second by scanning a QR code.
-- 📋 **Clipboard & Drag-and-Drop**: Paste screenshots straight from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop files up to 25 MB (use Beam for bigger ones).
+- 📋 **Clipboard & Drag-and-Drop**: Paste screenshots straight from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop files up to 25 MB. One file up to 500 MB can be shared as a **large file** (stored in a private bucket, deleted after 1 hour, 6 hours or 1 day, with a delete-now button for the sender); use Beam for anything bigger.
 - 🔑 **Secret Edit Code**: Protect a link with a custom edit password to modify content, add or remove files, or delete early.
 - 🔗 **Custom & Retained Slugs**: Pick your own readable slug (`clip.foo.ng/my-notes`) or convert a live room into a permanent clip with the same slug.
 - 📁 **Rich Markdown & KaTeX Math**: GitHub Flavored Markdown, task lists, tables, and KaTeX typesetting (LaTeX, matrices, piecewise functions, integrals).
@@ -58,6 +59,15 @@
 - 🖥️ **Zero-Scroll Viewport Layout**: The desktop workspace fits 100% of the viewport height and collapses into mobile tabs on narrow screens.
 - 🎨 **Pure Monochrome Look**: Solid black (`#000000`) and pure white with Lucide icons.
 - 🌐 **SEO & Rich Snippets**: Schema.org `WebApplication` and `FAQPage` snippets, OpenGraph / Twitter cards, `robots.txt`, and `sitemap.xml`.
+
+---
+
+### 📦 Sharing a large file (over 25 MB)
+
+1. On the home page open the **File** tab and drop **one** file between 25 MB and 500 MB. (Several files, or a file over 500 MB, are refused with a clear message; use Beam for those.)
+2. Pick how long to keep it: **1 Hour**, **6 Hours** or **1 Day**. Password lock and custom links are not available for large files.
+3. Tap **Create Link**. The file uploads straight to storage with a progress bar and lands on `/b/<id>`.
+4. Share that link. Visitors see the name, size and a countdown, and tap **Download**. You see **Delete now** on your own browser.
 
 ---
 
@@ -116,6 +126,7 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 | **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Pure Monochrome), Lucide Icons, Marked, KaTeX, Prism.js, fflate |
 | **Backend API** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
 | **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed): `ClipRoom` for Live Pad sync, `BeamRoom` for Beam connection setup, `BeamLobby` for the nearby radar |
+| **Large files** | Backblaze B2 (private S3-compatible bucket), SigV4 signed direct uploads and downloads, a scheduled worker for expiry |
 | **Clip Beam** | WebRTC data channels (peer to peer), File System Access API, IndexedDB (resume), `hash-wasm` (SHA-256) |
 | **Hosting & CDN** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
 | **Search & SEO** | Schema.org JSON-LD (WebApplication & FAQPage), XML Sitemap, Robots.txt, OpenGraph |
@@ -135,7 +146,7 @@ npm run dev
 ```
 
 For a detailed breakdown of the codebase architecture, environment setup, and contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide.  
-For how Clip Beam works (rooms, radar, resume, tests), see [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md). The wider large-file plan is in [docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md](docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md).  
+For how Clip Beam works (rooms, radar, resume, tests), see [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md). How large files work and are set up: [docs/LARGE_FILES.md](docs/LARGE_FILES.md) (the original plan, which used R2, is in [docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md](docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md)).  
 For a full history of bug fixes and architectural updates, see [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
@@ -147,6 +158,7 @@ Clip includes automated tests for crypto, uploads, expiration, CLI generation, l
 ```bash
 npm test                 # unit tests, nothing needs to be running
 npm run test:beam        # all Clip Beam tests (needs the worker and site running locally)
+npm run test:big         # large-file tests, against the real B2 bucket (needs B2 keys in worker/.dev.vars)
 npm run test:all         # everything
 ```
 
@@ -165,6 +177,7 @@ npm run deploy
 * Deploy worker only: `npm run deploy:worker`
 * Deploy frontend only: `npm run deploy:frontend`
 * The first deploy that includes Clip Beam also creates the `BeamRoom` and `BeamLobby` Durable Objects (migrations `v2` and `v3`); nothing else needs configuring.
+* Large files need two secrets on the worker, set once: `npx wrangler secret put B2_KEY_ID` and `npx wrangler secret put B2_APP_KEY` (a key limited to the one bucket; see [docs/LARGE_FILES.md](docs/LARGE_FILES.md)). The deploy also schedules the 10-minute cleanup job.
 * Run it from the `main` branch: Cloudflare Pages only treats `main` as production, and any other branch is published as a preview.
 
 ---

@@ -21,7 +21,7 @@
   },
   {
     "q": "What are the limits?",
-    "a": "Files up to 25 MB each and text up to 2 MB, with uploaded files deleted after 48 hours. For bigger files use Clip Beam, which sends them straight from one browser to another. You can also paste screenshots straight from your clipboard.",
+    "a": "Normal shares take files up to 25 MB each and text up to 2 MB, with uploaded files deleted after 48 hours. A single file from 25 MB up to 500 MB can be shared as a large file, which is kept for 1 hour, 6 hours or 1 day and then deleted. For anything bigger use Clip Beam, which sends files straight from one browser to another. You can also paste screenshots straight from your clipboard.",
     "group": "Sharing"
   },
   {

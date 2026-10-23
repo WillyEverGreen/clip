@@ -4,6 +4,16 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
+## 🗓️ October 2026: Large files (25 MB to 500 MB)
+
+* **What:** one file above 25 MB, up to 500 MB, is sent straight from the browser to a private Backblaze B2 bucket with short-lived signed links (in 64 MB parts above 100 MB, three parts at a time, each retried). The result lives at `/b/<id>` with a Download button, a countdown, and Delete now for the sender.
+* **Expiry:** 1 hour, 6 hours or 1 day. A worker job runs every 10 minutes and deletes expired files; the bucket also removes anything the job misses within days.
+* **Limits:** 500 MB per file, 8 GB stored in total, 6 uploads started per 2 minutes per network. Password lock is not offered for large files.
+* **Safety:** the storage key is bucket-scoped, the bucket is private, downloads are always forced to save as a file, and the sender's delete token is stored only as a hash.
+* **Setup and operations:** see `docs/LARGE_FILES.md`.
+
+---
+
 ## 🗓️ October 2026: Clip Beam sessions, resilience and a Live Pad style UI
 
 * **Connect once, keep sending:** a Beam is now a connection that stays open. The sender can keep adding files; the receiver decides per file (Accept / Decline) or turns on Accept all (one folder, duplicates renamed); either side can end the connection or cancel just one file. Browsers without a folder picker download automatically; files over 2 GB are refused up front there.

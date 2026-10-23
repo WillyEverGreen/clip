@@ -1,7 +1,7 @@
 # Clip Beam: Architecture
 
 **Route:** `/beam`
-**What it is:** direct browser-to-browser file transfer over WebRTC for files too big for Clip's 25 MB KV
+**What it is:** direct browser-to-browser file transfer over WebRTC for files too big for Clip's normal 25 MB shares (and the 500 MB large-file path, see `docs/LARGE_FILES.md`)
 uploads. Two browsers open **one direct connection that stays up**; the sender keeps adding files, the
 receiver decides about each one, and either side can end the connection at any time. Clip's servers only
 introduce the browsers to each other: file bytes never touch them.

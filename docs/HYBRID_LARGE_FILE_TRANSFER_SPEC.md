@@ -1,6 +1,6 @@
 # Clip Hybrid Large File Transfer Architecture Specification
 **Author:** Clip Core Engineering Team  
-**Status:** Approved Architecture Plan  
+**Status:** Original plan (Cloudflare R2). The 25 MB to 500 MB tier was built on **Backblaze B2** instead, because R2 needs a payment method; see `docs/LARGE_FILES.md` for what is live. Files above 500 MB use Clip Beam.  
 **Target Capability:** Superfast 100 MB to 100 GB+ Secure File Transfers  
 
 ---

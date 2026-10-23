@@ -5,6 +5,13 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 FRONTEND_ORIGIN = "https://clip.foo.ng"
+B2_BUCKET = "clip-foo"
+B2_S3_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"
+B2_REGION = "us-east-005"
+
+# Every 10 minutes: delete large files that have expired
+[triggers]
+crons = ["*/10 * * * *"]
 
 [[kv_namespaces]]
 binding = "PASTE_KV"

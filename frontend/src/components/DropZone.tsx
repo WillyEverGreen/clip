@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { formatBytes } from '../lib/api'
+import { BIG_MAX_BYTES } from '../lib/bigUpload'
 import { Plus, X, Check } from 'lucide-react'
 import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
@@ -14,6 +15,8 @@ interface Props {
   uploadProgress?: number | null
   /** File names shown in the progress bar */
   uploadingFileNames?: string[]
+  /** Let one file above 25 MB through (it is shared on its own, as a large file) */
+  allowLarge?: boolean
 }
 
 const MAX = 50 * 1024 * 1024 // 50 MB total limit
@@ -27,6 +30,7 @@ export default function DropZone({
   height = '202px',
   uploadProgress = null,
   uploadingFileNames = [],
+  allowLarge = false,
 }: Props) {
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>(files || [])
@@ -46,11 +50,32 @@ export default function DropZone({
       // Check per-file size limit
       const oversizedFiles = newFiles.filter(f => f.size > MAX_PER_FILE)
       if (oversizedFiles.length > 0) {
-        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit. Use Clip Beam (clip.foo.ng/beam) to send big files directly.`)
+        if (!allowLarge) {
+          setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit. Use Clip Beam (clip.foo.ng/beam) to send big files directly.`)
+          return
+        }
+        if (oversizedFiles.some(f => f.size > BIG_MAX_BYTES)) {
+          setError(`"${oversizedFiles.find(f => f.size > BIG_MAX_BYTES)!.name}" is over ${formatBytes(BIG_MAX_BYTES)}. Use Clip Beam (clip.foo.ng/beam) to send files that big directly.`)
+          return
+        }
+        if (newFiles.length > 1) {
+          setError('A file over 25 MB is shared on its own. Choose just that file.')
+          return
+        }
+        // A large file replaces whatever was selected: it travels separately from normal shares
+        setSelectedFiles(() => {
+          if (onFiles) onFiles(newFiles)
+          if (onFile) onFile(newFiles[0] || null)
+          return newFiles
+        })
         return
       }
-      
+
       setSelectedFiles((prev) => {
+        if (prev.some(f => f.size > MAX_PER_FILE)) {
+          setError('A file over 25 MB is shared on its own. Remove it first to add other files.')
+          return prev
+        }
         const deduped = newFiles.filter(
           (nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size),
         )
@@ -67,7 +92,7 @@ export default function DropZone({
         return updated
       })
     },
-    [maxBytes, onFiles, onFile],
+    [maxBytes, onFiles, onFile, allowLarge],
   )
 
   const onPaste = async (e: React.ClipboardEvent) => {
