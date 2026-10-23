@@ -5,7 +5,7 @@ import Logo from './Logo'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   Link2, Quote, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
-  ClipboardPaste, Share2, Flame, Code2, QrCode,
+  ClipboardPaste, Share2, Flame, Code2, QrCode, Radio, ShieldCheck, RotateCcw, Users,
 } from 'lucide-react'
 
 import FAQ from '../lib/faq.json'
@@ -202,6 +202,46 @@ export default function LandingSections() {
             <h3>Built for terminals too</h3>
             <p>Pull text, files or a full ZIP with a single command.</p>
             <pre className="mock-term"><code><span className="t-dim">$</span> curl -sL clip.foo.ng/r/<span className="t-hl">my-notes</span>{'\n'}<span className="t-dim">Lab 4 notes{'\n'}- tokens expire after 24h</span></code></pre>
+          </Spotlight>
+        </div>
+      </section>
+
+      {/* ── Clip Beam ───────────────────────────────────────────── */}
+      <section className="sx-section" id="beam">
+        <div className="sx-beam">
+          <div className="sx-beam-copy sx-reveal">
+            <span className="sx-eyebrow"><Radio size={12} /> Clip Beam</span>
+            <h2>Big files, straight from<br /><em>one browser to another.</em></h2>
+            <p>
+              Nothing to upload and nothing stored on a server. Share a 6-digit PIN or pick someone nearby, and the file
+              streams directly between your two browsers, encrypted.
+            </p>
+            <ul className="sx-beam-points">
+              <li><Users size={16} /><span><b>Several people at once.</b> Keep adding files while connected, and receivers accept each one or all.</span></li>
+              <li><RotateCcw size={16} /><span><b>Picks up where it stopped.</b> If the connection drops it reconnects and continues.</span></li>
+              <li><ShieldCheck size={16} /><span><b>Checked on arrival.</b> Every file is verified with SHA-256, with live speed and time left.</span></li>
+            </ul>
+            <div className="lp-actions">
+              <Link to="/beam" className="lp-btn lp-btn-primary">Open Clip Beam <ArrowRight size={16} /></Link>
+              <span className="sx-beam-note">Chrome and Edge handle multi-gigabyte files. Both people keep their tabs open.</span>
+            </div>
+          </div>
+
+          <Spotlight className="sx-beam-card sx-reveal">
+            <div className="sx-beam-peers">
+              <div className="sx-beam-peer"><span className="sx-beam-av">🦊</span><b>Aarav</b><em>Sending</em></div>
+              <div className="sx-beam-wire" aria-hidden="true"><i /><i /><i /></div>
+              <div className="sx-beam-peer"><span className="sx-beam-av">🐼</span><b>You</b><em>Receiving</em></div>
+            </div>
+            <div className="sx-beam-file">
+              <div className="sx-beam-file-head"><FileUp size={16} /><span>design-assets.zip</span><em>3.2 GB</em></div>
+              <div className="sx-beam-bar"><i /></div>
+              <div className="sx-beam-stats"><span>68%</span><span>84 MB/s</span><span>0:42 left</span></div>
+            </div>
+            <div className="sx-beam-foot">
+              <div className="sx-beam-pin"><small>PIN</small><b>482 916</b></div>
+              <div className="sx-beam-live"><i /> 2 connected</div>
+            </div>
           </Spotlight>
         </div>
       </section>
