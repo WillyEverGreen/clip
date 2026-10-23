@@ -252,6 +252,11 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
                 : `This browser keeps each file in memory until it finishes, so it can receive files up to ${formatBytes(MEMORY_LIMIT)} each. Use Chrome or Edge for bigger files.`}
             </p>
             <ReceiveMode visible={visible} onVisible={onVisible} onRespond={onRespond} />
+            <ol className="beam-steps" aria-label="How receiving works">
+              <li><b>1</b><span>Enter the sender's PIN, or switch on nearby so they can find you.</span></li>
+              <li><b>2</b><span>Accept each file when it appears, or accept all.</span></li>
+              <li><b>3</b><span>Pick where it is saved. It is checked when it arrives.</span></li>
+            </ol>
           </section>
           </div>
         </div>
