@@ -10,8 +10,10 @@ import {
   BeamLobbyRoom, LOBBY_MAX_MEMBERS, LOBBY_STALE_MS, LOBBY_INVITES_PER_MIN,
 } from '../worker/src/lib/beamLobby.ts'
 import { createSHA256 } from '../frontend/node_modules/hash-wasm/dist/index.esm.js'
+import { createMemoryWriter, UnsupportedSizeError, MEMORY_LIMIT } from '../frontend/src/beam/diskWriter.ts'
+import { readFileSync } from 'node:fs'
 import { SpeedTracker } from '../frontend/src/beam/speedTracker.ts'
-import { parsePin, formatPin, formatBytes, formatDuration, formatEta, avatarFor } from '../frontend/src/beam/beamFormat.ts'
+import { parsePin, formatPin, formatBytes, formatDuration, formatEta, avatarFor, uniqueFileName, safeFileName } from '../frontend/src/beam/beamFormat.ts'
 
 let passed = 0
 let failed = 0
@@ -931,6 +933,67 @@ test('avatars are stable per name, ignore the room-added number, and cover the w
   assert.equal(avatarFor('MOCHI'), avatarFor('mochi'))
   const seen = new Set(['Mochi', 'Biscuit', 'Pudding', 'Waffles', 'Pebble', 'Noodle', 'Bubbles', 'Peanut', 'Cupcake', 'Muffin', 'Sprout', 'Marshmallow', 'Pixel', 'Button', 'Cookie', 'Nugget', 'Pickles', 'Tofu', 'Boba', 'Sesame'].map(avatarFor))
   assert.ok(seen.size >= 8, `only ${seen.size} different avatars`)
+})
+
+console.log('\n\x1b[1m\x1b[36mClip Beam session helpers and protocol\x1b[0m')
+
+test('unique file names: "name (2).ext" style, extension kept, dotfiles and extension-less names handled', () => {
+  const taken = (set) => (n) => set.has(n)
+  assert.equal(uniqueFileName('a.txt', taken(new Set())), 'a.txt')
+  assert.equal(uniqueFileName('a.txt', taken(new Set(['a.txt']))), 'a (2).txt')
+  assert.equal(uniqueFileName('a.txt', taken(new Set(['a.txt', 'a (2).txt', 'a (3).txt']))), 'a (4).txt')
+  assert.equal(uniqueFileName('archive.tar.gz', taken(new Set(['archive.tar.gz']))), 'archive.tar (2).gz')
+  assert.equal(uniqueFileName('README', taken(new Set(['README']))), 'README (2)')
+  assert.equal(uniqueFileName('.env', taken(new Set(['.env']))), '.env (2)')
+  assert.equal(uniqueFileName('x.bin', () => true).startsWith('x ('), true) // never loops forever
+})
+
+test('safe file names: path separators and control characters removed, length capped, never empty', () => {
+  assert.equal(safeFileName('a/b\\c.txt'), 'a_b_c.txt')
+  assert.equal(safeFileName('../../etc/passwd'), '.._.._etc_passwd')
+  assert.equal(safeFileName('bad\u0000\u001fname'), 'bad__name')
+  assert.equal(safeFileName('x'.repeat(400)).length, 255)
+  assert.equal(safeFileName(''), 'file')
+  assert.equal(safeFileName('   '), 'file')
+  assert.equal(safeFileName(null), 'file')
+  assert.equal(safeFileName(42), 'file')
+  assert.equal(safeFileName('😀 файл 文件.txt'), '😀 файл 文件.txt')
+})
+
+test('browsers without disk streaming refuse files over 2 GB up front (and allow files at the limit)', () => {
+  assert.throws(() => createMemoryWriter('big.iso', MEMORY_LIMIT + 1, ''), UnsupportedSizeError)
+  assert.throws(() => createMemoryWriter('big.iso', 5 * 1024 ** 3, ''), /2 GB/)
+  assert.equal(createMemoryWriter('ok.bin', MEMORY_LIMIT, '').kind, 'download')
+  assert.equal(createMemoryWriter('empty', 0, '').kind, 'download')
+})
+
+test('protocol guard: every channel message type is both sent and handled somewhere (no dead or ignored messages)', () => {
+  const read = (f) => readFileSync(new URL(`../frontend/src/beam/${f}`, import.meta.url), 'utf8')
+  const protocol = read('beamProtocol.ts')
+  const sender = read('beamSender.ts')
+  const receiver = read('beamReceiver.ts')
+  const types = [...protocol.matchAll(/\|\s*\{\s*t:\s*'([a-z_]+)'/g)].map((m) => m[1])
+  assert.ok(types.length >= 10, `found ${types.length} message types`)
+  for (const t of types) {
+    const sent = new RegExp(`t:\\s*'${t}'`)
+    const handled = new RegExp(`case\\s+'${t}'`)
+    assert.ok(sent.test(sender) || sent.test(receiver), `"${t}" is never sent`)
+    assert.ok(handled.test(sender) || handled.test(receiver), `"${t}" is never handled`)
+  }
+  // and each side handles what the other side sends
+  const fromReceiver = ['hello', 'accept', 'reject', 'ack', 'verified']
+  for (const t of fromReceiver) {
+    assert.ok(new RegExp(`t:\\s*'${t}'`).test(receiver), `receiver should send ${t}`)
+    assert.ok(new RegExp(`case\\s+'${t}'`).test(sender), `sender should handle ${t}`)
+  }
+  const fromSender = ['offer', 'meta', 'done']
+  for (const t of fromSender) {
+    assert.ok(new RegExp(`t:\\s*'${t}'`).test(sender), `sender should send ${t}`)
+    assert.ok(new RegExp(`case\\s+'${t}'`).test(receiver), `receiver should handle ${t}`)
+  }
+  for (const t of ['cancel_file', 'bye', 'ping', 'pong']) {
+    assert.ok(new RegExp(`case\\s+'${t}'`).test(sender) && new RegExp(`case\\s+'${t}'`).test(receiver), `both sides should handle ${t}`)
+  }
 })
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`)

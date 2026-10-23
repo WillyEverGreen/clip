@@ -12,8 +12,10 @@ const STORE = 'unfinished'
 const MAX_AGE_MS = 24 * 3600 * 1000
 
 export interface ResumeRecord {
-  /** Random id this receiver uses so the sender can tell it is the same transfer coming back */
+  /** Random id of this partly received file (the record's key) */
   rk: string
+  /** This receiver's session key, so the sender can tell the same receiver is coming back */
+  sk: string
   name: string
   size: number
   type: string
@@ -53,6 +55,7 @@ function run<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => IDBRequ
 
 export async function saveRecord(record: ResumeRecord): Promise<void> {
   await run('readwrite', (s) => s.put(record))
+  void listRecords() // drops anything older than a day, so abandoned transfers do not pile up
 }
 
 export async function deleteRecord(rk: string): Promise<void> {

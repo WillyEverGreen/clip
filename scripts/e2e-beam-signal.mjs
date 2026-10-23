@@ -616,6 +616,17 @@ await test('reconnect: a receiver that drops frees its slot and can come straigh
   sender.close(); again.close()
 })
 
+await test('ICE servers endpoint always returns STUN, never breaks, and is not cached', async () => {
+  const res = await fetch(`${HTTP}/api/beam/ice`, { headers: { 'CF-Connecting-IP': lobbyIp() } })
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('cache-control') ?? '', /no-store/)
+  const json = await res.json()
+  assert.ok(Array.isArray(json.iceServers) && json.iceServers.length >= 1)
+  assert.ok(json.iceServers.every((s) => s.urls))
+  assert.ok(json.iceServers.some((s) => String(s.urls).startsWith('stun:')))
+  assert.equal(typeof json.turn, 'boolean')
+})
+
 await test('PIN guessing is rate limited per IP', async () => {
   const ip = `10.99.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`
   let limited = false

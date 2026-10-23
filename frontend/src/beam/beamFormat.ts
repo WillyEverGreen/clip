@@ -49,3 +49,26 @@ export function avatarFor(name: string): string {
   for (let i = 0; i < base.length; i++) h = (Math.imul(h, 31) + base.charCodeAt(i)) >>> 0
   return AVATARS[h % AVATARS.length]
 }
+
+/**
+ * A file name that is not in `taken`: "report.pdf" becomes "report (2).pdf", "report (3).pdf", ...
+ * Used when several files with the same name land in one folder.
+ */
+export function uniqueFileName(name: string, taken: (candidate: string) => boolean): string {
+  if (!taken(name)) return name
+  const dot = name.lastIndexOf('.')
+  const stem = dot > 0 ? name.slice(0, dot) : name
+  const ext = dot > 0 ? name.slice(dot) : ''
+  for (let n = 2; n < 10_000; n++) {
+    const candidate = `${stem} (${n})${ext}`
+    if (!taken(candidate)) return candidate
+  }
+  return `${stem} (${Date.now()})${ext}`
+}
+
+/** A file name safe to offer to the save dialog or a folder: no path separators or control characters. */
+export function safeFileName(raw: unknown): string {
+  // eslint-disable-next-line no-control-regex
+  const name = typeof raw === 'string' ? raw.replace(/[\u0000-\u001f\u007f/\\]/g, '_').trim().slice(0, 255) : ''
+  return name || 'file'
+}

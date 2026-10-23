@@ -12,6 +12,7 @@ export default function AboutPage() {
   useSeo({
     title: 'Clip - Share text and files in seconds',
     description: 'Temporary text and file sharing with custom links, optional encryption and a real-time live pad. No account needed.',
+    canonicalUrl: 'https://clip.foo.ng/about',
   })
 
   const rootRef = useRef<HTMLDivElement>(null)

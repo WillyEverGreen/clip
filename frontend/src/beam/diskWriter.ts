@@ -98,10 +98,49 @@ export async function createDiskWriter(name: string, size: number, type: string)
     const handle = await picker({ suggestedName: name })
     return diskWriter(handle, await handle.createWritable())
   }
+  return createMemoryWriter(name, size, type)
+}
+
+/** The browser's own downloads path: parts are kept in memory and downloaded at the end (up to 2 GB). */
+export function createMemoryWriter(name: string, size: number, type: string): DiskWriter {
   if (size > MEMORY_LIMIT) {
     throw new UnsupportedSizeError('This browser can only receive files up to 2 GB. Open this page in Chrome or Edge to receive larger files.')
   }
   return memoryWriter(name, type, [])
+}
+
+type PickDirectory = (options?: { mode?: 'readwrite' }) => Promise<FileSystemDirectoryHandle>
+
+function directoryPicker(): PickDirectory | null {
+  const picker = (window as unknown as { showDirectoryPicker?: PickDirectory }).showDirectoryPicker
+  return typeof picker === 'function' ? picker.bind(window) : null
+}
+
+/** True when the user can pick a folder once and have every file saved into it ("Accept all"). */
+export function canPickFolder(): boolean {
+  return directoryPicker() !== null
+}
+
+/** Opens the folder picker. Must be called from a click. Throws AbortError if the dialog is closed. */
+export async function pickFolder(): Promise<FileSystemDirectoryHandle> {
+  const picker = directoryPicker()
+  if (!picker) throw new Error('This browser cannot save into a chosen folder.')
+  return picker({ mode: 'readwrite' })
+}
+
+/** Saves a file into a folder the user already chose, renaming to "name (2).ext" if the name is taken. */
+export async function createFolderWriter(dir: FileSystemDirectoryHandle, name: string): Promise<DiskWriter & { savedName: string }> {
+  const existing = new Set<string>()
+  // Directory iteration is the only way to ask "is this name taken" without trying to create it
+  const iterable = dir as unknown as { keys?: () => AsyncIterable<string> }
+  if (iterable.keys) for await (const key of iterable.keys()) existing.add(key)
+  const dot = name.lastIndexOf('.')
+  let candidate = name
+  for (let n = 2; existing.has(candidate) && n < 10_000; n++) {
+    candidate = dot > 0 ? `${name.slice(0, dot)} (${n})${name.slice(dot)}` : `${name} (${n})`
+  }
+  const handle = await dir.getFileHandle(candidate, { create: true })
+  return Object.assign(diskWriter(handle, await handle.createWritable()), { savedName: candidate })
 }
 
 /**

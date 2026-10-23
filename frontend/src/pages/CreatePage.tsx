@@ -296,6 +296,22 @@ export default function CreatePage() {
             >
               <Zap size={16} /> Live Pad
             </button>
+            <button
+              type="button"
+              onClick={() => navigate('/beam')}
+              title="Send big files straight to another browser"
+              style={{
+                flex:1, padding:'0.55rem', borderRadius:'8px', cursor:'pointer',
+                fontFamily:'var(--font)', fontSize:'0.875rem', fontWeight:600,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem',
+                transition:'all 150ms ease',
+                background: 'transparent',
+                color: 'var(--text-muted)',
+                border: '1px solid transparent',
+              }}
+            >
+              <Radio size={16} /> Beam
+            </button>
           </div>
 
           {/* Main Content input */}

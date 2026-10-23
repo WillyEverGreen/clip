@@ -55,22 +55,24 @@ export function useBeam() {
     refreshUnfinished()
   }, [refreshUnfinished])
 
-  const send = useCallback((file: File) => {
+  /** Start sharing: opens a room with these files. More can be added while it stays open. */
+  const send = useCallback((files: File[]) => {
+    if (files.length === 0) return
     disposeAll()
     closeLobby() // a sender is never listed
     const s = new BeamSender(setSender)
     senderRef.current = s
     setRole('sender')
-    s.start(file, loadMyName())
+    s.start(files, loadMyName())
   }, [disposeAll, closeLobby])
 
-  const join = useCallback((pin: string, name = loadMyName(), autoAccept = false) => {
+  const join = useCallback((pin: string, name = loadMyName()) => {
     disposeAll()
     closeLobby()
     const r = new BeamReceiver(setReceiver)
     receiverRef.current = r
     setRole('receiver')
-    r.join(pin, name, autoAccept)
+    r.join(pin, name)
   }, [disposeAll, closeLobby])
 
   const reset = useCallback(() => {
@@ -115,13 +117,12 @@ export function useBeam() {
     lobby.connect()
   }, [])
 
-  /** Answer a request from a nearby sender. Accepting joins that sender's room and stops being listed. */
+  /** Answer a request from a nearby sender. Accepting connects to that sender and stops being listed. */
   const respondInvite = useCallback((invite: LobbyInvite, accept: boolean, block = false) => {
     const lobby = lobbyRef.current
     lobby?.respond(invite.inviteId, accept, block)
     if (accept) {
-      const name = visible.name || loadMyName()
-      join(invite.pin, name, true)
+      join(invite.pin, visible.name || loadMyName())
     } else {
       setVisibleState((v) => ({ ...v, invites: v.invites.filter((i) => i.inviteId !== invite.inviteId) }))
     }
@@ -130,15 +131,22 @@ export function useBeam() {
   return {
     role, sender, receiver, visible, unfinished, send, join, reset, setVisible, respondInvite,
     resumeUnfinished, discardUnfinished,
-    /** Reconnect an interrupted download now (the Reconnect button) */
-    reconnectReceive: useCallback(() => receiverRef.current?.reconnect(true), []),
+    // Sender
+    addFiles: useCallback((files: File[]) => senderRef.current?.addFiles(files), []),
+    stopSharing: useCallback(() => senderRef.current?.stop(), []),
+    cancelSendFile: useCallback((legId: string, f: number) => senderRef.current?.cancelFile(legId, f), []),
+    disconnectLeg: useCallback((legId: string) => senderRef.current?.disconnectLeg(legId), []),
+    dismissLeg: useCallback((legId: string) => senderRef.current?.dismissLeg(legId), []),
+    inviteNearby: useCallback((ids: string[]) => senderRef.current?.invite(ids), []),
     /** Reconnect the sender's own link to Clip now */
     reconnectSender: useCallback(() => senderRef.current?.reconnectNow(), []),
-    accept: useCallback(() => receiverRef.current?.accept(), []),
-    decline: useCallback(() => receiverRef.current?.decline(), []),
-    cancelReceive: useCallback(() => receiverRef.current?.cancel(), []),
-    stopSharing: useCallback(() => senderRef.current?.stop(), []),
-    cancelLeg: useCallback((id: string) => senderRef.current?.cancelLeg(id), []),
-    inviteNearby: useCallback((ids: string[]) => senderRef.current?.invite(ids), []),
+    // Receiver
+    acceptOffer: useCallback(() => receiverRef.current?.acceptOffer(), []),
+    declineOffer: useCallback(() => receiverRef.current?.declineOffer(), []),
+    setAcceptAll: useCallback((on: boolean) => receiverRef.current?.setAcceptAll(on), []),
+    cancelReceiveFile: useCallback(() => receiverRef.current?.cancelFile(), []),
+    disconnectReceiver: useCallback(() => receiverRef.current?.disconnect(), []),
+    /** Reconnect an interrupted receiver now (the Reconnect button) */
+    reconnectReceive: useCallback(() => receiverRef.current?.reconnect(true), []),
   }
 }

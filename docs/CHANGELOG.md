@@ -4,6 +4,17 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
+## 🗓️ October 2026: Clip Beam sessions, resilience and a Live Pad style UI
+
+* **Connect once, keep sending:** a Beam is now a connection that stays open. The sender can keep adding files; the receiver decides per file (Accept / Decline) or turns on Accept all (one folder, duplicates renamed); either side can end the connection or cancel just one file. Browsers without a folder picker download automatically; files over 2 GB are refused up front there.
+* **Resilience:** heartbeat over the direct channel, ICE restart on a flaky path, signalling drops no longer interrupt a live transfer, automatic reconnect with Reconnect buttons on both sides, screen wake lock, history preserved when a receiver returns.
+* **TURN (optional):** `/api/beam/ice` hands out Cloudflare TURN credentials when a key is configured, with a safe STUN fallback.
+* **UI:** Beam now uses the same shell as Live Pad (top bar, status chip, full-width card with bordered panels, Send / Receive toggle) and the home page has a Beam tab.
+* **Audit follow-ups:** guard test so every protocol message is both sent and handled, stale resume records are pruned on save, Pages deploys with the same wrangler as the worker, lobby privacy trade-offs documented.
+* **Tests:** the Beam browser suite was rewritten for the session flow (about 60 checks).
+
+---
+
 ## 🗓️ October 2026: Clip Beam (peer-to-peer file transfer)
 
 * **New `/beam` page:** send a file of any size straight to another browser. The sender gets a 6-digit PIN (and QR code); the receiver enters it, accepts, picks where to save, and the file streams disk to disk over an RTCDataChannel.

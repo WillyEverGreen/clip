@@ -620,6 +620,38 @@ app.get('/api/beam/ws', async (c) => {
   return c.json({ error: 'pin_exhausted' }, 503)
 })
 
+// Clip Beam connection helpers. Always STUN; when a Cloudflare TURN key is configured it also hands out
+// short-lived relay credentials, which lets two devices behind strict NATs still connect. Without a key
+// (or if Cloudflare cannot be reached) it quietly returns just the STUN servers.
+const STUN_SERVERS = [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }]
+app.get('/api/beam/ice', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:ice', getClientIp(c.req.raw))
+  if (limit.limited) return c.json({ iceServers: STUN_SERVERS, turn: false }, 200)
+  const keyId = c.env.TURN_KEY_ID
+  const token = c.env.TURN_API_TOKEN
+  if (!keyId || !token) return c.json({ iceServers: STUN_SERVERS, turn: false })
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: 4 * 3600 }),
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!res.ok) throw new Error(`turn ${res.status}`)
+    const json = await res.json() as { iceServers?: unknown }
+    const list = Array.isArray(json.iceServers) ? json.iceServers : json.iceServers ? [json.iceServers] : []
+    // Keep only well-formed entries so a bad response can never break connections
+    const turn = list.filter((s): s is { urls: string | string[]; username?: string; credential?: string } =>
+      !!s && typeof s === 'object' && 'urls' in s)
+    if (turn.length === 0) throw new Error('no ice servers')
+    return c.json({ iceServers: [...STUN_SERVERS, ...turn.filter((s) => s.username)], turn: true })
+  } catch (err) {
+    console.error('beam ice error:', err)
+    return c.json({ iceServers: STUN_SERVERS, turn: false })
+  }
+})
+
 // Clip Beam "nearby": receivers who opt in are listed to senders on the same public IP.
 // IPv6 clients are grouped by /64 so one household is one group.
 app.get('/api/beam/lobby/ws', async (c) => {

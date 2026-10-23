@@ -31,10 +31,11 @@
 
 - 🚀 **Zero Friction, No Sign-up**: Open the site, paste text or drop files, and get a link in seconds. No account, email, or credentials.
 - 📡 **Clip Beam (`/beam`), files of any size, browser to browser**: Send multi-gigabyte files straight from your disk to someone else's over an encrypted WebRTC connection. Nothing is uploaded or stored.
+  - **Connect once, keep sending**: the connection stays open, so the sender can keep adding files and the receiver chooses **Accept**, **Decline** or **Accept all** for each. Either side can end the connection at any time.
   - **Send to up to 8 people at once**, each with their own progress, speed, and a live time-left countdown.
-  - **Nearby radar**: people on your network who switch on Receive mode appear as avatars with cute names. Tap one or several, and they just tap Accept. No PIN needed (a 6-digit PIN and QR code still work). Receive mode is off by default, and they can Decline or Block.
-  - **Reconnect and resume**: if the connection drops, press Reconnect (or let it retry by itself) and the transfer continues from where it stopped, even after a reload in Chrome and Edge.
-  - **Verified**: SHA-256 is checked on both ends, and a damaged transfer is caught instead of saved.
+  - **Nearby radar**: people on your network who switch on Receive mode appear as avatars with cute names. Tap one or several to connect, no PIN needed (a 6-digit PIN and QR code still work). Receive mode is off by default, and they can Decline or Block.
+  - **Hard to break**: heartbeat and ICE restart repair a flaky connection, the screen is kept awake, and if it does drop, **Reconnect** (or the automatic retry) continues from where it stopped, even after a reload in Chrome and Edge. Optional TURN relay for strict networks.
+  - **Verified**: SHA-256 is checked on both ends, and a damaged file is caught instead of saved.
 - ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file room with instant WebSocket sync (Cloudflare Durable Objects). Several people can type together with multi-cursor and random cute names like *Mochi* or *Biscuit*, without overwriting each other.
 - 🔒 **Zero-Knowledge Encryption**: Browser-side **PBKDF2 + AES-256-GCM** for pastes, files, edits, and live rooms. The server never sees your password or plaintext.
 - 🕒 **Flexible Expiry**: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` for text (attached files auto-purge after 48h).
@@ -64,12 +65,14 @@
 
 Open `/beam` (for example `https://clip.foo.ng/beam`) in Chrome or Edge on both devices.
 
-1. **Send**: drop a file. You get a radar of people nearby, and a 6-digit PIN with a QR code underneath.
-2. **Receive, with the radar**: switch on **Show me to nearby senders**. When someone picks you, tap **Accept** (or **Decline** / **Block**) and choose where to save. No PIN.
-3. **Receive, with a PIN**: type the sender's PIN (or scan the QR code) and tap **Accept and save**.
-4. **If the connection drops**: press **Reconnect** (it also retries by itself). It continues from where it stopped, and the sender keeps their page open. After a reload, `/beam` lists **Unfinished transfers** you can continue (Chrome and Edge).
+1. **Send**: on the **Send** tab drop one or more files. You get a radar of people nearby, and a 6-digit PIN with a QR code. You can add more files at any time while people are connected.
+2. **Receive, with the radar**: on the **Receive** tab switch on **Show me to nearby senders**. When someone picks you, tap **Connect** (or **Decline** / **Block**). No PIN.
+3. **Receive, with a PIN**: on the **Receive** tab type the sender's PIN (or scan the QR code) and tap **Connect**.
+4. **Each file**: once connected, every file the sender offers asks for your **Accept** (choose where to save it) or **Decline**. Turn on **Accept all** to pick one folder and save everything there automatically.
+5. **End it any time**: the receiver taps **Disconnect**; the sender can disconnect one person or **Stop sharing**.
+6. **If the connection drops**: press **Reconnect** (it also retries by itself). It continues from where it stopped, and the sender keeps their page open. After a reload, `/beam` lists **Unfinished transfers** you can continue (Chrome and Edge).
 
-Good to know: the file goes straight between the two browsers and is never stored on Clip's servers. One sender can send to up to 8 people at once. Chrome and Edge save straight to disk with no size limit; Firefox and Safari keep the file in memory (up to 2 GB) and can only resume while the page stays open. Both devices need a direct connection (same Wi-Fi works best); very strict networks may need a relay, which is not built yet. Full design: [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md).
+Good to know: files go straight between the two browsers and is never stored on Clip's servers. One sender can send to up to 8 people at once. Chrome and Edge save straight to disk with no size limit; Firefox and Safari keep the file in memory (up to 2 GB) and can only resume while the page stays open. Both devices need a direct connection (same Wi-Fi works best); very strict networks need a TURN relay, which is supported but has to be switched on with a Cloudflare TURN key (see the architecture doc). Full design: [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md).
 
 ---
 

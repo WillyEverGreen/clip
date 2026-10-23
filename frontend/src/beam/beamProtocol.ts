@@ -4,11 +4,33 @@
  */
 import { BASE } from '../lib/api'
 
-export const RTC_CONFIG: RTCConfiguration = {
+const STUN_ONLY: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
   ],
+}
+
+let cachedConfig: { at: number; config: RTCConfiguration } | null = null
+const CONFIG_TTL_MS = 10 * 60_000
+
+/**
+ * The ICE servers to use: STUN always, plus TURN relay credentials when the server has them (so two devices
+ * behind strict NATs can still connect). Fetched with a short timeout and cached; any failure falls back to
+ * STUN only, so connecting never waits on or breaks because of this.
+ */
+export async function getRtcConfig(): Promise<RTCConfiguration> {
+  if (cachedConfig && Date.now() - cachedConfig.at < CONFIG_TTL_MS) return cachedConfig.config
+  try {
+    const res = await fetch(`${BASE}/api/beam/ice`, { signal: AbortSignal.timeout(3000), cache: 'no-store' })
+    if (!res.ok) throw new Error(String(res.status))
+    const json = await res.json() as { iceServers?: RTCIceServer[] }
+    if (!Array.isArray(json.iceServers) || json.iceServers.length === 0) throw new Error('empty')
+    cachedConfig = { at: Date.now(), config: { iceServers: json.iceServers } }
+    return cachedConfig.config
+  } catch {
+    return STUN_ONLY
+  }
 }
 
 /** Largest DataChannel message we send; capped further by what the peer advertises. */
@@ -25,6 +47,9 @@ export const WRITE_BATCH = 4 * 1024 * 1024
 export const CONNECT_TIMEOUT_MS = 30_000
 /** Keeps the signalling room alive (it closes after 10 idle minutes). */
 export const PING_MS = 25_000
+/** How often each side pings over the direct connection, and how long silence is tolerated. */
+export const HEARTBEAT_MS = 5_000
+export const HEARTBEAT_TIMEOUT_MS = 25_000
 
 export interface FileOffer {
   name: string
@@ -35,15 +60,36 @@ export interface FileOffer {
 export interface SignalData {
   sdp?: RTCSessionDescriptionInit
   candidate?: RTCIceCandidateInit
+  /** The sender is repairing the path of the existing connection (ICE restart), not starting a new one */
+  restart?: boolean
 }
 
-/** Control messages on the DataChannel. File bytes are sent as binary messages in between. */
+/**
+ * Control messages on the DataChannel, one connection per sender/receiver pair. Files are offered one at a
+ * time; `f` is the file's number in the sender's queue. File bytes are binary messages sent between
+ * `meta` and `done` and belong to the file named in `meta`.
+ */
 export type ChannelMessage =
-  | { t: 'meta'; name: string; size: number; type: string; start?: number }
-  | { t: 'done'; sha256: string }
-  | { t: 'ack'; bytes: number }
-  | { t: 'verified'; ok: boolean }
-  | { t: 'cancel' }
+  /** receiver → sender, first message: this receiver's session key, so a returning receiver is recognised */
+  | { t: 'hello'; sk: string }
+  /** sender → receiver: a file is available. `resume` when it is the one that was interrupted. */
+  | { t: 'offer'; f: number; name: string; size: number; type: string; resume?: boolean }
+  /** receiver → sender: yes, send it, starting at byte `have` (0 for a fresh file) */
+  | { t: 'accept'; f: number; have: number }
+  /** receiver → sender: no (declined, or this device cannot save it) */
+  | { t: 'reject'; f: number; reason?: string }
+  /** sender → receiver: bytes follow, starting at `start` */
+  | { t: 'meta'; f: number; start: number }
+  | { t: 'done'; f: number; sha256: string }
+  | { t: 'ack'; f: number; bytes: number }
+  | { t: 'verified'; f: number; ok: boolean }
+  /** either side: stop this file, keep the connection */
+  | { t: 'cancel_file'; f: number }
+  /** either side: end the connection */
+  | { t: 'bye' }
+  /** either side: still here (answered with pong); a silent connection is treated as lost */
+  | { t: 'ping' }
+  | { t: 'pong' }
 
 export function beamWsUrl(pin: string | undefined, name: string, token?: string, resume = false): string {
   let base: string

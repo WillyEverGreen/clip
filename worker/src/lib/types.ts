@@ -8,6 +8,8 @@ export interface Env {
   APP_PEPPER: string        // set via: wrangler secret put APP_PEPPER
   FRONTEND_ORIGIN: string   // set in wrangler.toml [vars]
   ADMIN_SECRET?: string     // set via wrangler.toml [vars] or secret
+  TURN_KEY_ID?: string      // Cloudflare Realtime TURN key id (optional; enables the relay fallback)
+  TURN_API_TOKEN?: string   // its API token: wrangler secret put TURN_API_TOKEN
 }
 
 
