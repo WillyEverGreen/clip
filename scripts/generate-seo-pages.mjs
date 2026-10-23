@@ -146,8 +146,6 @@ const routes = [
 ]
 
 for (const route of routes) {
-  const routeDir = path.join(distDir, route.path)
-  fs.mkdirSync(routeDir, { recursive: true })
 
   let html = template
 
@@ -182,7 +180,8 @@ for (const route of routes) {
   // Replace #root fallback content
   html = html.replace(/<div id="root">[\s\S]*?<\/div>/, `<div id="root">${route.fallbackHtml}</div>`)
 
-  const outPath = path.join(routeDir, 'index.html')
+  // beam.html rather than beam/index.html: Pages serves it at /beam, whereas a folder index redirects /beam to /beam/
+  const outPath = path.join(distDir, `${route.path}.html`)
   fs.writeFileSync(outPath, html, 'utf8')
   console.log(`[SEO Generator] Generated ${outPath} (canonical: ${route.canonical})`)
 }

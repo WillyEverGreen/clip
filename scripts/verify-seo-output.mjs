@@ -3,9 +3,9 @@ import path from 'node:path'
 
 const pages = [
   { file: 'frontend/dist/index.html', expectedCanonical: 'https://clip.foo.ng/' },
-  { file: 'frontend/dist/about/index.html', expectedCanonical: 'https://clip.foo.ng/about' },
-  { file: 'frontend/dist/live/index.html', expectedCanonical: 'https://clip.foo.ng/live' },
-  { file: 'frontend/dist/beam/index.html', expectedCanonical: 'https://clip.foo.ng/beam' },
+  { file: 'frontend/dist/about.html', expectedCanonical: 'https://clip.foo.ng/about' },
+  { file: 'frontend/dist/live.html', expectedCanonical: 'https://clip.foo.ng/live' },
+  { file: 'frontend/dist/beam.html', expectedCanonical: 'https://clip.foo.ng/beam' },
 ]
 
 let allPassed = true
