@@ -16,3 +16,8 @@
 @import './styles/components.css';
 @import './styles/markdown.css';
 @import './styles/layout.css';
+
+.page-loader { position: fixed; inset: 0; display: grid; place-items: center; background: #000; }
+.page-loader i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.14); border-top-color: #fff; animation: page-loader-spin .8s linear infinite; }
+@keyframes page-loader-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .page-loader i { animation-duration: 2.4s; } }

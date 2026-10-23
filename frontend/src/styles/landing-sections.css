@@ -217,3 +217,9 @@
   .sx-beam-wire i, .sx-beam-bar i { animation: none; }
   .sx-beam-wire i:first-child { left: 45%; opacity: 1; }
 }
+
+/* Lenis smooth scrolling: let it drive the scroll, and keep anchored sections clear of the nav */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-stopped { overflow: hidden; }
+.sx-section { scroll-margin-top: 72px; }

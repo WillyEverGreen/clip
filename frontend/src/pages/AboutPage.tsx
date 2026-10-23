@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import Lenis from 'lenis'
 import Logo from '../components/Logo'
 import HeroCubes from '../components/HeroCubes'
 import LandingSections from '../components/LandingSections'
@@ -17,6 +19,30 @@ export default function AboutPage() {
 
   const rootRef = useRef<HTMLDivElement>(null)
 
+  // Smooth, eased scrolling for the wheel and for the nav links. Skipped when the visitor asks for less motion.
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const lenis = new Lenis({ duration: 1.15 })
+    const onClick = (e: MouseEvent) => {
+      const link = (e.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#"]')
+      const target = link ? document.querySelector<HTMLElement>(link.getAttribute('href') ?? '') : null
+      if (!link || !target) return
+      e.preventDefault()
+      lenis.scrollTo(target.getBoundingClientRect().top + window.scrollY - 72, { duration: 1.4 })
+      history.replaceState(null, '', link.getAttribute('href'))
+    }
+    document.addEventListener('click', onClick)
+    lenis.on('scroll', ScrollTrigger.update)
+    const tick = (time: number) => lenis.raf(time * 1000)
+    gsap.ticker.add(tick)
+    gsap.ticker.lagSmoothing(0)
+    return () => {
+      document.removeEventListener('click', onClick)
+      gsap.ticker.remove(tick)
+      lenis.destroy()
+    }
+  }, [])
+
   useEffect(() => {
     const ctx = gsap.context(() => {
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -32,7 +58,7 @@ export default function AboutPage() {
         duration: 1.2,
         ease: 'expo.out',
         stagger: 0.12,
-        delay: 0.35,
+        delay: 0.05,
       })
     }, rootRef)
     return () => ctx.revert()
@@ -46,8 +72,9 @@ export default function AboutPage() {
       <nav className="lp-nav" aria-label="Main">
         <Link to="/about" className="lp-brand"><Logo size="sm" linkable={false} /></Link>
         <a href="#features">Features</a>
+        <a href="#beam">Beam</a>
+        <a href="#faq">FAQ</a>
         <Link to="/live">Live Pad</Link>
-        <Link to="/beam">Beam</Link>
         <a href="https://github.com/WillyEverGreen/clip" target="_blank" rel="noreferrer">GitHub</a>
         <Link to="/" className="lp-nav-cta">Open app</Link>
       </nav>
