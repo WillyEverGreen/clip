@@ -1,0 +1,3 @@
+# The film is served by functions/film.mp4.ts (with byte ranges, so the player can seek).
+/film-poster.jpg
+  Cache-Control: public, max-age=3600

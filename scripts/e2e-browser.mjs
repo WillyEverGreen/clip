@@ -288,6 +288,9 @@ await test('landing page film: the #film link scrolls to it and a real click pla
   if (!poster) throw new Error('the film has no poster image')
   await page.locator('#film video').click()
   await page.waitForFunction(() => { const e = document.querySelector('#film video'); return !e.paused && e.currentTime > 0.5 && e.videoWidth > 0 }, null, { timeout: 12000 })
+  // the timeline must be scrubbable: a video served without byte ranges plays but cannot be seeked
+  await page.locator('#film video').evaluate((e) => { e.currentTime = 60 })
+  await page.waitForFunction(() => document.querySelector('#film video').currentTime >= 60, null, { timeout: 12000 })
 })
 
 await test('home page has no horizontal scroll on a phone width', async (page) => {
