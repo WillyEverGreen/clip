@@ -5,7 +5,7 @@ import Logo from './Logo'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   Link2, Quote, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
-  ClipboardPaste, Share2, Flame, Code2, QrCode, Radio, ShieldCheck, RotateCcw, Users,
+  ClipboardPaste, Share2, Flame, Code2, QrCode, Radio, ShieldCheck, RotateCcw, Users, Play,
 } from 'lucide-react'
 
 import FAQ from '../lib/faq.json'
@@ -98,6 +98,13 @@ export default function LandingSections() {
   const root = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    const hash = window.location.hash
+    if (!/^#[a-z-]+$/.test(hash)) return
+    const id = window.setTimeout(() => document.querySelector(hash)?.scrollIntoView({ block: 'start' }), 350)
+    return () => clearTimeout(id)
+  }, [])
+
+  useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       root.current?.querySelectorAll<HTMLElement>('.sx-reveal').forEach(el => { el.style.opacity = '1' })
       return
@@ -142,6 +149,21 @@ export default function LandingSections() {
           {[...MARQUEE, ...MARQUEE].map((m, i) => (
             <span key={i}><i /> {m}</span>
           ))}
+        </div>
+      </section>
+
+      {/* ── Product film ────────────────────────────────────────── */}
+      <section className="sx-section sx-film" id="film">
+        <div className="sx-head sx-reveal">
+          <span className="sx-eyebrow"><Play size={12} /> Product film</span>
+          <h2>Watch Clip <em>in action.</em></h2>
+          <p>A short tour, from pasting a snippet to beaming a huge file. With voiceover and subtitles.</p>
+        </div>
+        <div className="sx-film-frame sx-reveal">
+          <video controls playsInline preload="metadata" poster="/film-poster.jpg" aria-label="Clip product film">
+            <source src="/film.mp4" type="video/mp4" />
+            Your browser cannot play this video. <a href="/film.mp4">Download it</a>.
+          </video>
         </div>
       </section>
 

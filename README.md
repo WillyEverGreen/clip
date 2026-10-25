@@ -17,7 +17,7 @@
 
 <br/><br/>
 
-<b><a href="docs/clip-product-video.mp4">▶ Watch the product film</a></b> · 1 min 34 s, with voiceover and subtitles
+<b><a href="https://clip.foo.ng/about#film">▶ Watch the product film</a></b> · 1 min 34 s, with voiceover and subtitles
 
 </div>
 

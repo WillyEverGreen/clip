@@ -13,7 +13,7 @@ Unit-level suites run anywhere; the rest need the site and worker running locall
 | File-bucket logic | `npm test` (part 4) | SigV4 signing checked against AWS's published example, MD5, upload rules (count, total, names, parts), expiry, version-listing and multi-delete XML, clip bundle helpers (15 checks) | nothing |
 | File-bucket API | `node scripts/e2e-big.mjs` | The real B2 bucket through a local worker: refusals, token checks, three files incl. a 110 MB multipart one, attaching to a custom URL, `/f/` hand-over, adding and removing files later, the 500 MB cap, deleting the clip deletes its files, the expiry sweep (12 checks; the byte-for-byte download check is SKIPPED when the daily download allowance is used up) | worker on `8799` with `--test-scheduled`, B2 keys in `worker/.dev.vars` |
 | File-bucket browser | `node scripts/e2e-big-browser.mjs` | Real Chrome through the real pages: three files on a custom URL listed one by one, per-file download and Download all as a zip (or the daily-limit message), adding and removing files in the editor, a taken URL caught before uploading, over-500 MB and password-lock refusals, small sets keep the normal flow (6 checks). Also runs against the live site with `UI=https://clip.foo.ng` | worker on `8787`, Vite on `5199` (or the live site) |
-| Browser | `npm run test:browser` (part 1) | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
+| Browser | `npm run test:browser` (part 1) | Real Chrome, driving the UI (36 checks) | Vite on `5199` and worker on `8787` |
 | Beam browser | `npm run test:browser` (part 2) | Many Chrome pages: 200 MB transfer with SHA-256 check and speed / time-left accuracy, 1 to 8 receivers, names, nearby radar and invites, corruption, cancel, disconnects, odd files, blocked network, phone width (39 checks, incl. 9 reconnect/resume) | Vite on `5199` and worker on `8787` |
 
 ## Running everything locally
@@ -25,6 +25,8 @@ Unit-level suites run anywhere; the rest need the site and worker running locall
    - `npm test`
    - `BASE=ws://127.0.0.1:8787 npm run test:e2e`
    - `ADMIN_KEY=<your ADMIN_SECRET> npm run test:browser` (the admin check runs only when `ADMIN_KEY` is set)
+
+Run one test with `ONLY="film" npm run test:browser` (matches part of a test name).
 
 The browser suite uses the installed Chrome at `C:/Program Files/Google/Chrome/Application/chrome.exe`. Override with `CHROME=...`.
 

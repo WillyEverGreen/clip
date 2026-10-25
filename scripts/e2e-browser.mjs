@@ -43,6 +43,7 @@ async function newPage(opts = {}) {
 }
 
 async function test(name, fn) {
+  if (process.env.ONLY && !name.toLowerCase().includes(process.env.ONLY.toLowerCase())) return
   const { ctx, page } = await newPage()
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e.message))
@@ -275,6 +276,18 @@ await test('landing page CTA goes to the Live Pad', async (page) => {
   await page.goto(UI + '/about')
   await page.getByRole('link', { name: 'Start a live pad' }).first().click()
   await page.waitForFunction(() => location.pathname.startsWith('/live'), null, { timeout: 10000 })
+})
+
+await test('landing page film: the #film link scrolls to it and a real click plays it', async (page) => {
+  await page.goto(UI + '/about#film')
+  await page.locator('#film video').waitFor()
+  await sleep(1200)
+  const top = await page.evaluate(() => document.querySelector('#film').getBoundingClientRect().top)
+  if (top < -10 || top > 220) throw new Error(`#film sits ${Math.round(top)}px from the top, so the link did not scroll to it`)
+  const poster = await page.locator('#film video').getAttribute('poster')
+  if (!poster) throw new Error('the film has no poster image')
+  await page.locator('#film video').click()
+  await page.waitForFunction(() => { const e = document.querySelector('#film video'); return !e.paused && e.currentTime > 0.5 && e.videoWidth > 0 }, null, { timeout: 12000 })
 })
 
 await test('home page has no horizontal scroll on a phone width', async (page) => {
