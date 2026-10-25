@@ -143,7 +143,7 @@ await test('password-locked text clip needs the right password', async (page) =>
     await viewer.goto(`${UI}/${slug}`)
     await viewer.getByPlaceholder(/password/i).first().fill('wrong-pass')
     await viewer.getByRole('button', { name: 'Unlock' }).click()
-    await expectText(viewer, 'Incorrect', 8000).catch(() => expectText(viewer, 'wrong', 2000))
+    await expectText(viewer, 'Wrong password', 8000)
     await viewer.getByPlaceholder(/password/i).first().fill('pw1234')
     await viewer.getByRole('button', { name: 'Unlock' }).click()
     await expectText(viewer, 'secret body')
