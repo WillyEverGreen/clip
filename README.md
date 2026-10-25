@@ -15,6 +15,12 @@
 
 <img src="docs/screenshot.png" width="860" alt="Clip screenshot" />
 
+<br/><br/>
+
+<a href="docs/clip-product-video.mp4"><img src="docs/product-video-poster.png" width="860" alt="Watch the Clip product film" /></a>
+
+<b><a href="docs/clip-product-video.mp4">▶ Watch the product film</a></b> · 1 min 34 s, with voiceover and subtitles
+
 </div>
 
 ---
