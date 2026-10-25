@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangle, Check, File as FileIcon, X, Plus, Info, Radio } from 'lucide-react'
+import { FileText, Upload, Link as LinkIcon, ArrowRight, Lock, Zap, AlertTriangle, Check, File as FileIcon, X, Plus, Info, Radio, Play } from 'lucide-react'
 
 import DropZone from '../components/DropZone'
 import { BASE, createEntry, createEntryWithProgress, getUniqueLiveSlug, setLiveSecurity, seedLiveRoom, uploadLiveFile, formatBytes, type ApiError } from '../lib/api'
@@ -767,6 +767,9 @@ export default function CreatePage() {
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
             <LinkIcon size={13} style={{ color: 'var(--text-muted)' }} /> Custom Slugs &amp; CLI Access
           </span>
+          <Link to="/about#film" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', textDecoration: 'none' }}>
+            <Play size={13} /> Watch the film
+          </Link>
           <Link to="/about" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', textDecoration: 'none' }}>
             <Info size={13} /> About Clip
           </Link>

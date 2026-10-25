@@ -293,6 +293,23 @@ await test('landing page film: the #film link scrolls to it and a real click pla
   await page.waitForFunction(() => document.querySelector('#film video').currentTime >= 60, null, { timeout: 12000 })
 })
 
+await test('landing nav: the Film link scrolls to the film', async (page) => {
+  await page.goto(UI + '/about')
+  await page.locator('.lp-nav a[href="#film"]').click()
+  await sleep(2600)
+  const top = await page.evaluate(() => document.querySelector('#film').getBoundingClientRect().top)
+  if (top < -20 || top > 220) throw new Error(`#film sits ${Math.round(top)}px from the top after clicking Film`)
+})
+
+await test('app home: the Watch the film link opens the film on the landing page', async (page) => {
+  await page.goto(UI + '/')
+  await page.getByRole('link', { name: 'Watch the film' }).click()
+  await page.waitForFunction(() => location.pathname === '/about' && location.hash === '#film', null, { timeout: 8000 })
+  await sleep(1500)
+  const top = await page.evaluate(() => document.querySelector('#film').getBoundingClientRect().top)
+  if (top < -20 || top > 220) throw new Error(`#film sits ${Math.round(top)}px from the top after arriving from the home page`)
+})
+
 await test('home page has no horizontal scroll on a phone width', async (page) => {
   await page.setViewportSize({ width: 375, height: 800 })
   await page.goto(UI + '/')

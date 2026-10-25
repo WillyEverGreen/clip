@@ -2,7 +2,20 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      // In production /film.mp4 is served by functions/film.mp4.ts (with byte ranges). Dev has no Pages Functions,
+      // so map it to the same file here; Vite's static server already answers range requests.
+      name: 'dev-film-route',
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          if (req.url && req.url.split('?')[0] === '/film.mp4') req.url = '/film-src.mp4'
+          next()
+        })
+      },
+    },
+  ],
   server: {
     proxy: {
       // Proxy API and WebSocket calls to local Wrangler dev server during development

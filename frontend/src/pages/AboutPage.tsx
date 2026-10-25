@@ -72,6 +72,7 @@ export default function AboutPage() {
 
       <nav className="lp-nav" aria-label="Main">
         <Link to="/about" className="lp-brand"><Logo size="sm" linkable={false} /></Link>
+        <a href="#film">Film</a>
         <a href="#features">Features</a>
         <a href="#beam">Beam</a>
         <a href="#faq">FAQ</a>
