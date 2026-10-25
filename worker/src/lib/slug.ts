@@ -8,7 +8,7 @@ const RESERVED = new Set([
   'static', '_next', '_headers', '_redirects',
   'favicon.ico', 'robots.txt', 'sitemap.xml',
   'raw', 'zip', 'r', 'z', 'f',
-  'live', 'livepad', 'room', 'ws', 'new-slug',
+  'live', 'livepad', 'room', 'ws', 'new-slug', 'beam',
 ])
 
 // ─── Auto-generators ──────────────────────────────────────────────────────────

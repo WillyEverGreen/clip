@@ -1,27 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { gsap } from 'gsap'
 import Logo from './Logo'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   Link2, Quote, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
-  ClipboardPaste, Share2, Flame, Code2, QrCode,
+  ClipboardPaste, Share2, Flame, Code2, QrCode, Radio, ShieldCheck, RotateCcw, Users,
 } from 'lucide-react'
+
+import FAQ from '../lib/faq.json'
 
 gsap.registerPlugin(ScrollTrigger)
 
 const MARQUEE = [
   'Code snippets', 'Markdown notes', 'Screenshots', 'PDFs', 'ZIP archives', 'Passwords & keys',
   'Math with KaTeX', 'Voice notes', 'Meeting links', 'Lab files', 'Homework',
-]
-
-const FAQ = [
-  { q: 'Do I need an account?', a: 'No. Open Clip, paste text or drop a file, and you get a link. No sign-up, no email, nothing to log into on a shared computer.' },
-  { q: 'How does encryption work?', a: 'When you set a password, your text and files are encrypted in your browser with PBKDF2 + AES-256-GCM before upload. The server only ever stores ciphertext and never sees the password.' },
-  { q: 'How long do links last?', a: 'You choose: 10 minutes, 1 hour, 6 hours (default), 1 day, 7 days, 30 days, or permanent. Expired clips are removed automatically.' },
-  { q: 'What is the Live Pad?', a: 'A shared room at /live/your-name where everyone connected sees text and files update instantly over WebSockets. Scan the QR code to pair your phone in a second.' },
-  { q: 'What are the limits?', a: 'Files up to 25 MB each and text up to 2 MB. You can also paste screenshots straight from your clipboard.' },
-  { q: 'Can I use it from a terminal?', a: 'Yes. Fetch raw text, files or a full ZIP with a single curl command, with optional password support.' },
 ]
 
 function Spotlight({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -81,13 +74,21 @@ function Faq() {
   return (
     <div className="sx-faq">
       {FAQ.map((f, i) => (
-        <div key={f.q} className={`sx-faq-item sx-reveal ${open === i ? 'is-open' : ''}`}>
-          <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
-            {f.q}
-            <Plus size={18} />
-          </button>
-          <div className="sx-faq-body"><p>{f.a}</p></div>
-        </div>
+        <Fragment key={f.q}>
+          {(i === 0 || FAQ[i - 1].group !== f.group) && (
+            <h3 className="sx-faq-group">
+              {f.group}
+              {f.group === 'Clip Beam' && <Link to="/beam">Open Clip Beam <ArrowRight size={14} /></Link>}
+            </h3>
+          )}
+          <div className={`sx-faq-item sx-reveal ${open === i ? 'is-open' : ''}`}>
+            <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i}>
+              {f.q}
+              <Plus size={18} />
+            </button>
+            <div className="sx-faq-body"><p>{f.a}</p></div>
+          </div>
+        </Fragment>
       ))}
     </div>
   )
@@ -101,7 +102,9 @@ export default function LandingSections() {
       root.current?.querySelectorAll<HTMLElement>('.sx-reveal').forEach(el => { el.style.opacity = '1' })
       return
     }
-    const ctx = gsap.context(() => {
+    let ctx: gsap.Context | undefined
+    // Set up the scroll animations once the first screen has painted, so they do not delay it
+    const start = () => ctx = gsap.context(() => {
       gsap.utils.toArray<HTMLElement>('.sx-reveal').forEach(el => {
         gsap.from(el, {
           y: 40, opacity: 0, filter: 'blur(8px)', duration: 1, ease: 'expo.out', clearProps: 'filter,transform,opacity',
@@ -122,7 +125,13 @@ export default function LandingSections() {
         scale: 1.12, opacity: 0.8, duration: 4, yoyo: true, repeat: -1, ease: 'sine.inOut',
       })
     }, root)
-    return () => ctx.revert()
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }
+    const id = w.requestIdleCallback ? w.requestIdleCallback(start, { timeout: 1200 }) : window.setTimeout(start, 400)
+    return () => {
+      if (w.requestIdleCallback) w.cancelIdleCallback?.(id)
+      else clearTimeout(id)
+      ctx?.revert()
+    }
   }, [])
 
   return (
@@ -189,8 +198,8 @@ export default function LandingSections() {
 
           <Spotlight className="a-files sx-reveal">
             <div className="sx-ico"><FileUp size={18} /></div>
-            <h3>Files up to 25 MB</h3>
-            <p>Drag, drop or paste a screenshot. Peek inside ZIPs without downloading.</p>
+            <h3>Many files, one link</h3>
+            <p>Drop as many files as you need on your own link, and add more later. Paste screenshots straight in. Files are kept for 2 hours.</p>
             <div className="mock-files">
               <span>report.pdf</span><span>diagram.png</span><span>dataset.zip</span>
             </div>
@@ -201,6 +210,46 @@ export default function LandingSections() {
             <h3>Built for terminals too</h3>
             <p>Pull text, files or a full ZIP with a single command.</p>
             <pre className="mock-term"><code><span className="t-dim">$</span> curl -sL clip.foo.ng/r/<span className="t-hl">my-notes</span>{'\n'}<span className="t-dim">Lab 4 notes{'\n'}- tokens expire after 24h</span></code></pre>
+          </Spotlight>
+        </div>
+      </section>
+
+      {/* ── Clip Beam ───────────────────────────────────────────── */}
+      <section className="sx-section" id="beam">
+        <div className="sx-beam">
+          <div className="sx-beam-copy sx-reveal">
+            <span className="sx-eyebrow"><Radio size={12} /> Clip Beam</span>
+            <h2>Big files, straight from<br /><em>one browser to another.</em></h2>
+            <p>
+              Nothing to upload and nothing stored on a server. Share a 6-digit PIN or pick someone nearby, and the file
+              streams directly between your two browsers, encrypted.
+            </p>
+            <ul className="sx-beam-points">
+              <li><Users size={16} /><span><b>Several people at once.</b> Keep adding files while connected, and receivers accept each one or all.</span></li>
+              <li><RotateCcw size={16} /><span><b>Picks up where it stopped.</b> If the connection drops it reconnects and continues.</span></li>
+              <li><ShieldCheck size={16} /><span><b>Checked on arrival.</b> Every file is verified with SHA-256, with live speed and time left.</span></li>
+            </ul>
+            <div className="lp-actions">
+              <Link to="/beam" className="lp-btn lp-btn-primary">Open Clip Beam <ArrowRight size={16} /></Link>
+              <span className="sx-beam-note">Chrome and Edge handle multi-gigabyte files. Both people keep their tabs open.</span>
+            </div>
+          </div>
+
+          <Spotlight className="sx-beam-card sx-reveal">
+            <div className="sx-beam-peers">
+              <div className="sx-beam-peer"><span className="sx-beam-av">🦊</span><b>Aarav</b><em>Sending</em></div>
+              <div className="sx-beam-wire" aria-hidden="true"><i /><i /><i /></div>
+              <div className="sx-beam-peer"><span className="sx-beam-av">🐼</span><b>You</b><em>Receiving</em></div>
+            </div>
+            <div className="sx-beam-file">
+              <div className="sx-beam-file-head"><FileUp size={16} /><span>design-assets.zip</span><em>3.2 GB</em></div>
+              <div className="sx-beam-bar"><i /></div>
+              <div className="sx-beam-stats"><span>68%</span><span>84 MB/s</span><span>0:42 left</span></div>
+            </div>
+            <div className="sx-beam-foot">
+              <div className="sx-beam-pin"><small>PIN</small><b>482 916</b></div>
+              <div className="sx-beam-live"><i /> 2 connected</div>
+            </div>
           </Spotlight>
         </div>
       </section>

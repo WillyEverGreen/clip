@@ -200,3 +200,10 @@
 @media (max-width: 640px) {
   .glow-img { width: 42vw; opacity: 0.8; }
 }
+
+.lp-trust { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 22px; margin: 26px 0 0; padding: 0; color: #a1a1aa; font-size: .9rem; }
+.lp-trust li { display: inline-flex; align-items: center; gap: 7px; }
+.lp-trust svg { color: #fff; }
+.lp-beam-hint { margin: 14px 0 0; color: #71717a; font-size: .9rem; }
+.lp-beam-hint a { display: inline-flex; align-items: center; gap: 5px; color: #fff; text-decoration: none; border-bottom: 1px solid rgba(255,255,255,.3); }
+.lp-beam-hint a:hover { border-bottom-color: #fff; }

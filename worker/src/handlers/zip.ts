@@ -24,6 +24,11 @@ export async function handleReadZip(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.text('Not found', 404)
   if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.text('Expired', 410)
 
+  if (entry.bundles?.some((b) => b.expiresAt > Date.now())) {
+    return c.text(`These files are too big to zip on the server. Download them one by one, or with "Download all", from https://clip.foo.ng/${slug}
+`, 409)
+  }
+
   // ── ETag / 304 — skip ZIP build if client already has this version ─────────
   const etag = makeETag(slug, entry.updatedAt ?? entry.createdAt, entry.fileSize ?? 0)
   if (isNotModified(c.req.raw, etag)) {

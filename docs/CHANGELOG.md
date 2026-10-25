@@ -4,6 +4,42 @@ This document serves as a permanent reference archive of all architectural updat
 
 ---
 
+## 🗓️ October 2026: Any number of files, up to 500 MB per link
+
+* **One flow:** the File tab takes any number of files, up to 500 MB in total, on your own custom URL with your edit code. There is no separate "large file" path and no 25 MB rule visible to users.
+* **Where they go:** small sets (each file up to 25 MB, 50 MB in total) stay in Workers KV with previews and password lock. Bigger sets go straight from the browser to a private Backblaze B2 bucket, each file its own object, four uploads at a time, files over 100 MB in parts. Nothing is zipped.
+* **Later changes:** the owner can add more files to the same link, or remove some, from the editor.
+* **Downloads:** each file has its own Download button; Download all packs them into one zip in the browser. `/f/<slug>` redirects to the first file.
+* **Lifetime:** files are deleted 2 hours after upload (was 48 hours), by a 10-minute cron job and when read; deleting a clip deletes its files at once. Deletes remove every stored version.
+* **Details and setup:** `docs/LARGE_FILES.md`.
+
+---
+
+## 🗓️ October 2026: Clip Beam sessions, resilience and a Live Pad style UI
+
+* **Connect once, keep sending:** a Beam is now a connection that stays open. The sender can keep adding files; the receiver decides per file (Accept / Decline) or turns on Accept all (one folder, duplicates renamed); either side can end the connection or cancel just one file. Browsers without a folder picker download automatically; files over 2 GB are refused up front there.
+* **Resilience:** heartbeat over the direct channel, ICE restart on a flaky path, signalling drops no longer interrupt a live transfer, automatic reconnect with Reconnect buttons on both sides, screen wake lock, history preserved when a receiver returns.
+* **TURN (optional):** `/api/beam/ice` hands out Cloudflare TURN credentials when a key is configured, with a safe STUN fallback.
+* **UI:** Beam now uses the same shell as Live Pad (top bar, status chip, full-width card with bordered panels, Send / Receive toggle) and the home page has a Beam tab.
+* **Audit follow-ups:** guard test so every protocol message is both sent and handled, stale resume records are pruned on save, Pages deploys with the same wrangler as the worker, lobby privacy trade-offs documented.
+* **Tests:** the Beam browser suite was rewritten for the session flow (about 60 checks).
+
+---
+
+## 🗓️ October 2026: Clip Beam (peer-to-peer file transfer)
+
+* **New `/beam` page:** send a file of any size straight to another browser. The sender gets a 6-digit PIN (and QR code); the receiver enters it, accepts, picks where to save, and the file streams disk to disk over an RTCDataChannel.
+* **Worker:** `GET /api/beam/ws` plus a new `BeamRoom` Durable Object (migration `v2`, `new_sqlite_classes`) that only relays the file offer, SDP and ICE between browsers. Server-picked PINs, up to 8 receivers per room, role-checked messages with server-set sender ids, 40 joins / 2 min / IP, 10-minute idle expiry. `ClipRoom` is untouched.
+* **Transfer:** `File.stream()` sender with DataChannel backpressure plus a 32 MB receiver ack window; receiver writes through the File System Access API (download fallback up to 2 GB elsewhere); SHA-256 (hash-wasm) on both ends, partial files discarded on mismatch, cancel or disconnect.
+* **Many receivers, cute names:** one sender can send to up to 8 receivers at once (own connection, progress and hash check each); everyone gets a Live Pad style name and colour dot.
+* **Live speed and time left:** sliding-window speed and a self-correcting countdown that starts at the first byte (median error 4 to 12% on a real 200 MB transfer).
+* **Nearby radar:** receivers can opt in ("Show me to nearby senders", off by default) and appear on a radar for senders on the same network; the sender taps one or several people and sends a request they can Accept, Decline or Block. New `BeamLobby` Durable Object (migration `v3`) grouped by public IP; senders are never visible and receivers never see each other.
+* **Reconnect and resume:** a dropped connection no longer restarts the transfer. The receiver keeps the partial file (committed to disk, with checkpoints every 128 MB / 10%) plus its saved SHA-256 state, shows a Reconnect button and retries by itself, and the sender continues from the saved byte. The sender's own dropped connection holds its room for 10 minutes and reconnects with a token. Unfinished downloads are listed on `/beam` after a reload (Chrome, Edge). Firefox and Safari resume only while the page stays open.
+* **Tests:** `scripts/test-beam.mjs` (in `npm test`), `scripts/e2e-beam-signal.mjs` (in `test:e2e`), `scripts/e2e-beam-browser.mjs` (in `test:browser`); `npm run test:beam` runs all three.
+* **Docs:** [`docs/CLIP_BEAM_ARCHITECTURE.md`](CLIP_BEAM_ARCHITECTURE.md).
+
+---
+
 ## 🗓️ October 2026 — Hybrid Large File Transfer Architecture (Clip Beam & Vault Spec)
 
 ### 1. 🚀 Tri-Tier Hybrid Large File Transfer Plan

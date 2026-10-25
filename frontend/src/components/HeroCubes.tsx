@@ -39,8 +39,8 @@ export default function HeroCubes() {
 
   return (
     <div ref={rootRef} className="hero-glows" aria-hidden="true">
-      <img className="glow-img glow-img-l" src="/hero-left.webp" alt="" />
-      <img className="glow-img glow-img-r" src="/hero-right.webp" alt="" />
+      <img className="glow-img glow-img-l" src="/hero-left.webp" alt="" fetchPriority="high" decoding="async" />
+      <img className="glow-img glow-img-r" src="/hero-right.webp" alt="" fetchPriority="high" decoding="async" />
     </div>
   )
 }

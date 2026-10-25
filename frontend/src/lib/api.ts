@@ -23,6 +23,8 @@ export interface PublicEntry {
   fileSize?: number
   hasFile?: boolean
   files?: FileItem[]
+  /** Files kept in the file bucket (too big for KV), grouped by upload */
+  bundles?: { id: string; expiresAt: number; files: { n: number; name: string; size: number; type: string }[] }[]
   createdAt: number
   updatedAt?: number
   expiresAt: number

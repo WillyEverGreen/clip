@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, FileText, Upload, Trash2, Check, ArrowRight, FileIcon, X, Lock, Unlock, AlertTriangle, AlertCircle } from 'lucide-react'
 import { verifyEditCode, getEntry, updateEntryWithProgress, deleteEntry, formatBytes, type PublicEntry, type ApiError } from '../lib/api'
+import { uploadToFileBucket, needsFileBucket, discardUpload, BigUploadError, MAX_TOTAL_BYTES, FILE_LIFETIME_HOURS } from '../lib/bigUpload'
 import { isEncrypted, decryptContent, encryptContent, encryptFile } from '../lib/crypto'
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
@@ -19,6 +20,7 @@ export default function EditPage() {
     title: slug ? `Edit Clip /${slug} | Clip` : 'Edit Clip | Clip',
     description: 'Edit or manage your shared paste and files using your secret edit code.',
     canonicalUrl: slug ? `https://clip.foo.ng/${slug}/edit` : undefined,
+    noindex: true,
   })
 
   // Existing Entry Data
@@ -103,11 +105,13 @@ export default function EditPage() {
         if (data) {
           setExisting(data)
           setMode(data.type)
-          if (data.files && data.files.length > 0) {
-            setKeptExistingFiles(data.files)
-          } else if (data.fileName) {
-            setKeptExistingFiles([{ id: 'f_1', fileName: data.fileName, fileSize: data.fileSize }])
-          }
+          const kvFiles = data.files && data.files.length > 0
+            ? data.files
+            : data.fileName ? [{ id: 'f_1', fileName: data.fileName, fileSize: data.fileSize }] : []
+          // Files kept in the file bucket appear in the same list; their ids say which upload they belong to
+          const bucketFiles = (data.bundles ?? []).filter(b => b.expiresAt > Date.now()).flatMap(b =>
+            b.files.map(f => ({ id: `b:${b.id}:${f.n}`, fileName: f.name, fileSize: f.size, fileMime: f.type })))
+          if (kvFiles.length + bucketFiles.length > 0) setKeptExistingFiles([...kvFiles, ...bucketFiles])
 
           if (data.content) {
             if (isEncrypted(data.content)) {
@@ -195,16 +199,43 @@ export default function EditPage() {
       const form = new FormData()
       form.append('editCode', code)
       form.append('content', finalContent)
-      
-      if (keptExistingFiles.length > 0) {
-        keptExistingFiles.forEach((f) => {
-          if (f.id) form.append('keepFileIds', f.id)
-        })
-      } else if (newFiles.length === 0) {
+
+      const isBucketId = (id: unknown) => typeof id === 'string' && id.startsWith('b:')
+      const keptKv = keptExistingFiles.filter(f => !isBucketId(f.id))
+      const keptBucket = new Set(keptExistingFiles.filter(f => isBucketId(f.id)).map(f => f.id as string))
+      const hadKv = (existing?.files?.length ?? 0) > 0 || !!existing?.fileName
+      // Files in the file bucket that were removed from the list
+      const removedBucket = (existing?.bundles ?? []).flatMap(bd => bd.files.map(f => ({ id: bd.id, n: f.n })))
+        .filter(x => !keptBucket.has(`b:${x.id}:${x.n}`))
+      if (removedBucket.length) form.append('removeBundleFiles', JSON.stringify(removedBucket))
+
+      if (keptExistingFiles.length === 0 && newFiles.length === 0) {
         form.append('removeFile', 'true')
+      } else if (keptKv.length > 0) {
+        keptKv.forEach((f) => { if (f.id) form.append('keepFileIds', f.id) })
+      } else if (hadKv) {
+        form.append('keepFileIds', '__none__') // every file kept in the clip itself was removed
       }
 
-      if (newFiles.length > 0) {
+      // New files: if they and the clip's own files fit a normal share they go with it, otherwise straight to the file bucket
+      const keptTotal = keptExistingFiles.reduce((a, f) => a + (f.fileSize || 0), 0)
+      const newTotal = newFiles.reduce((a, f) => a + f.size, 0)
+      const viaBucket = newFiles.length > 0 && (keptBucket.size > 0 || needsFileBucket([...keptKv.map(f => ({ size: f.fileSize || 0 })), ...newFiles]))
+      if (keptTotal + newTotal > MAX_TOTAL_BYTES) { setEditError('Files can be up to 500 MB in total. Remove some, or use Clip Beam to send more directly.'); return }
+      if (viaBucket && viewPassword) { setEditError('Password lock works for files up to 50 MB in total. Turn it off to add these files.'); return }
+
+      let upload: { slug: string; token: string } | null = null
+      if (viaBucket) {
+        setUploadProgress(0)
+        try {
+          upload = await uploadToFileBucket(newFiles, (pct) => setUploadProgress(Math.round(pct)))
+        } catch (err) {
+          setEditError(err instanceof BigUploadError ? `Upload failed (${err.code}). Please try again.` : 'Upload failed. Please try again.')
+          return
+        }
+        form.append('bundleId', upload.slug)
+        form.append('bundleToken', upload.token)
+      } else if (newFiles.length > 0) {
         const filesToUpload: File[] = []
         if (viewPassword) {
           for (const f of newFiles) {
@@ -220,11 +251,15 @@ export default function EditPage() {
         })
       }
 
-      const hasNewFiles = newFiles.length > 0
-      await updateEntryWithProgress(slug, form, (pct) => {
-        if (hasNewFiles) setUploadProgress(pct)
-      })
-      if (hasNewFiles) {
+      try {
+        await updateEntryWithProgress(slug, form, (pct) => {
+          if (newFiles.length > 0 && !viaBucket) setUploadProgress(pct)
+        })
+      } catch (err) {
+        if (upload) discardUpload(upload.slug, upload.token)
+        throw err
+      }
+      if (newFiles.length > 0) {
         setUploadProgress(100)
         await new Promise((r) => setTimeout(r, 800))
       }
@@ -553,6 +588,8 @@ export default function EditPage() {
                       <DropZone
                         files={newFiles}
                         onFiles={setNewFiles}
+                        allowLarge
+                        maxBytes={Math.max(0, MAX_TOTAL_BYTES - keptExistingFiles.reduce((a, f) => a + (f.fileSize || 0), 0))}
                         height="320px"
                         uploadProgress={uploadProgress}
                         uploadingFileNames={newFiles.map(f => f.name)}
@@ -560,7 +597,7 @@ export default function EditPage() {
                       <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                         <p style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
                           <AlertTriangle size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Files auto-delete after 48 hours</span>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>{`Files are deleted ${FILE_LIFETIME_HOURS} hours after upload`}</span>
                         </p>
                         <p style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.75rem' }}>
                           Entry metadata and text content persist until expiration time.

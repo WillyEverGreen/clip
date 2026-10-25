@@ -16,3 +16,15 @@
 @import './styles/components.css';
 @import './styles/markdown.css';
 @import './styles/layout.css';
+
+.page-loader { position: fixed; inset: 0; display: grid; place-items: center; background: #000; }
+.page-loader i { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,.14); border-top-color: #fff; animation: page-loader-spin .8s linear infinite; }
+@keyframes page-loader-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .page-loader i { animation-duration: 2.4s; } }
+
+.route-fade { animation: route-in .28s ease-out both; }
+@keyframes route-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .route-fade { animation: none; } }
+.page-error { text-align: center; max-width: 360px; padding: 0 24px; display: grid; gap: 12px; justify-items: center; }
+.page-error h1 { font-size: 1.25rem; }
+.page-error p { color: #a1a1aa; font-size: .95rem; line-height: 1.5; margin-bottom: 8px; }

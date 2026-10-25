@@ -1,6 +1,6 @@
 # Testing Clip
 
-Four suites. Run the first two anywhere; the last two need the site and worker running locally.
+Unit-level suites run anywhere; the rest need the site and worker running locally. Clip Beam has its own three (see `docs/CLIP_BEAM_ARCHITECTURE.md`); `npm run test:beam` runs just those. File sharing beyond KV has three more (`npm run test:big`, see `docs/LARGE_FILES.md`).
 
 | Suite | Command | What it covers | Needs |
 |---|---|---|---|
@@ -8,7 +8,13 @@ Four suites. Run the first two anywhere; the last two need the site and worker r
 | OT | `npm test` (part 2) | Text merge correctness, randomized multi-client runs (16 checks) | nothing |
 | Site API | `npm run test:e2e` (part 1) | Every HTTP route: create, edit, expiry, verify, delete, uploads, zip, live passwords (31 checks) | worker on `127.0.0.1:8787` |
 | Live pad | `npm run test:e2e` (part 2) | Real-time sync against the worker (8 checks) | worker on `8787`, `BASE=ws://127.0.0.1:8787` |
-| Browser | `npm run test:browser` | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
+| Beam logic | `npm test` (part 3) | Beam room (pairing, routing, names, fuzz) and speed / time-left maths (69 checks, incl. the nearby lobby and the held-room rules) | nothing |
+| Beam route | `npm run test:e2e` (part 3) | `/api/beam/ws` against the real `BeamRoom` DO: 8 receivers, 40 rooms at once, garbage, churn plus the nearby lobby: IP groups, invites, block, 60 receivers and sender reconnect (29 checks) | worker, `BASE=ws://127.0.0.1:8787` |
+| File-bucket logic | `npm test` (part 4) | SigV4 signing checked against AWS's published example, MD5, upload rules (count, total, names, parts), expiry, version-listing and multi-delete XML, clip bundle helpers (15 checks) | nothing |
+| File-bucket API | `node scripts/e2e-big.mjs` | The real B2 bucket through a local worker: refusals, token checks, three files incl. a 110 MB multipart one, attaching to a custom URL, `/f/` hand-over, adding and removing files later, the 500 MB cap, deleting the clip deletes its files, the expiry sweep (12 checks; the byte-for-byte download check is SKIPPED when the daily download allowance is used up) | worker on `8799` with `--test-scheduled`, B2 keys in `worker/.dev.vars` |
+| File-bucket browser | `node scripts/e2e-big-browser.mjs` | Real Chrome through the real pages: three files on a custom URL listed one by one, per-file download and Download all as a zip (or the daily-limit message), adding and removing files in the editor, a taken URL caught before uploading, over-500 MB and password-lock refusals, small sets keep the normal flow (6 checks). Also runs against the live site with `UI=https://clip.foo.ng` | worker on `8787`, Vite on `5199` (or the live site) |
+| Browser | `npm run test:browser` (part 1) | Real Chrome, driving the UI (35 checks) | Vite on `5199` and worker on `8787` |
+| Beam browser | `npm run test:browser` (part 2) | Many Chrome pages: 200 MB transfer with SHA-256 check and speed / time-left accuracy, 1 to 8 receivers, names, nearby radar and invites, corruption, cancel, disconnects, odd files, blocked network, phone width (39 checks, incl. 9 reconnect/resume) | Vite on `5199` and worker on `8787` |
 
 ## Running everything locally
 
@@ -28,7 +34,9 @@ The browser suite uses the installed Chrome at `C:/Program Files/Google/Chrome/A
 - **Production:** the API suite can't run against production because of the rate limit. Production is checked with curl smoke tests (health, pages, admin locked 401, quote proxy, new slug).
 - **Empty rooms reset:** a Live Pad with no text and no files can have its password changed without the current one. The password test seeds text first so the refusal is actually tested.
 - **Dev proxy:** `frontend/vite.config.ts` keys for `/r/`, `/z/`, `/f/`, `/raw/`, `/zip/` must keep the trailing slash, or clips with slugs starting with those letters 404 in dev.
+- **Beam browser test:** the receiver's save dialog is pointed at the Origin Private File System so the test can read the file back, and Chrome runs with `--disable-features=WebRtcHideLocalIpsWithMdns` so two headless pages can connect. `BEAM_MB` sets the big file size (default 200), `BEAM_STRESS=1` adds a 400 MB case and `ONLY=<text>` runs matching tests. Local WebRTC loopback tops out around 10 MB/s on Windows, so the whole Beam browser suite takes around 6 minutes. Each browser gets its own fake client IP because Beam joins are rate limited per IP; the Nearby tests give several browsers the same IP on purpose, because that is what puts them in one lobby.
+- **Reconnect tests** cut a page's connections the way a lost network would (init script `TRACK` records the page's RTCPeerConnections and Beam WebSockets; Vite's own hot-reload socket must not be cut or the page reloads). They cover automatic and manual reconnect, repeated drops, the sender dropping, both dropping, closing the tab after a checkpoint, cancel / stop sharing while interrupted, and the no-save-dialog fallback.
 - **Screenshots:** a failing browser test writes a full-page screenshot to `%TEMP%/clip-e2e-browser/`.
 - **Preview checks** look for a decoded image inside a fixed-position overlay, not any image on the page (the header logo would otherwise pass).
 - **Validation checks** assert the field is flagged `tooShort` and the form did not submit. The browser shows its own bubble, not app text.
-- **Not covered by any suite:** real phones, real OS clipboard photos, PDF rendering in real Chrome, Live Pad on mobile, production admin, Cloudflare-specific behaviour, load or stress, accessibility audits, other browsers (Firefox, Safari), and dark/light OS theme switching.
+- **Not covered by any suite:** real phones, real OS clipboard photos, PDF rendering in real Chrome, Live Pad on mobile, production admin, Cloudflare-specific behaviour, load or stress, accessibility audits, other browsers (Firefox, Safari), dark/light OS theme switching, and Beam between two real machines or across NATs.

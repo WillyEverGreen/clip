@@ -1,0 +1,551 @@
+/* ── Clip Beam (/beam) ───────────────────────────────────────────────────────
+   Same shell as Live Pad: a top bar (Home, logo with a mode pill, status chip, actions), then one
+   full-width card holding bordered panels. Colours, radii, buttons and inputs all come from the shared
+   tokens in base.css / components.css, so Beam looks like the rest of the app. */
+
+.beam-page {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Top bar */
+.beam-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.beam-topbar-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+.beam-topbar-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.beam-home { padding: 0.4rem 0.65rem !important; font-size: 0.85rem !important; gap: 0.4rem !important; }
+.beam-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  background: #141414;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.beam-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.65rem;
+  background: #0a0a0a;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.beam-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: #52525b; }
+.beam-chip-dot.is-on { background: #fff; }
+.beam-top-btn { padding: 0.45rem 0.9rem !important; font-size: 0.85rem !important; }
+
+/* The card */
+.beam-card {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 1.25rem !important;
+  box-sizing: border-box;
+}
+
+.beam-facts {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.beam-facts li { display: inline-flex; align-items: center; gap: 0.35rem; }
+
+/* Panels (the bordered sub-cards inside the card) */
+.beam-panel {
+  background: #070707;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  flex-shrink: 0;
+}
+.beam-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  min-width: 0;
+}
+.beam-count {
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.beam-panel-note { margin-left: auto; font-weight: 400; font-size: 0.75rem; }
+
+.beam-muted { color: var(--text-muted); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.35rem; }
+.beam-hint { font-size: 0.78rem; line-height: 1.5; color: var(--text-dim); }
+.beam-center { text-align: center; justify-content: center; }
+.beam-hidden-input { display: none; }
+.beam-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; justify-content: center; }
+.beam-actions .btn { padding: 0.55rem 1.1rem; font-size: 0.85rem; }
+.beam-tag {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Start screen */
+.beam-start-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.beam-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; }
+.beam-start-inner {
+  width: 100%;
+  max-width: 760px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 0 1rem;
+}
+.beam-heading { text-align: center; }
+.beam-heading h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 0.25rem; }
+.beam-heading p { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; }
+
+.beam-toggle {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.25rem;
+  background: #000;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.beam-toggle-btn {
+  flex: 1;
+  padding: 0.55rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 150ms ease;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+}
+.beam-toggle-btn:hover:not(.is-active) { color: #fff; }
+.beam-toggle-btn.is-active { background: #52525b; color: #fff; border-color: #71717a; }
+.beam-start-panel[hidden] { display: none; }
+
+.beam-drop {
+  width: 100%;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: #000;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-active);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-family: var(--font);
+  padding: 1.5rem;
+  transition: border-color var(--transition), background-color var(--transition), color var(--transition);
+}
+.beam-drop:hover, .beam-drop.is-dragging { border-color: #a1a1aa; background: var(--surface-hover); color: var(--text); }
+.beam-drop-title { font-size: 1rem; font-weight: 600; color: var(--text); }
+.beam-drop-sub { font-size: 0.8125rem; text-align: center; }
+
+.beam-join { display: flex; flex-direction: column; gap: 0.6rem; }
+.beam-pin-input { font-family: var(--font-mono); font-size: 1.5rem; letter-spacing: 0.2em; text-align: center; }
+
+/* Sessions: work area on the left, people and PIN on the right (like Live Pad's files panel) */
+.beam-session { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.beam-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 0.9rem;
+}
+.beam-col { display: flex; flex-direction: column; gap: 0.75rem; min-height: 0; overflow-y: auto; }
+.beam-session-narrow { overflow-y: auto; }
+.beam-session-narrow .beam-col { width: 100%; max-width: 760px; margin: 0 auto; overflow: visible; }
+.beam-session-head { align-items: center; text-align: center; }
+
+.beam-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+/* File queue */
+.beam-queue.is-dragging { border-color: #a1a1aa; background: var(--surface-hover); }
+.beam-queue-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.beam-add { padding: 0.4rem 0.8rem !important; font-size: 0.8rem !important; }
+.beam-queue-list { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; max-height: 180px; overflow-y: auto; }
+.beam-queue-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; min-width: 0; }
+.beam-queue-item .beam-file-name { flex: 1; min-width: 0; }
+
+.beam-file { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+.beam-file > div { min-width: 0; }
+.beam-file-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beam-file-line { display: inline-flex; align-items: center; gap: 0.4rem; font-weight: 600; max-width: 100%; overflow-wrap: anywhere; }
+
+/* People: cute names with avatars */
+.beam-person { display: inline-flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.beam-person-dot { width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0; border: 1px solid; display: inline-flex; align-items: center; justify-content: center; font-size: 0.8rem; line-height: 1; }
+.beam-person-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beam-person-you {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #d4d4d8;
+  border: 1px solid var(--border-active);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+/* Receivers (one card per connected person) */
+.beam-legs { list-style: none; display: flex; flex-direction: column; gap: 0.75rem; }
+.beam-leg {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.beam-leg.is-paused { border-color: var(--border-active); }
+.beam-leg-head { display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex-wrap: wrap; }
+.beam-leg-name { font-weight: 600; font-size: 0.9rem; flex-shrink: 0; }
+.beam-leg-status { color: var(--text-muted); font-size: 0.8125rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beam-leg.is-paused .beam-leg-status, .beam-leg.is-ended .beam-leg-status, .beam-leg.is-error .beam-leg-status { white-space: normal; }
+.beam-leg-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.beam-leg-cancel:hover { color: var(--text); border-color: var(--border-active); }
+.beam-leg-done { font-size: 0.8125rem; }
+.beam-active-file { border-top: 1px solid var(--border); padding-top: 0.6rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.beam-active-file-head { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.beam-active-file-head .beam-file-name { flex: 1; min-width: 0; font-size: 0.9rem; }
+
+/* File history */
+.beam-hist { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
+.beam-hist-row { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; flex-wrap: wrap; min-width: 0; }
+.beam-hist-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+.beam-hist-text { font-size: 0.75rem; }
+.beam-hist-row.is-error .beam-hist-text, .beam-hist-row.is-failed .beam-hist-text { color: #d4d4d8; }
+.beam-hash { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-dim); overflow-wrap: anywhere; max-width: 100%; flex-basis: 100%; }
+
+/* Progress */
+.beam-progress { display: flex; flex-direction: column; gap: 0.45rem; }
+.beam-bar { height: 8px; background: #000; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+.beam-bar-fill { height: 100%; background: #fff; border-radius: 999px; transition: width 200ms linear; }
+.beam-stats { display: flex; justify-content: space-between; gap: 1rem; font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+.beam-pct { font-weight: 700; }
+.beam-route { align-self: flex-start; font-size: 0.72rem; color: var(--text-muted); border: 1px solid var(--border); border-radius: 999px; padding: 0.12rem 0.6rem; }
+
+/* Status lines */
+.beam-status { display: flex; align-items: center; justify-content: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.85rem; }
+.beam-dot { width: 7px; height: 7px; border-radius: 50%; background: #fff; flex-shrink: 0; animation: beamPulse 1.4s ease-in-out infinite; }
+.beam-dot.is-off { animation: none; background: #52525b; }
+@keyframes beamPulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.beam-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  background: #000;
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-lg);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.beam-banner .btn { padding: 0.45rem 0.9rem; font-size: 0.8rem; }
+
+/* The file on offer / arriving */
+.beam-incoming { border-color: var(--border-active); }
+.beam-offer { display: flex; flex-direction: column; gap: 0.7rem; text-align: center; align-items: center; }
+
+/* Results and errors */
+.beam-active { display: flex; flex-direction: column; gap: 1rem; }
+.beam-result { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.75rem; padding: 1.5rem 0; margin: auto; }
+.beam-result h2 { font-size: 1.25rem; }
+.beam-result .btn { margin-top: 0.5rem; }
+.beam-error-text { color: var(--text-muted); max-width: 520px; line-height: 1.6; }
+.beam-interrupted { max-width: 640px; margin: 0 auto; width: 100%; overflow-y: auto; }
+
+/* PIN and QR */
+.beam-pin-share { align-items: center; text-align: center; }
+.beam-pin-share .beam-panel-title { align-self: flex-start; }
+.beam-pin { font-family: var(--font-mono); font-size: clamp(1.75rem, 7vw, 2.25rem); font-weight: 700; letter-spacing: 0.12em; line-height: 1; }
+.beam-qr { background: #fff; padding: 0.75rem; border-radius: var(--radius); line-height: 0; }
+
+/* Receive mode and Accept all switches */
+.beam-nearby-opt { margin-top: 0.5rem; padding-top: 1rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.9rem; text-align: left; width: 100%; }
+.beam-acceptall { margin-top: 0; padding-top: 0.75rem; }
+.beam-switch { position: relative; display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; }
+.beam-switch input { position: absolute; left: 0; top: 2px; width: 38px; height: 22px; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+.beam-switch-track { flex-shrink: 0; width: 38px; height: 22px; border-radius: 999px; background: #1a1a1a; border: 1px solid var(--border-active); position: relative; transition: background-color var(--transition); margin-top: 2px; }
+.beam-switch-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #a1a1aa; transition: transform var(--transition), background-color var(--transition); }
+.beam-switch input:checked + .beam-switch-track { background: #3f3f46; }
+.beam-switch input:checked + .beam-switch-track .beam-switch-thumb { transform: translateX(16px); background: #fff; }
+.beam-switch input:focus-visible + .beam-switch-track { outline: 2px solid #fff; outline-offset: 2px; }
+.beam-switch-title { display: block; font-size: 0.9rem; font-weight: 600; }
+.beam-switch-sub { display: block; margin-top: 0.2rem; }
+.beam-visible-card { display: flex; align-items: center; gap: 0.8rem; background: #000; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 0.8rem 1rem; }
+.beam-visible-name { font-weight: 700; }
+.beam-invite { background: #000; border: 1px solid var(--border-active); border-radius: var(--radius-lg); padding: 1rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.beam-invite-head { display: flex; gap: 0.8rem; align-items: center; min-width: 0; }
+.beam-invite-text { min-width: 0; font-size: 0.9rem; }
+.beam-invite-text .beam-file-name { margin-top: 0.15rem; }
+
+/* Nearby radar */
+.beam-nearby { gap: 0.75rem; }
+.beam-nearby-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; }
+.beam-radar {
+  position: relative;
+  width: min(100%, 340px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle, #111 0%, #060606 70%, #000 100%);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.beam-radar-ring { position: absolute; border: 1px solid #1f1f1f; border-radius: 50%; inset: 0; margin: auto; }
+.beam-radar-ring-1 { width: 33%; height: 33%; }
+.beam-radar-ring-2 { width: 66%; height: 66%; }
+.beam-radar-ring-3 { width: 99%; height: 99%; }
+.beam-radar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(255, 255, 255, 0) 0deg, rgba(255, 255, 255, 0) 300deg, rgba(255, 255, 255, 0.12) 350deg, rgba(255, 255, 255, 0.22) 360deg);
+  animation: beamSweep 4s linear infinite;
+  pointer-events: none;
+}
+@keyframes beamSweep { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .beam-radar-sweep { animation: none; opacity: 0.4; } .beam-dot { animation: none; } }
+.beam-radar-you { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.12), 0 0 0 14px rgba(255, 255, 255, 0.05); }
+.beam-peer { position: absolute; transform: translate(-50%, -50%); background: none; border: none; color: var(--text); font-family: var(--font); cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 0.2rem; padding: 0; max-width: 88px; z-index: 2; }
+.beam-peer:disabled { cursor: default; }
+.beam-peer.is-busy { opacity: 0.55; }
+.beam-peer-avatar { position: relative; width: 44px; height: 44px; border-radius: 50%; border: 2px solid; display: inline-flex; align-items: center; justify-content: center; font-size: 1.35rem; line-height: 1; flex-shrink: 0; transition: transform var(--transition), border-color var(--transition); }
+.beam-peer:hover:not(:disabled) .beam-peer-avatar { transform: scale(1.08); }
+.beam-peer.is-selected .beam-peer-avatar { transform: scale(1.12); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25); }
+.beam-peer:focus-visible .beam-peer-avatar { outline: 2px solid #fff; outline-offset: 2px; }
+.beam-peer-check { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; background: #fff; color: #000; display: inline-flex; align-items: center; justify-content: center; }
+.beam-peer-name { font-size: 0.72rem; font-weight: 600; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+.beam-peer-tag { font-size: 0.62rem; color: var(--text-muted); background: #000; border: 1px solid var(--border); border-radius: 999px; padding: 0 0.4rem; }
+
+/* Unfinished transfers on the start screen */
+.beam-unfinished { gap: 0.75rem; }
+
+/* Narrow screens: one column, the whole page scrolls (like Live Pad on a phone) */
+@media (max-width: 900px) {
+  .beam-grid { grid-template-columns: 1fr; flex: none; }
+  .beam-col { overflow: visible; }
+  .beam-session { overflow: visible; }
+}
+@media (max-width: 720px) {
+  .beam-page { height: auto; min-height: 100dvh; overflow: visible; padding: 0.6rem 0.6rem 1rem; }
+  .beam-card { overflow: visible; padding: 0.85rem 0.75rem !important; border-radius: 12px !important; }
+  .beam-scroll, .beam-start-wrap { overflow: visible; }
+  .beam-session-narrow { overflow: visible; }
+  .beam-topbar { gap: 0.5rem; }
+  .beam-topbar-right { width: 100%; }
+  .beam-home span { display: none; }
+  .beam-radar { width: min(100%, 300px); }
+  .beam-hist-name { max-width: 100%; }
+  .beam-toggle { max-width: none; }
+}
+
+/* ── Centred layout: big title, centred card, everything stacked in one column ───────────── */
+.beam-page { height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible; align-items: center; padding: 1.25rem 1.5rem 2rem; }
+.beam-topbar { max-width: 1100px; }
+.beam-heading-big { text-align: center; margin-top: 0.5rem; }
+.beam-heading-big h1 { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.03em; margin-bottom: 0.6rem; }
+.beam-heading-big p { font-size: 1.05rem; max-width: 640px; margin: 0 auto; line-height: 1.6; color: var(--text-muted); }
+.beam-card { flex: none; max-width: 1100px; overflow: visible; padding: 2rem !important; }
+.beam-start-wrap, .beam-scroll { overflow: visible; display: block; }
+.beam-start-inner { max-width: none; margin: 0; padding: 0; gap: 1.5rem; }
+.beam-start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+.beam-start-panel { padding: 1.5rem; gap: 1rem; }
+.beam-card-title { display: flex; align-items: center; gap: 0.6rem; font-size: 1.25rem; font-weight: 700; }
+.beam-drop { min-height: 280px; }
+.beam-drop-title { font-size: 1.15rem; }
+.beam-drop-sub { font-size: 0.9rem; }
+.beam-pin-input { font-size: 1.9rem; padding: 0.9rem 1rem; }
+.beam-start-panel .btn-full { padding: 0.95rem 1.5rem; font-size: 1.05rem; }
+.beam-panel { padding: 1.25rem 1.4rem; gap: 1rem; }
+.beam-panel-title { font-size: 1rem; }
+.beam-hint { font-size: 0.85rem; }
+.beam-muted { font-size: 0.92rem; }
+.beam-grid { display: flex; flex-direction: column; gap: 1.25rem; flex: none; }
+.beam-col { overflow: visible; gap: 1.25rem; }
+.beam-session { overflow: visible; max-width: 860px; margin: 0 auto; width: 100%; }
+.beam-session-narrow .beam-col { max-width: none; }
+.beam-leg { padding: 1.1rem 1.2rem; }
+.beam-leg-name { font-size: 1rem; }
+.beam-hist-row { font-size: 0.9rem; }
+.beam-hist-text { font-size: 0.82rem; }
+.beam-pin { font-size: clamp(2.2rem, 8vw, 3rem); }
+.beam-radar { width: min(100%, 400px); }
+.beam-peer-avatar { width: 52px; height: 52px; font-size: 1.6rem; }
+.beam-incoming { padding: 1.4rem; }
+.beam-file-name { font-size: 1.02rem; }
+.beam-facts { margin-top: 0.5rem; font-size: 0.78rem; }
+@media (max-width: 900px) {
+  .beam-start-grid { grid-template-columns: 1fr; }
+  .beam-heading-big h1 { font-size: 2rem; }
+  .beam-card { padding: 1.25rem !important; }
+}
+@media (max-width: 720px) {
+  .beam-page { padding: 0.75rem 0.6rem 1.25rem; }
+  .beam-card { padding: 1rem 0.85rem !important; }
+  .beam-start-panel { padding: 1rem; }
+}
+
+/* ── Use the space: thin frame, wide panels ───────────────────────────────── */
+.beam-page { padding: 1rem 1.25rem 1.5rem; gap: 0.6rem; }
+.beam-topbar, .beam-card { max-width: 1100px !important; width: 100%; margin-left: auto; margin-right: auto; }
+.beam-card { padding: 0.7rem !important; }
+.beam-session { max-width: none; }
+.beam-start-inner { gap: 0.9rem; }
+.beam-start-grid { gap: 0.9rem; }
+.beam-start-panel { padding: 1.5rem 1.75rem; }
+.beam-panel { padding: 1.1rem 1.35rem; }
+.beam-col { gap: 0.9rem; }
+.beam-grid { gap: 0.9rem; }
+.beam-drop { min-height: 320px; }
+.beam-radar { width: min(100%, 440px); }
+.beam-hist-name { max-width: 70%; }
+@media (min-width: 1000px) {
+  .beam-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
+}
+@media (max-width: 720px) {
+  .beam-card { padding: 0.6rem !important; }
+  .beam-panel { padding: 0.9rem; }
+}
+
+/* One vertical stack at every width (wide panels, no side column) */
+@media (min-width: 1000px) {
+  .beam-grid { display: flex; flex-direction: column; }
+}
+.beam-grid { align-items: stretch !important; }
+.beam-grid > .beam-col, .beam-col > .beam-panel, .beam-col > .beam-banner { width: 100%; align-self: stretch; box-sizing: border-box; }
+
+/* Touch and narrow screens: roomier buttons, rows that wrap instead of cutting text */
+.beam-leg-cancel { margin-left: auto; }
+@media (max-width: 720px), (pointer: coarse) {
+  .beam-leg-cancel { width: 36px; height: 36px; }
+  .beam-leg-status { white-space: normal; flex: 1 1 8rem; overflow: visible; }
+  .beam-leg-head { align-items: flex-start; }
+  .beam-toggle-btn, .beam-actions .btn, .beam-top-btn, .beam-add { min-height: 40px; }
+  .beam-hist-name { max-width: 100%; }
+}
+
+/* Heading text for search engines and screen readers only: the top bar already names the page, like Live Pad */
+.beam-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* The first screen fits the window: the drop zone gives way before the page scrolls */
+.beam-page { gap: 0.9rem; }
+.beam-drop { min-height: clamp(180px, 36vh, 340px); }
+
+/* Use the height: the card grows to the bottom of the window and the drop zone grows with it */
+.beam-card { flex: 1 1 auto !important; display: flex; flex-direction: column; min-height: 0; }
+.beam-card > .beam-start-wrap, .beam-card > .beam-session { flex: 1 1 auto; }
+.beam-start-wrap, .beam-scroll { display: flex; flex-direction: column; flex: 1 1 auto; }
+.beam-start-inner { display: flex; flex-direction: column; flex: 1 1 auto; }
+.beam-start-grid { flex: 1 1 auto; align-items: stretch; }
+.beam-start-panel { display: flex; flex-direction: column; }
+.beam-drop { flex: 1 1 auto; min-height: clamp(180px, 30vh, 320px); }
+@media (max-width: 900px) { .beam-drop { flex: none; } }
+
+/* Quiet three-step guide at the bottom of the Receive panel: fills the space the nearby list leaves */
+.beam-steps { list-style: none; margin: auto 0 0; padding: 1rem 0 0; border-top: 1px solid var(--border); display: grid; gap: 0.7rem; }
+.beam-steps li { display: flex; gap: 0.75rem; align-items: flex-start; color: var(--text-muted); font-size: 0.88rem; line-height: 1.5; }
+.beam-steps b { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 0.72rem; color: #fff; background: #141414; border: 1px solid var(--border); }
+/* Only when there is spare height: on shorter windows the first screen must still fit without scrolling */
+.beam-steps { display: none; }
+@media (min-width: 901px) and (min-height: 900px) { .beam-steps { display: grid; } }
+
+/* Nearby radar as a dropdown, open by default */
+.beam-nearby > summary { list-style: none; cursor: pointer; }
+.beam-nearby > summary::-webkit-details-marker { display: none; }
+.beam-nearby-head { flex-wrap: wrap; }
+.beam-nearby-head .beam-muted { margin-left: auto; }
+.beam-chevron { flex: none; color: var(--text-muted); transition: transform .2s ease; }
+.beam-nearby[open] .beam-chevron { transform: rotate(180deg); }
+.beam-nearby[open] > summary { margin-bottom: 0.25rem; }
+.beam-nearby { display: flex; flex-direction: column; gap: 0.75rem; }
+.beam-lan { margin-left: 0.5rem; padding: 0.1rem 0.5rem; border: 1px solid var(--border); border-radius: 999px; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; color: var(--text-muted); text-transform: uppercase; }

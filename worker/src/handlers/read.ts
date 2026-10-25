@@ -1,4 +1,6 @@
 import type { Context } from 'hono'
+import { pruneExpiredBundles } from '../lib/bundles'
+import { releaseUpload } from './big'
 import type { Env } from '../lib/types'
 import { getEntry, putEntry, toPublic, getFileKV, deleteFileKV, getViews, incrementViewsKV } from '../lib/kv'
 import { isEncrypted, decryptContent, isEncryptedFileBuffer, decryptFileArrayBuffer } from '../lib/crypto'
@@ -35,8 +37,18 @@ export async function handleReadFile(c: Context<{ Bindings: Env }>) {
   if (!slug) return c.json({ error: 'not_found' }, 404)
   const entry = await getEntry(c.env.PASTE_KV, slug)
 
-  if (!entry || !entry.hasFile) return c.json({ error: 'not_found' }, 404)
+  if (!entry) return c.json({ error: 'not_found' }, 404)
   if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+  // Files kept in the file bucket: hand over to its download link (first file, or ?bundle=<id>&n=<n>)
+  const liveBundles = (entry.bundles ?? []).filter((b) => b.expiresAt > Date.now() && b.files.length)
+  if (!entry.hasFile || c.req.query('bundle')) {
+    const wantId = c.req.query('bundle')
+    const bundle = wantId ? liveBundles.find((b) => b.id === wantId) : liveBundles[0]
+    if (!bundle) return c.json({ error: entry.bundles?.length ? 'expired' : 'not_found' }, 404)
+    const n = Number(c.req.query('n') ?? bundle.files[0]!.n)
+    if (!bundle.files.some((f) => f.n === n)) return c.json({ error: 'not_found' }, 404)
+    return c.redirect(`${new URL(c.req.url).origin}/api/big/${bundle.id}/download?n=${n}`, 302)
+  }
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt) return c.json({ error: 'expired' }, 404)
 
   let fileName = entry.fileName ?? 'download'
@@ -104,6 +116,17 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
   if (!entry) return c.text('Not found', 404)
   if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.text('Expired', 404)
 
+  // Self-heal: drop uploads in the file bucket whose time is up
+  const expiredBundles = pruneExpiredBundles(entry)
+  if (expiredBundles.length) {
+    entry.updatedAt = Date.now()
+    c.executionCtx?.waitUntil((async () => {
+      for (const id of expiredBundles) await releaseUpload(c.env, id)
+      await putEntry(c.env.PASTE_KV, entry)
+      await notifyRoom(c.env, slug, entry.updatedAt)
+    })())
+  }
+
   // Self-heal: clear expired files and notify other clients
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {
     const wasFile = entry.hasFile
@@ -152,7 +175,7 @@ export async function handleReadRaw(c: Context<{ Bindings: Env }>) {
   // ── Increment view count non-blocking without overwriting entry document ──
   c.executionCtx?.waitUntil(incrementViewsKV(c.env.PASTE_KV, slug, entry.views ?? 0))
 
-  if (entry.type === 'file' || (!entry.content && entry.hasFile)) {
+  if (entry.type === 'file' || (!entry.content && (entry.hasFile || entry.bundles?.length))) {
     return handleReadFile(c)
   }
 
@@ -200,6 +223,17 @@ export async function handleRead(c: Context<{ Bindings: Env }>) {
   ])
   if (!entry) return c.json({ error: 'not_found' }, 404)
   if (!entry.isPermanent && Date.now() > entry.expiresAt) return c.json({ error: 'expired' }, 404)
+
+  // Self-heal: drop uploads in the file bucket whose time is up
+  const expiredBundles = pruneExpiredBundles(entry)
+  if (expiredBundles.length) {
+    entry.updatedAt = Date.now()
+    c.executionCtx?.waitUntil((async () => {
+      for (const id of expiredBundles) await releaseUpload(c.env, id)
+      await putEntry(c.env.PASTE_KV, entry)
+      await notifyRoom(c.env, slug, entry.updatedAt)
+    })())
+  }
 
   // Self-heal: clear expired files and notify other clients
   if (entry.fileExpiresAt && Date.now() > entry.fileExpiresAt && entry.hasFile) {

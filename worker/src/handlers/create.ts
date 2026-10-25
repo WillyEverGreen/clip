@@ -9,6 +9,9 @@ import { log } from '../lib/logger'
 import { notifyRoom } from '../lib/notify'
 import { normalizeNewlines } from '../lib/text'
 import type { Entry, FileItem } from '../lib/types'
+import { FILE_TTL_SECONDS } from '../lib/big'
+import { claimUpload } from './big'
+import { bundleFromRecord } from '../lib/bundles'
 
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024  // 2 MB
@@ -99,7 +102,6 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     }
 
     const isFile    = type === 'file' || fileList.length > 0
-    const FILE_TTL_SECONDS = 172_800 // 2 Days (48 Hours) auto-delete for file uploads
     const PERMANENT_MS    = 3_153_600_000_000 // 100 Years (Permanent for text)
 
     let expiresAt: number
@@ -111,20 +113,20 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
     if (ttlSeconds !== null) {
       expiresAt = now + (ttlSeconds * 1000)
       if (isFile) {
-        // Files always expire after 48 hours, independently of entry expiration
+        // Files always expire after 2 hours, independently of entry expiration
         fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
       }
     } else {
       // Default behavior
       if (isFile && !hasContent) {
-        // File-only entries: entry metadata is permanent, files expire after 48 hours
+        // File-only entries: entry metadata is permanent, files expire after 2 hours
         expiresAt = now + PERMANENT_MS
         fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
       } else if (hasContent && !isFile) {
         // Text-only entries: permanent
         expiresAt = now + PERMANENT_MS
       } else {
-        // Text + files: text is permanent, files expire after 48 hours
+        // Text + files: text is permanent, files expire after 2 hours
         expiresAt = now + PERMANENT_MS
         fileExpiresAt = now + (FILE_TTL_SECONDS * 1000)
       }
@@ -146,6 +148,26 @@ export async function handleCreate(c: Context<{ Bindings: Env }>) {
       views: 0,
     }
 
+
+    // ── Files already uploaded to the file bucket (too big for KV) ────────────
+    const bundleId = ((form.get('bundleId') as string | null) ?? '').trim()
+    if (bundleId) {
+      if (fileList.length > 0) return c.json({ error: 'invalid_request' }, 400)
+      const until = Math.min(entry.expiresAt, now + FILE_TTL_SECONDS * 1000)
+      const claimed = await claimUpload(c.env, bundleId, form.get('bundleToken') as string | null, slug, until)
+      if ('error' in claimed) return c.json({ error: claimed.error }, claimed.error === 'bundle_forbidden' ? 403 : 400)
+      entry.type = 'file'
+      entry.fileExpiresAt = undefined // that field is for files kept in KV
+      entry.bundles = [bundleFromRecord(claimed, until)]
+      if (content && content.trim()) {
+        if (new TextEncoder().encode(content).length > MAX_TEXT_BYTES) return c.json({ error: 'text_too_large' }, 400)
+        entry.content = content
+      }
+      await putEntry(c.env.PASTE_KV, entry)
+      c.executionCtx?.waitUntil(notifyRoom(c.env, slug))
+      await log('entry.created', { slug, type: 'file', bundle: claimed.slug, fileCount: claimed.files.length }, c.env)
+      return c.json({ slug, expiresAt }, 201)
+    }
 
     // ── Handle TEXT entry ─────────────────────────────────────────────────────
     if (entry.type === 'text') {

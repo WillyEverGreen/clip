@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { formatBytes } from '../lib/api'
+import { MAX_FILES } from '../lib/bigUpload'
 import { Plus, X, Check } from 'lucide-react'
 import { extractFilesFromDataTransfer, normalizeFileInputFiles } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
@@ -14,6 +15,8 @@ interface Props {
   uploadProgress?: number | null
   /** File names shown in the progress bar */
   uploadingFileNames?: string[]
+  /** No per-file size rule: any number of files of any size, up to `maxBytes` in total */
+  allowLarge?: boolean
 }
 
 const MAX = 50 * 1024 * 1024 // 50 MB total limit
@@ -27,6 +30,7 @@ export default function DropZone({
   height = '202px',
   uploadProgress = null,
   uploadingFileNames = [],
+  allowLarge = false,
 }: Props) {
   const [dragging, setDragging] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<File[]>(files || [])
@@ -43,13 +47,13 @@ export default function DropZone({
     (newFiles: File[]) => {
       setError('')
       
-      // Check per-file size limit
+      // Without allowLarge, each file must fit a normal KV share
       const oversizedFiles = newFiles.filter(f => f.size > MAX_PER_FILE)
-      if (oversizedFiles.length > 0) {
-        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit.`)
+      if (!allowLarge && oversizedFiles.length > 0) {
+        setError(`File "${oversizedFiles[0].name}" exceeds ${formatBytes(MAX_PER_FILE)} per-file limit. Use Clip Beam (clip.foo.ng/beam) to send big files directly.`)
         return
       }
-      
+
       setSelectedFiles((prev) => {
         const deduped = newFiles.filter(
           (nf) => !prev.some((pf) => pf.name === nf.name && pf.size === nf.size),
@@ -57,8 +61,14 @@ export default function DropZone({
         const updated = [...prev, ...deduped]
         const totalSize = updated.reduce((acc, f) => acc + f.size, 0)
 
+        if (updated.length > MAX_FILES) {
+          setError(`You can share up to ${MAX_FILES} files at once.`)
+          return prev
+        }
         if (totalSize > maxBytes) {
-          setError(`Total files size exceeds ${formatBytes(maxBytes)} limit.`)
+          setError(allowLarge
+            ? `Files can be up to ${formatBytes(maxBytes)} in total. Use Clip Beam (clip.foo.ng/beam) to send more directly.`
+            : `Total files size exceeds ${formatBytes(maxBytes)} limit.`)
           return prev
         }
 
@@ -67,7 +77,7 @@ export default function DropZone({
         return updated
       })
     },
-    [maxBytes, onFiles, onFile],
+    [maxBytes, onFiles, onFile, allowLarge],
   )
 
   const onPaste = async (e: React.ClipboardEvent) => {
@@ -150,7 +160,7 @@ export default function DropZone({
                   transition: 'color 300ms ease',
                 }}
               >
-                {uploadProgress}%
+                {Math.round(uploadProgress)}%
               </span>
             </div>
 
@@ -307,7 +317,11 @@ export default function DropZone({
           <div className="dropzone__empty">
             <UploadIcon />
             <p>Drop file(s) here or <span className="dropzone__link">browse</span></p>
-            <p className="dropzone__hint">Attach multiple files · Max {formatBytes(maxBytes)} total</p>
+            <p className="dropzone__hint">
+              {allowLarge
+                ? `Any number of files · Up to ${formatBytes(maxBytes)} in total`
+                : `Attach multiple files · Max ${formatBytes(maxBytes)} total`}
+            </p>
           </div>
         )}
       </div>

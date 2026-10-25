@@ -27,28 +27,65 @@
 
 ---
 
-### ✨ Features
+### ⭐ Key Features
 
-- 🚀 **Zero Friction & No Sign-up**: Open the site, paste your text or drop your files, get your link instantly. No account, email, or credentials required.
-- ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file sharing room with instant WebSocket synchronization powered by Cloudflare Durable Objects (SQLite). Everything synchronizes live across devices as you type.
-- 🖱️ **Type Together with Multi-Cursor**: Several people can edit the same Live Pad at once without overwriting each other (operational transform, tested with randomized multi-client simulations). Opt in to multi-cursor to see everyone's caret with a random cute name like *Mochi* or *Biscuit*; it is off by default.
-- 🎬 **Universal Media & Document Viewer**: Full-screen theater viewer for both LivePad and URL pastes. Generous cinematic video player, uncompromised high-res image lightbox with 25%–500% zoom and pan, line-numbered syntax-highlighted code with search and copy, and embedded PDF / audio playback.
-- 🗜️ **Client-Side ZIP Archive Inspector**: Click on any attached `.zip` to explore its internal directories and files in real-time, search inside the archive, and extract/download individual files without downloading the full archive.
-- 🛡️ **Admin Live Pad & Expiration Monitor**: Dedicated admin section to track all active Live Pad rooms, view exact 24-hour rolling expiration countdowns and timestamps, monitor live connected peers, and terminate rooms.
-- 📱 **Phone Pair via QR Code**: Connect your phone to any Live Pad room in one second by scanning a QR code with your camera.
-- 📋 **Direct Clipboard & Drag-and-Drop Sharing**: Paste images or screenshots directly from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop any file up to 25 MB.
-- 🖥️ **Zero-Scroll Viewport Layout**: Desktop workspace dynamically adapts to 100% viewport height with no vertical page scroll. Seamlessly collapses into dedicated mobile tabs on narrow screens.
-- 🎨 **Pure Monochrome (Black & White) Aesthetics**: Clean, distraction-free solid black (`#000000`) and pure white theme with Lucide iconography and zero emojis.
-- 💻 **Terminal / CLI Downloads**: Fetch pastes and files straight from Linux, macOS, or Windows terminals using simple `curl` commands with optional password flags.
-- 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files combined into a single ZIP archive, decrypted on-the-fly when encrypted.
-- 🕒 **Custom Expiration Timers**: Choose how long your link stays active: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` (files cleanly auto-purge after 48h to optimize storage).
-- 🔒 **Zero-Knowledge Client-Side Encryption**: Secure text pastes and file uploads with browser-side **PBKDF2 + AES-256-GCM** encryption across creation, edits, and live rooms. The server never sees your password or plaintext data.
-- 🔑 **Secret Edit Code**: Protect your links with a custom edit password to modify content, add/remove files, or delete early.
-- 🔗 **Custom & Retained Slugs**: Pick your own readable URL slug (`clip.foo.ng/my-notes`) or convert live rooms into permanent clips while preserving the same slug.
-- 📁 **Rich Markdown & KaTeX Math**: Full support for GitHub Flavored Markdown (GFM), task lists, tables, and KaTeX mathematical typesetting ($\LaTeX$, matrices, piecewise functions, integrals).
-- 🔤 **Developer Typography & Code Blocks**: Crisp syntax highlighting for 40+ languages with **JetBrains Mono** / **Fira Code** fonts and 1-click code block **Copy** buttons.
-- 🌐 **Comprehensive SEO & Rich Snippets**: Schema.org `WebApplication` & `FAQPage` rich snippets, dynamic OpenGraph/Twitter social cards, `robots.txt`, and `sitemap.xml`.
-- ⚡ **Edge-Powered Speed**: Built on Cloudflare Workers + KV + Durable Objects + Pages for near-instant global response times.
+- 🚀 **Zero Friction, No Sign-up**: Open the site, paste text or drop files, and get a link in seconds. No account, email, or credentials.
+- 📦 **Many files on one link**: share as many files as you like on your own custom URL, and add or remove files later with the edit code. Small sets stay in Workers KV (with previews and password lock); bigger sets go straight from the browser to a private Backblaze B2 bucket, one file at a time and several in parallel, with nothing zipped. Files are deleted 2 hours after upload. See [docs/LARGE_FILES.md](docs/LARGE_FILES.md).
+- 📡 **Clip Beam (`/beam`), files of any size, browser to browser**: Send multi-gigabyte files straight from your disk to someone else's over an encrypted WebRTC connection. Nothing is uploaded or stored.
+  - **Connect once, keep sending**: the connection stays open, so the sender can keep adding files and the receiver chooses **Accept**, **Decline** or **Accept all** for each. Either side can end the connection at any time.
+  - **Send to up to 8 people at once**, each with their own progress, speed, and a live time-left countdown.
+  - **Nearby radar**: people on your network who switch on Receive mode appear as avatars with cute names. Tap one or several to connect, no PIN needed (a 6-digit PIN and QR code still work). Receive mode is off by default, and they can Decline or Block.
+  - **Hard to break**: heartbeat and ICE restart repair a flaky connection, the screen is kept awake, and if it does drop, **Reconnect** (or the automatic retry) continues from where it stopped, even after a reload in Chrome and Edge. Optional TURN relay for strict networks.
+  - **Verified**: SHA-256 is checked on both ends, and a damaged file is caught instead of saved.
+- ⚡ **Real-Time Live Pad (`/live/:slug`)**: Collaborative notepad and live file room with instant WebSocket sync (Cloudflare Durable Objects). Several people can type together with multi-cursor and random cute names like *Mochi* or *Biscuit*, without overwriting each other.
+- 🔒 **Zero-Knowledge Encryption**: Browser-side **PBKDF2 + AES-256-GCM** for pastes, files, edits, and live rooms. The server never sees your password or plaintext.
+- 🕒 **Flexible Expiry**: `10 Minutes`, `1 Hour`, `6 Hours` *(Default)*, `1 Day`, `7 Days`, `30 Days`, or `Permanent` for text (attached files are deleted 2 hours after upload).
+- 💻 **Terminal / CLI**: Fetch pastes and files from Linux, macOS, or Windows with simple `curl` commands, plus a 1-command ZIP download.
+- ⚡ **Edge-Powered**: Cloudflare Workers + KV + Durable Objects + Pages for fast global responses.
+
+### ➕ More Features
+
+- 🖱️ **Multi-Cursor Editing**: Opt in to see everyone's caret in a Live Pad (operational transform, tested with randomized multi-client simulations). Off by default.
+- 🎬 **Universal Media & Document Viewer**: Full-screen theater viewer for both LivePad and URL pastes. Cinematic video player, high-res image lightbox with 25%-500% zoom and pan, line-numbered syntax-highlighted code with search and copy, and embedded PDF / audio playback.
+- 🗜️ **Client-Side ZIP Archive Inspector**: Click any attached `.zip` to explore its folders and files, search inside it, and extract single files without downloading the whole archive.
+- 📦 **1-Command ZIP Download**: Retrieve text (`<slug>.txt`) and all attached files as one ZIP, decrypted on the fly when encrypted.
+- 📱 **Phone Pair via QR Code**: Connect your phone to a Live Pad or a Beam in one second by scanning a QR code.
+- 📋 **Clipboard & Drag-and-Drop**: Paste screenshots straight from your clipboard (<kbd>Ctrl+V</kbd> / <kbd>Cmd+V</kbd>) or drag and drop as many files as you need. Use Beam for very large files.
+- 🔑 **Secret Edit Code**: Protect a link with a custom edit password to modify content, add or remove files, or delete early.
+- 🔗 **Custom & Retained Slugs**: Pick your own readable slug (`clip.foo.ng/my-notes`) or convert a live room into a permanent clip with the same slug.
+- 📁 **Rich Markdown & KaTeX Math**: GitHub Flavored Markdown, task lists, tables, and KaTeX typesetting (LaTeX, matrices, piecewise functions, integrals).
+- 🔤 **Developer Typography & Code Blocks**: Syntax highlighting for 40+ languages with JetBrains Mono / Fira Code and 1-click Copy buttons.
+- 🛡️ **Admin Live Pad & Expiration Monitor**: Admin section to track active Live Pad rooms, 24-hour rolling expiry countdowns, connected peers, and to terminate rooms.
+- 🖥️ **Zero-Scroll Viewport Layout**: The desktop workspace fits 100% of the viewport height and collapses into mobile tabs on narrow screens.
+- 🎨 **Pure Monochrome Look**: Solid black (`#000000`) and pure white with Lucide icons.
+- 🌐 **SEO & Rich Snippets**: Schema.org `WebApplication` and `FAQPage` snippets, OpenGraph / Twitter cards, `robots.txt`, and `sitemap.xml`.
+
+---
+
+### 📦 Sharing files
+
+1. On the home page open the **File** tab and drop **as many files as you need** (the drop area shows how much room is left).
+2. Optionally pick your own **Custom URL**, set an **Edit code**, and choose how long the link itself lasts. The files are deleted 2 hours after upload.
+3. Tap **Create Link**. Small sets are stored with the link (with previews and optional password lock); bigger sets upload straight to storage, several files at once, with a progress bar. Either way you land on your link.
+4. Visitors see every file with its own **Download** button, plus **Download all** (packed into one zip in their browser).
+5. Later, open **Edit** with your edit code to **add more files** to the same URL or remove some.
+
+Password lock works for files up to 50 MB in total.
+
+---
+
+### 📡 Using Clip Beam
+
+Open `/beam` (for example `https://clip.foo.ng/beam`) in Chrome or Edge on both devices.
+
+1. **Send**: on the **Send** tab drop one or more files. You get a radar of people nearby, and a 6-digit PIN with a QR code. You can add more files at any time while people are connected.
+2. **Receive, with the radar**: on the **Receive** tab switch on **Show me to nearby senders**. When someone picks you, tap **Connect** (or **Decline** / **Block**). No PIN.
+3. **Receive, with a PIN**: on the **Receive** tab type the sender's PIN (or scan the QR code) and tap **Connect**.
+4. **Each file**: once connected, every file the sender offers asks for your **Accept** (choose where to save it) or **Decline**. Turn on **Accept all** to pick one folder and save everything there automatically.
+5. **End it any time**: the receiver taps **Disconnect**; the sender can disconnect one person or **Stop sharing**.
+6. **If the connection drops**: press **Reconnect** (it also retries by itself). It continues from where it stopped, and the sender keeps their page open. After a reload, `/beam` lists **Unfinished transfers** you can continue (Chrome and Edge).
+
+Good to know: files go straight between the two browsers and is never stored on Clip's servers. One sender can send to up to 8 people at once. Chrome and Edge save straight to disk with no size limit; Firefox and Safari keep the file in memory (up to 2 GB) and can only resume while the page stays open. Both devices need a direct connection (same Wi-Fi works best); very strict networks need a TURN relay, which is supported but has to be switched on with a Cloudflare TURN key (see the architecture doc). Full design: [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md).
 
 ---
 
@@ -91,7 +128,9 @@ curl.exe -fLJO https://clip.foo.ng/f/<slug>
 | :--- | :--- |
 | **Frontend** | React 18, TypeScript, Vite, Vanilla CSS (Pure Monochrome), Lucide Icons, Marked, KaTeX, Prism.js, fflate |
 | **Backend API** | Cloudflare Workers, Hono.js, Cloudflare KV Storage, fflate (zip generation) |
-| **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed WebSocket state synchronization) |
+| **Real-Time Engine** | Cloudflare Durable Objects (SQLite-backed): `ClipRoom` for Live Pad sync, `BeamRoom` for Beam connection setup, `BeamLobby` for the nearby radar |
+| **Large files** | Backblaze B2 (private S3-compatible bucket), SigV4 signed direct uploads and downloads, a scheduled worker for expiry |
+| **Clip Beam** | WebRTC data channels (peer to peer), File System Access API, IndexedDB (resume), `hash-wasm` (SHA-256) |
 | **Hosting & CDN** | Cloudflare Pages + Custom Domain (`clip.foo.ng`) |
 | **Search & SEO** | Schema.org JSON-LD (WebApplication & FAQPage), XML Sitemap, Robots.txt, OpenGraph |
 
@@ -110,18 +149,23 @@ npm run dev
 ```
 
 For a detailed breakdown of the codebase architecture, environment setup, and contribution guidelines, please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) guide.  
-For the high-speed 100MB–100GB+ file transfer architecture plan, see [docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md](docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md).  
+For how Clip Beam works (rooms, radar, resume, tests), see [docs/CLIP_BEAM_ARCHITECTURE.md](docs/CLIP_BEAM_ARCHITECTURE.md). How large files work and are set up: [docs/LARGE_FILES.md](docs/LARGE_FILES.md) (the original plan, which used R2, is in [docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md](docs/HYBRID_LARGE_FILE_TRANSFER_SPEC.md)).  
 For a full history of bug fixes and architectural updates, see [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
 
 ### 🧪 Automated Testing
 
-Clip includes an end-to-end automated test suite covering crypto, file uploads, expiration, CLI curl generation, and real-time live sync:
+Clip includes automated tests for crypto, uploads, expiration, CLI generation, live sync, and Clip Beam (room and radar logic, speed and time-left maths, a real worker, and real Chrome pages sending files to each other, including dropped connections):
 
 ```bash
-npm test
+npm test                 # unit tests, nothing needs to be running
+npm run test:beam        # all Clip Beam tests (needs the worker and site running locally)
+npm run test:big         # large-file tests, against the real B2 bucket (needs B2 keys in worker/.dev.vars)
+npm run test:all         # everything
 ```
+
+See [docs/TESTING.md](docs/TESTING.md) for what each suite covers and how to run the ones that need the worker and site.
 
 ---
 
@@ -135,6 +179,9 @@ npm run deploy
 
 * Deploy worker only: `npm run deploy:worker`
 * Deploy frontend only: `npm run deploy:frontend`
+* The first deploy that includes Clip Beam also creates the `BeamRoom` and `BeamLobby` Durable Objects (migrations `v2` and `v3`); nothing else needs configuring.
+* Large files need two secrets on the worker, set once: `npx wrangler secret put B2_KEY_ID` and `npx wrangler secret put B2_APP_KEY` (a key limited to the one bucket; see [docs/LARGE_FILES.md](docs/LARGE_FILES.md)). The deploy also schedules the 10-minute cleanup job.
+* Run it from the `main` branch: Cloudflare Pages only treats `main` as production, and any other branch is published as a preview.
 
 ---
 

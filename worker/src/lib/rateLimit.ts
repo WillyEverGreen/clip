@@ -13,6 +13,11 @@ const LIMITS: Record<string, LimitConfig> = {
   patch:  { max: 30, window: 120 }, // 30 edits   / 2 min / IP (global)
   'patch:slug': { max: 10, window: 120 }, // 10 edits / 2 min / IP / slug
   delete: { max: 20, window: 120 }, // 20 deletes / 2 min / IP
+  'big:start': { max: 6, window: 120 }, // 6 large-file uploads started / 2 min / IP
+  'big:dl': { max: 20, window: 120 }, // 20 large-file download requests / 2 min / IP (the storage plan has a daily download allowance)
+  'beam:ice': { max: 60, window: 120 }, // 60 ICE server lookups / 2 min / IP
+  'beam:lobby': { max: 240, window: 120 }, // 240 nearby-lobby connections / 2 min / IP (a campus can sit behind one IP)
+  'beam:join': { max: 40, window: 120 }, // 40 Beam PIN joins / 2 min / IP (slows PIN guessing; room for a class behind one NAT)
 }
 
 export interface RateLimitResult {

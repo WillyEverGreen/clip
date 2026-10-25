@@ -5,6 +5,13 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 FRONTEND_ORIGIN = "https://clip.foo.ng"
+B2_BUCKET = "clip-foo"
+B2_S3_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"
+B2_REGION = "us-east-005"
+
+# Every 10 minutes: delete large files that have expired
+[triggers]
+crons = ["*/10 * * * *"]
 
 [[kv_namespaces]]
 binding = "PASTE_KV"
@@ -15,7 +22,30 @@ preview_id = "887b8699f2d842278081193bbc0a6645"
 name       = "CLIP_DO"
 class_name = "ClipRoom"
 
+[[durable_objects.bindings]]
+name       = "BEAM_DO"
+class_name = "BeamRoom"
+
+[[durable_objects.bindings]]
+name       = "BEAM_LOBBY_DO"
+class_name = "BeamLobby"
+
+[[durable_objects.bindings]]
+name       = "BIG_DO"
+class_name = "BigUploadStore"
+
 [[migrations]]
 tag                 = "v1"
 new_sqlite_classes  = ["ClipRoom"]
 
+[[migrations]]
+tag                 = "v2"
+new_sqlite_classes  = ["BeamRoom"]
+
+[[migrations]]
+tag                 = "v3"
+new_sqlite_classes  = ["BeamLobby"]
+
+[[migrations]]
+tag                 = "v4"
+new_sqlite_classes  = ["BigUploadStore"]

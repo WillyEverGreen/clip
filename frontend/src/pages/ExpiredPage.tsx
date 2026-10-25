@@ -7,6 +7,7 @@ export default function ExpiredPage() {
     title: 'Link not found - Clip',
     description: 'This link has expired or never existed.',
     canonicalUrl: 'https://clip.foo.ng/',
+    noindex: true,
   })
 
   return (

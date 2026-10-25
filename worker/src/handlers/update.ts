@@ -7,10 +7,12 @@ import { validateMime } from '../lib/mime'
 import { log } from '../lib/logger'
 import { notifyRoom } from '../lib/notify'
 import { normalizeNewlines } from '../lib/text'
+import { BIG_MAX_BYTES, BIG_MAX_FILES, FILE_TTL_SECONDS } from '../lib/big'
+import { claimUpload, releaseUpload, removeUploadFiles } from './big'
+import { bundleFromRecord, bundleTotals, pruneExpiredBundles } from '../lib/bundles'
 
 const MAX_TEXT_BYTES = 2 * 1024 * 1024
 const MAX_FILE_BYTES = 25 * 1024 * 1024
-const FILE_TTL_SECONDS = 172_800 // 48 Hours
 
 export async function handleUpdate(c: Context<{ Bindings: Env }>) {
   try {
@@ -81,6 +83,42 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       }
     }
 
+    // 2a. Files in the file bucket: drop expired ones, remove some or all, or add a new upload
+    for (const id of pruneExpiredBundles(updated)) c.executionCtx?.waitUntil(releaseUpload(c.env, id))
+    if (form.get('removeFile') === 'true' && updated.bundles?.length) {
+      for (const b of updated.bundles) await releaseUpload(c.env, b.id)
+      updated.bundles = undefined
+    }
+    const removeRaw = form.get('removeBundleFiles') as string | null
+    if (removeRaw && updated.bundles?.length) {
+      let wanted: { id?: unknown; n?: unknown }[] = []
+      try { wanted = JSON.parse(removeRaw) } catch { return c.json({ error: 'invalid_request' }, 400) }
+      if (!Array.isArray(wanted)) return c.json({ error: 'invalid_request' }, 400)
+      const next = []
+      for (const b of updated.bundles) {
+        const ns = wanted.filter((w) => w?.id === b.id && typeof w.n === 'number').map((w) => w.n as number)
+        if (ns.length === 0) { next.push(b); continue }
+        const left = await removeUploadFiles(c.env, b.id, ns)
+        const files = b.files.filter((f) => !ns.includes(f.n))
+        if (left && files.length) next.push({ ...b, files })
+      }
+      updated.bundles = next.length ? next : undefined
+    }
+    const newBundleId = ((form.get('bundleId') as string | null) ?? '').trim()
+    if (newBundleId) {
+      if (form.getAll('files').length || form.getAll('file').length) return c.json({ error: 'invalid_request' }, 400)
+      const until = Math.min(updated.isPermanent ? Number.MAX_SAFE_INTEGER : updated.expiresAt, Date.now() + FILE_TTL_SECONDS * 1000)
+      const claimed = await claimUpload(c.env, newBundleId, form.get('bundleToken') as string | null, slug, until)
+      if ('error' in claimed) return c.json({ error: claimed.error }, claimed.error === 'bundle_forbidden' ? 403 : 400)
+      const bundles = [...(updated.bundles ?? []), bundleFromRecord(claimed, until)]
+      const totals = bundleTotals(bundles)
+      if (totals.files > BIG_MAX_FILES || totals.bytes > BIG_MAX_BYTES || bundles.length > 10) {
+        await releaseUpload(c.env, claimed.slug)
+        return c.json({ error: 'too_large' }, 400)
+      }
+      updated.bundles = bundles
+    }
+
     // 2. Existing File Handling (Retention or Removal)
     let retainedFiles: FileItem[] = []
     const rawKeep = form.getAll('keepFileIds') as string[]
@@ -117,6 +155,23 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       }
     }
 
+    const nowMs = Date.now()
+    if (retainedFiles.length > 0 && entry.fileExpiresAt && entry.fileExpiresAt <= nowMs) {
+      for (const f of retainedFiles) {
+        await deleteFileKV(c.env.PASTE_KV, slug, f.id)
+      }
+      await deleteFileKV(c.env.PASTE_KV, slug)
+      retainedFiles = []
+    }
+    const existingFileExpiry =
+      retainedFiles.length > 0 && entry.fileExpiresAt && entry.fileExpiresAt > nowMs
+        ? entry.fileExpiresAt
+        : undefined
+    const sharedFileExpiresAt = Math.min(
+      updated.expiresAt,
+      existingFileExpiry ?? nowMs + (FILE_TTL_SECONDS * 1000),
+    )
+
     // 3. New File Uploads
     const rawFiles = form.getAll('files')
     const rawSingle = form.getAll('file')
@@ -145,8 +200,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
         return c.json({ error: 'file_too_large' }, 400)
       }
 
-      const newFileExpiresAt = Math.min(updated.expiresAt, Date.now() + (FILE_TTL_SECONDS * 1000))
-      const fileTtl = Math.max(60, Math.ceil((newFileExpiresAt - Date.now()) / 1000))
+      const fileTtl = Math.max(60, Math.ceil((sharedFileExpiresAt - Date.now()) / 1000))
 
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i]
@@ -176,11 +230,11 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
       updated.fileSize  = combinedFiles.reduce((acc, f) => acc + f.fileSize, 0)
       updated.files     = combinedFiles
       
-      const newFileExpiresAt = Math.min(updated.expiresAt, Date.now() + (FILE_TTL_SECONDS * 1000))
-      updated.fileExpiresAt = newFileExpiresAt
-      
+      updated.fileExpiresAt = sharedFileExpiresAt
+
       if (!updated.content) {
-        updated.expiresAt = newFileExpiresAt
+        // A files-only clip lasts as long as its last file
+        updated.expiresAt = Math.max(sharedFileExpiresAt, ...(updated.bundles ?? []).map((b) => b.expiresAt))
       }
     } else {
       updated.hasFile  = false
@@ -192,13 +246,7 @@ export async function handleUpdate(c: Context<{ Bindings: Env }>) {
     }
 
     // 4. Update entry type dynamically
-    if (updated.hasFile && updated.content) {
-      updated.type = 'file'
-    } else if (updated.hasFile) {
-      updated.type = 'file'
-    } else {
-      updated.type = 'text'
-    }
+    updated.type = updated.hasFile || updated.bundles?.length ? 'file' : 'text'
 
 
     await putEntry(c.env.PASTE_KV, updated)

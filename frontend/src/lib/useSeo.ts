@@ -4,9 +4,13 @@ interface SeoProps {
   title: string
   description?: string
   canonicalUrl?: string
+  /** Pages for someone's private or temporary content: keep them out of search results. */
+  noindex?: boolean
 }
 
-export function useSeo({ title, description, canonicalUrl }: SeoProps) {
+const DEFAULT_ROBOTS = 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1'
+
+export function useSeo({ title, description, canonicalUrl, noindex }: SeoProps) {
   useEffect(() => {
     // 1. Update Title
     const fullTitle = title.includes('Clip') ? title : `${title} - Clip`
@@ -37,7 +41,10 @@ export function useSeo({ title, description, canonicalUrl }: SeoProps) {
     setMetaTag('meta[property="og:title"]', 'content', fullTitle)
     setMetaTag('meta[name="twitter:title"]', 'content', fullTitle)
 
-    // 5. Update Canonical link if provided
+    // 5. Robots: single-page-app navigation must reset this when moving to an indexable page
+    setMetaTag('meta[name="robots"]', 'content', noindex ? 'noindex, nofollow' : DEFAULT_ROBOTS)
+
+    // 6. Update Canonical link if provided
     if (canonicalUrl) {
       let link = document.querySelector('link[rel="canonical"]')
       if (!link) {
@@ -47,5 +54,5 @@ export function useSeo({ title, description, canonicalUrl }: SeoProps) {
       }
       link.setAttribute('href', canonicalUrl)
     }
-  }, [title, description, canonicalUrl])
+  }, [title, description, canonicalUrl, noindex])
 }

@@ -15,9 +15,15 @@ import { handleReadZip } from './handlers/zip'
 import { getMimeType, validateMime } from './lib/mime'
 import { zipSync, strToU8 } from 'fflate'
 import { isEncryptedFileBuffer, decryptFileArrayBuffer, isEncrypted, decryptContent } from './lib/crypto'
+import { BEAM_PIN_RE, generateBeamPin } from './lib/beam'
+import { checkRateLimit, getClientIp } from './lib/rateLimit'
+import { handleBigStart, handleBigSign, handleBigComplete, handleBigInfo, handleBigDownload, handleBigDelete, sweepBigFiles } from './handlers/big'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
+export { BeamRoom } from './durable/BeamRoom'
+export { BeamLobby } from './durable/BeamLobby'
+export { BigUploadStore } from './durable/BigUploadStore'
 
 const app = new Hono<{ Bindings: Env }>()
 
@@ -580,7 +586,107 @@ app.get('/api/live/:slug/zip', async (c) => {
   })
 })
 
+// ── Clip Beam signalling ─────────────────────────────────────────────────────
+// WebSocket to a BeamRoom DO that relays WebRTC SDP/ICE between two browsers. File bytes never
+// come here. No `pin` = a sender opening a room (the worker picks a free PIN); `?pin=` = a receiver.
+app.get('/api/beam/ws', async (c) => {
+  if (!c.env.BEAM_DO) return c.json({ error: 'beam_unavailable' }, 503)
+  if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
+    return c.json({ error: 'expected_websocket' }, 426)
+  }
+  const name = c.req.query('name') ?? ''
+  const resume = c.req.query('resume') === '1' ? '1' : '0'
+  const roomRequest = (pin: string, role: 'sender' | 'receiver', token = '') =>
+    c.env.BEAM_DO.get(c.env.BEAM_DO.idFromName(pin)).fetch(
+      new Request(`https://beam-do/ws?role=${role}&pin=${pin}&name=${encodeURIComponent(name.slice(0, 100))}&token=${encodeURIComponent(token)}&resume=${resume}`, { headers: c.req.raw.headers }),
+    )
+
+  const pin = c.req.query('pin')
+  const token = c.req.query('token')
+  if (pin !== undefined && token) {
+    // A sender taking its room back after a dropped connection
+    if (!BEAM_PIN_RE.test(pin)) return c.json({ error: 'invalid_pin' }, 400)
+    return roomRequest(pin, 'sender', token.slice(0, 100))
+  }
+  if (pin !== undefined) {
+    if (!BEAM_PIN_RE.test(pin)) return c.json({ error: 'invalid_pin' }, 400)
+    const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:join', getClientIp(c.req.raw))
+    if (limit.limited) return c.json({ error: 'rate_limited', retryAfter: limit.retryAfter }, 429)
+    return roomRequest(pin, 'receiver')
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const res = await roomRequest(generateBeamPin(), 'sender')
+    if (res.status !== 409) return res
+  }
+  return c.json({ error: 'pin_exhausted' }, 503)
+})
+
+// Clip Beam connection helpers. Always STUN; when a Cloudflare TURN key is configured it also hands out
+// short-lived relay credentials, which lets two devices behind strict NATs still connect. Without a key
+// (or if Cloudflare cannot be reached) it quietly returns just the STUN servers.
+const STUN_SERVERS = [{ urls: 'stun:stun.cloudflare.com:3478' }, { urls: 'stun:stun.l.google.com:19302' }]
+app.get('/api/beam/ice', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:ice', getClientIp(c.req.raw))
+  if (limit.limited) return c.json({ iceServers: STUN_SERVERS, turn: false }, 200)
+  const keyId = c.env.TURN_KEY_ID
+  const token = c.env.TURN_API_TOKEN
+  if (!keyId || !token) return c.json({ iceServers: STUN_SERVERS, turn: false })
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ttl: 4 * 3600 }),
+      signal: AbortSignal.timeout(3000),
+    })
+    if (!res.ok) throw new Error(`turn ${res.status}`)
+    const json = await res.json() as { iceServers?: unknown }
+    const list = Array.isArray(json.iceServers) ? json.iceServers : json.iceServers ? [json.iceServers] : []
+    // Keep only well-formed entries so a bad response can never break connections
+    const turn = list.filter((s): s is { urls: string | string[]; username?: string; credential?: string } =>
+      !!s && typeof s === 'object' && 'urls' in s)
+    if (turn.length === 0) throw new Error('no ice servers')
+    return c.json({ iceServers: [...STUN_SERVERS, ...turn.filter((s) => s.username)], turn: true })
+  } catch (err) {
+    console.error('beam ice error:', err)
+    return c.json({ iceServers: STUN_SERVERS, turn: false })
+  }
+})
+
+// Clip Beam "nearby": receivers who opt in are listed to senders on the same public IP.
+// IPv6 clients are grouped by /64 so one household is one group.
+app.get('/api/beam/lobby/ws', async (c) => {
+  if (!c.env.BEAM_LOBBY_DO) return c.json({ error: 'beam_unavailable' }, 503)
+  if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') {
+    return c.json({ error: 'expected_websocket' }, 426)
+  }
+  const role = c.req.query('role')
+  if (role !== 'sender' && role !== 'receiver') return c.json({ error: 'invalid_role' }, 400)
+  const ip = getClientIp(c.req.raw)
+  const limit = await checkRateLimit(c.env.PASTE_KV, 'beam:lobby', ip)
+  if (limit.limited) return c.json({ error: 'rate_limited', retryAfter: limit.retryAfter }, 429)
+  const group = ip.includes(':') ? ip.split(':').slice(0, 4).join(':') : ip
+  const name = (c.req.query('name') ?? '').slice(0, 100)
+  return c.env.BEAM_LOBBY_DO.get(c.env.BEAM_LOBBY_DO.idFromName(`lobby:${group}`)).fetch(
+    new Request(`https://beam-lobby/ws?role=${role}&name=${encodeURIComponent(name)}`, { headers: c.req.raw.headers }),
+  )
+})
+
+// Large files (over 25 MB): the browser uploads straight to the bucket with signed links
+app.post('/api/big/start',               handleBigStart)
+app.post('/api/big/:slug/sign',          handleBigSign)
+app.post('/api/big/:slug/complete',      handleBigComplete)
+app.get('/api/big/:slug',                handleBigInfo)
+app.get('/api/big/:slug/download',       handleBigDownload)
+app.delete('/api/big/:slug',             handleBigDelete)
+
 // Health check
 app.get('/api/health', (c) => c.json({ ok: true }))
 
-export default app
+export default {
+  fetch: app.fetch.bind(app),
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(sweepBigFiles(env, Date.now() + (Number(env.SWEEP_CLOCK_SKEW_MS) || 0)).then((r) => console.log('big sweep', JSON.stringify(r))))
+  },
+}
