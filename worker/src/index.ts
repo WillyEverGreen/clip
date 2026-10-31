@@ -11,6 +11,7 @@ import { generateLiveSlug, isReserved } from './lib/slug'
 import { entryExists, getEntry, putFileKV, getFileKV, deleteFileKV } from './lib/kv'
 
 import { handleAdminList, handleAdminDelete, handleAdminPurgeAll, handleAdminLiveRooms, handleAdminDeleteLiveRoom } from './handlers/admin'
+import { handleAnalyticsEvent, handleAdminAnalytics, handleAdminExcludedIps, handleAdminDetectedIp } from './handlers/analytics'
 import { handleReadZip } from './handlers/zip'
 import { getMimeType, validateMime } from './lib/mime'
 import { zipSync, strToU8 } from 'fflate'
@@ -63,6 +64,9 @@ app.get('/api/quote', async (c) => {
 
 // Create
 app.post('/api/entry',                handleCreate)
+
+// Analytics beacon
+app.post('/api/analytics/event',      handleAnalyticsEvent)
 
 // Read (Short CLI routes)
 app.get('/r/:slug',                 handleReadRaw)
@@ -121,6 +125,10 @@ app.delete('/api/admin/entry/:slug',  handleAdminDelete)
 app.delete('/api/admin/purge',        handleAdminPurgeAll)
 app.get('/api/admin/live-rooms',      handleAdminLiveRooms)
 app.delete('/api/admin/live/:slug',   handleAdminDeleteLiveRoom)
+app.get('/api/admin/analytics',             handleAdminAnalytics)
+app.get('/api/admin/analytics/excluded-ips', handleAdminExcludedIps)
+app.post('/api/admin/analytics/excluded-ips', handleAdminExcludedIps)
+app.get('/api/admin/analytics/detected-ip',  handleAdminDetectedIp)
 
 // ── Live Pad Authentication Helper ───────────────────────────────────────────
 async function verifyLiveRoomAuth(c: any, slug: string): Promise<{ authorized: boolean; state?: any }> {

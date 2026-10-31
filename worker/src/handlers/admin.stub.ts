@@ -11,3 +11,7 @@ export const handleAdminDelete = notAvailable
 export const handleAdminPurgeAll = notAvailable
 export const handleAdminLiveRooms = notAvailable
 export const handleAdminDeleteLiveRoom = notAvailable
+
+export function getAdminAuthStatus(_c: Context<{ Bindings: Env }>): 'authorized' | 'unauthorized' | 'unconfigured' {
+  return 'unconfigured'
+}
