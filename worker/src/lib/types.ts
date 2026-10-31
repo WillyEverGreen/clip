@@ -1,6 +1,9 @@
 // ─── Cloudflare bindings ─────────────────────────────────────────────────────
 
 import type { BigUploadStore } from '../durable/BigUploadStore'
+import type { AnalyticsStore, AnalyticsEvent, AnalyticsSummary } from '../durable/AnalyticsStore'
+
+export type { AnalyticsEvent, AnalyticsSummary }
 
 export interface Env {
   PASTE_KV: KVNamespace
@@ -8,6 +11,7 @@ export interface Env {
   BEAM_DO: DurableObjectNamespace  // BeamRoom — Clip Beam WebRTC signalling per PIN
   BEAM_LOBBY_DO: DurableObjectNamespace  // BeamLobby — Clip Beam nearby receivers per public IP
   BIG_DO: DurableObjectNamespace<BigUploadStore>  // BigUploadStore — one record per file-bucket upload (strongly consistent)
+  ANALYTICS_DO: DurableObjectNamespace<AnalyticsStore>  // AnalyticsStore — SQLite analytics storage
   APP_PEPPER: string        // set via: wrangler secret put APP_PEPPER
   FRONTEND_ORIGIN: string   // set in wrangler.toml [vars]
   ADMIN_SECRET?: string     // set via wrangler.toml [vars] or secret

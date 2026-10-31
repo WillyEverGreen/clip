@@ -34,6 +34,10 @@ class_name = "BeamLobby"
 name       = "BIG_DO"
 class_name = "BigUploadStore"
 
+[[durable_objects.bindings]]
+name       = "ANALYTICS_DO"
+class_name = "AnalyticsStore"
+
 [[migrations]]
 tag                 = "v1"
 new_sqlite_classes  = ["ClipRoom"]
@@ -49,3 +53,7 @@ new_sqlite_classes  = ["BeamLobby"]
 [[migrations]]
 tag                 = "v4"
 new_sqlite_classes  = ["BigUploadStore"]
+
+[[migrations]]
+tag                 = "v5"
+new_sqlite_classes  = ["AnalyticsStore"]

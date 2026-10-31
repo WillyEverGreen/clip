@@ -24,6 +24,7 @@ export { ClipRoom } from './durable/ClipRoom'
 export { BeamRoom } from './durable/BeamRoom'
 export { BeamLobby } from './durable/BeamLobby'
 export { BigUploadStore } from './durable/BigUploadStore'
+export { AnalyticsStore } from './durable/AnalyticsStore'
 
 const app = new Hono<{ Bindings: Env }>()
 
