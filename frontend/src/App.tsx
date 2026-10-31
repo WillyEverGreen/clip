@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import PageLoader from './components/PageLoader'
 import ErrorBoundary from './components/ErrorBoundary'
 import { lazyWithRetry } from './lib/lazyWithRetry'
+import { useAnalytics } from './lib/analytics'
 
 // All pages are lazy-loaded so the initial JS bundle stays tiny.
 // Each page chunk is only downloaded when the user navigates to it.
@@ -72,11 +73,17 @@ function RouteFade({ children }: { children: React.ReactNode }) {
   return <div className="route-fade" key={pathname.split('/')[1] ?? ''}>{children}</div>
 }
 
+function AnalyticsTracker() {
+  useAnalytics()
+  return null
+}
+
 export default function App() {
   useDismissSplash()
   useWarmPages()
   return (
     <BrowserRouter>
+      <AnalyticsTracker />
       <ErrorBoundary>
       <Suspense fallback={<PageLoader />}>
         <RouteFade>
