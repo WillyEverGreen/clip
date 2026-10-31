@@ -1,6 +1,6 @@
 const LIVE_WORKER_URL = 'https://clip-worker.saibalkawade10.workers.dev'
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-export const BASE = import.meta.env.VITE_API_URL || (isLocal ? '' : LIVE_WORKER_URL)
+export const BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || (isLocal ? '' : LIVE_WORKER_URL)
 
 // Public-facing origin used for CLI commands shown to users.
 // Uses the browser's current domain (clip.foo.ng in prod, localhost in dev)
@@ -423,6 +423,83 @@ export async function adminPurgeAllEntries(adminKey: string): Promise<number> {
   const json = await res.json()
   if (!res.ok) throw json as ApiError
   return json.deletedCount || 0
+}
+
+// ── Admin Analytics & IP Exclusion ────────────────────────────────────────────
+
+export interface AnalyticsSummary {
+  range: 'today' | '7d' | '30d' | string
+  totalViews: number
+  uniqueVisitors: number
+  topPaths: Array<{ path: string; count: number }>
+  topReferrers: Array<{ referrer: string; count: number }>
+  topCountries: Array<{ country: string; count: number }>
+  devices: Array<{ device: string; count: number }>
+  deviceBreakdown?: Record<string, number>
+}
+
+export async function fetchAdminAnalytics(
+  adminKey: string,
+  range: 'today' | '7d' | '30d' = 'today'
+): Promise<AnalyticsSummary> {
+  const res = await fetch(`${BASE}/api/admin/analytics?range=${range}&key=${encodeURIComponent(adminKey)}`, {
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as AnalyticsSummary
+}
+
+export async function fetchAdminDetectedIp(adminKey: string): Promise<{ ip: string }> {
+  const res = await fetch(`${BASE}/api/admin/analytics/detected-ip?key=${encodeURIComponent(adminKey)}`, {
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as { ip: string }
+}
+
+export async function fetchAdminExcludedIps(adminKey: string): Promise<{ excludedIps: string[] }> {
+  const res = await fetch(`${BASE}/api/admin/analytics/excluded-ips?key=${encodeURIComponent(adminKey)}`, {
+    headers: { 'Authorization': `Bearer ${adminKey}` },
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as { excludedIps: string[] }
+}
+
+export async function addAdminExcludedIp(
+  adminKey: string,
+  ip: string
+): Promise<{ success: boolean; excludedIps: string[] }> {
+  const res = await fetch(`${BASE}/api/admin/analytics/excluded-ips?key=${encodeURIComponent(adminKey)}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${adminKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action: 'add', ip }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as { success: boolean; excludedIps: string[] }
+}
+
+export async function removeAdminExcludedIp(
+  adminKey: string,
+  ip: string
+): Promise<{ success: boolean; excludedIps: string[] }> {
+  const res = await fetch(`${BASE}/api/admin/analytics/excluded-ips?key=${encodeURIComponent(adminKey)}`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${adminKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ action: 'remove', ip }),
+  })
+  const json = await res.json()
+  if (!res.ok) throw json as ApiError
+  return json as { success: boolean; excludedIps: string[] }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
