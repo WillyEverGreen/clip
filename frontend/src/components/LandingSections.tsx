@@ -5,7 +5,7 @@ import Logo from './Logo'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
   Link2, Quote, Zap, Lock, Timer, FileUp, Terminal, ArrowRight, Plus, Check, Copy,
-  ClipboardPaste, Share2, Flame, Code2, QrCode, Radio, ShieldCheck, RotateCcw, Users, Play,
+  ClipboardPaste, Share2, Flame, Code2, QrCode, Radio, ShieldCheck, RotateCcw, Users, Play, X,
 } from 'lucide-react'
 
 import FAQ from '../lib/faq.json'
@@ -319,52 +319,59 @@ export default function LandingSections() {
             <tbody>
               <tr>
                 <td>Account Required</td>
-                <td className="sx-col-clip">❌ Zero (No signup)</td>
-                <td>Optional / Email required</td>
-                <td>✅ Google Account required</td>
-                <td>Optional</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><X size={13} strokeWidth={2.5} style={{ color: '#71717a' }} /> None (Instant)</span></td>
+                <td><span className="sx-cell-dim">Optional / Email</span></td>
+                <td><span className="sx-cell-dim">Account required</span></td>
+                <td><span className="sx-cell-dim">Optional</span></td>
+              </tr>
+              <tr>
+                <td>Custom URLs Anytime</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Link2 size={13} /> Custom slugs anytime (/my-link)</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Random only</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Random ID only</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Random only</span></td>
               </tr>
               <tr>
                 <td>Large File Limits</td>
-                <td className="sx-col-clip">⚡ Unlimited (Clip Beam P2P)</td>
-                <td>2 GB (Free tier cap)</td>
-                <td>15 GB shared storage</td>
-                <td>512 KB (Text only)</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Zap size={13} /> Unlimited (Clip Beam P2P)</span></td>
+                <td><span className="sx-cell-dim">2 GB free cap</span></td>
+                <td><span className="sx-cell-dim">15 GB shared quota</span></td>
+                <td><span className="sx-cell-dim">512 KB (Text only)</span></td>
               </tr>
               <tr>
                 <td>End-to-End Encryption</td>
-                <td className="sx-col-clip">🔒 AES-256-GCM in browser</td>
-                <td>❌ Server unencrypted</td>
-                <td>❌ Server access</td>
-                <td>❌ Plaintext public</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Lock size={13} /> AES-256-GCM in browser</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Server unencrypted</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Server access</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Plaintext</span></td>
               </tr>
               <tr>
                 <td>Collaborative Live Pad</td>
-                <td className="sx-col-clip">⚡ Yes + Phone Pair QR</td>
-                <td>❌ No</td>
-                <td>Requires Google Docs</td>
-                <td>❌ No</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Radio size={13} /> Live Pad + Phone QR</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> No</span></td>
+                <td><span className="sx-cell-dim">Requires Google Docs</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> No</span></td>
               </tr>
               <tr>
                 <td>Data Retention</td>
-                <td className="sx-col-clip">🕒 Auto-destruct 2h / custom</td>
-                <td>7 days</td>
-                <td>Permanent cloud store</td>
-                <td>Public archive</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Timer size={13} /> 2h files / 1h-30d text</span></td>
+                <td><span className="sx-cell-dim">7 days</span></td>
+                <td><span className="sx-cell-dim">Permanent storage</span></td>
+                <td><span className="sx-cell-dim">Public archive</span></td>
               </tr>
               <tr>
                 <td>Terminal / CLI Access</td>
-                <td className="sx-col-clip">💻 Direct curl support</td>
-                <td>❌ No</td>
-                <td>❌ Complex API</td>
-                <td>API key required</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Terminal size={13} /> Direct curl support</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> No</span></td>
+                <td><span className="sx-cell-dim"><X size={13} strokeWidth={2} /> Complex API</span></td>
+                <td><span className="sx-cell-dim">API key required</span></td>
               </tr>
               <tr>
                 <td>Cost</td>
-                <td className="sx-col-clip">🆓 100% Free &amp; Open Source</td>
-                <td>$12+/month for pro</td>
-                <td>Subscription tiers</td>
-                <td>Paid PRO subscriptions</td>
+                <td className="sx-col-clip"><span className="sx-cell-val"><Check size={13} strokeWidth={2.5} /> 100% Free &amp; Open Source</span></td>
+                <td><span className="sx-cell-dim">$12+/month for large files</span></td>
+                <td><span className="sx-cell-dim">Paid subscription tiers</span></td>
+                <td><span className="sx-cell-dim">Paid PRO plans</span></td>
               </tr>
             </tbody>
           </table>

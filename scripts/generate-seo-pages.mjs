@@ -95,6 +95,13 @@ const routes = [
                 <td>Optional</td>
               </tr>
               <tr>
+                <td><strong>Custom URLs Anytime</strong></td>
+                <td>Custom slugs anytime (/my-link)</td>
+                <td>Random link only</td>
+                <td>Random ID link only</td>
+                <td>Random slug only</td>
+              </tr>
+              <tr>
                 <td><strong>Large File Limit</strong></td>
                 <td>Unlimited (Clip Beam P2P)</td>
                 <td>2 GB (Free tier cap)</td>

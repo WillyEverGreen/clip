@@ -235,12 +235,45 @@ html.lenis, html.lenis body { height: auto; }
 .sx-film-frame a { color: #c6ff3d; }
 @media (max-width: 640px) { .sx-film-frame { border-radius: 16px; } }
 
-/* -- Comparison Matrix -------------------------------------- */
-.sx-compare-wrap { width: min(100%, 1000px); margin: 40px auto 0; overflow-x: auto; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; background: rgba(18,18,20,.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-.sx-compare-table { width: 100%; border-collapse: collapse; text-align: left; font-size: .875rem; color: #d4d4d8; }
-.sx-compare-table th, .sx-compare-table td { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
-.sx-compare-table th { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #a1a1aa; background: rgba(255,255,255,.02); }
-.sx-compare-table td:first-child { font-weight: 600; color: #ffffff; }
-.sx-col-clip { background: rgba(198,255,61,.04); color: #c6ff3d !important; font-weight: 600; border-left: 1px solid rgba(198,255,61,.15); border-right: 1px solid rgba(198,255,61,.15); }
-.sx-col-clip-head { background: rgba(198,255,61,.08) !important; color: #c6ff3d !important; border-left: 1px solid rgba(198,255,61,.2); border-right: 1px solid rgba(198,255,61,.2); }
-@media (max-width: 768px) { .sx-compare-table th, .sx-compare-table td { padding: 12px 14px; font-size: .8rem; } }
+/* ── Comparison Matrix (Strict Black & White Minimalist) ───── */
+.sx-compare-wrap {
+  width: min(100%, 1000px); margin: 44px auto 0; overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px;
+  background: #000000; box-shadow: 0 24px 80px -20px rgba(0, 0, 0, 0.9);
+}
+.sx-compare-table {
+  width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem; color: #a1a1aa;
+}
+.sx-compare-table th, .sx-compare-table td {
+  padding: 16px 22px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); vertical-align: middle;
+}
+.sx-compare-table th {
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #71717a;
+  background: rgba(255, 255, 255, 0.02);
+}
+.sx-compare-table td:first-child {
+  font-weight: 600; color: #ffffff; letter-spacing: -0.01em;
+}
+.sx-col-clip {
+  background: rgba(255, 255, 255, 0.035); color: #ffffff !important; font-weight: 600;
+  border-left: 1px solid rgba(255, 255, 255, 0.1); border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.sx-col-clip-head {
+  background: rgba(255, 255, 255, 0.07) !important; color: #ffffff !important; font-weight: 700;
+  border-left: 1px solid rgba(255, 255, 255, 0.14); border-right: 1px solid rgba(255, 255, 255, 0.14);
+}
+.sx-cell-val {
+  display: inline-flex; align-items: center; gap: 7px; color: #ffffff;
+}
+.sx-cell-val svg {
+  flex-shrink: 0; color: #ffffff;
+}
+.sx-cell-dim {
+  display: inline-flex; align-items: center; gap: 7px; color: #71717a;
+}
+.sx-cell-dim svg {
+  flex-shrink: 0; color: #71717a;
+}
+@media (max-width: 768px) {
+  .sx-compare-table th, .sx-compare-table td { padding: 12px 14px; font-size: 0.8rem; }
+}
