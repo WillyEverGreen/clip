@@ -75,6 +75,71 @@ const routes = [
           </ul>
         </section>
         <section>
+          <h2>Feature Comparison: Clip vs WeTransfer vs Google Drive vs Pastebin</h2>
+          <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;margin:1rem 0;color:#e2e8f0;border-color:#334155">
+            <thead>
+              <tr style="background:#1e293b">
+                <th>Feature</th>
+                <th>Clip (clip.foo.ng)</th>
+                <th>WeTransfer</th>
+                <th>Google Drive</th>
+                <th>Pastebin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Account Required</strong></td>
+                <td>Zero account / instant</td>
+                <td>Optional / Email required</td>
+                <td>Google account required</td>
+                <td>Optional</td>
+              </tr>
+              <tr>
+                <td><strong>Large File Limit</strong></td>
+                <td>Unlimited (Clip Beam P2P)</td>
+                <td>2 GB (Free tier cap)</td>
+                <td>15 GB total shared quota</td>
+                <td>512 KB (Text only)</td>
+              </tr>
+              <tr>
+                <td><strong>Client-Side Encryption</strong></td>
+                <td>AES-256-GCM in browser</td>
+                <td>No</td>
+                <td>No (Server side only)</td>
+                <td>No (Plaintext)</td>
+              </tr>
+              <tr>
+                <td><strong>Real-Time Live Pad</strong></td>
+                <td>Yes with instant sync &amp; phone QR</td>
+                <td>No</td>
+                <td>Requires Google Docs</td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td><strong>Data Retention</strong></td>
+                <td>Auto-delete 2h / custom 1h-30d</td>
+                <td>7 days</td>
+                <td>Permanent cloud store</td>
+                <td>Public archive</td>
+              </tr>
+              <tr>
+                <td><strong>CLI / Terminal Access</strong></td>
+                <td>curl -sL clip.foo.ng/r/...</td>
+                <td>No</td>
+                <td>Complex OAuth API</td>
+                <td>API key required</td>
+              </tr>
+              <tr>
+                <td><strong>Cost</strong></td>
+                <td>100% Free &amp; Open Source</td>
+                <td>Paid subscription for &gt;2 GB</td>
+                <td>Paid storage tiers</td>
+                <td>Paid PRO subscriptions</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section>
           <h2>Questions</h2>
           ${faq.map((f) => `<details><summary><strong>${esc(f.q)}</strong></summary><p>${esc(f.a)}</p></details>`).join('\n          ')}
         </section>

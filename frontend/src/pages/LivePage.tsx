@@ -39,6 +39,7 @@ import { encryptContent, encryptFile, decryptFileBuffer, isEncryptedFileBuffer, 
 import Logo from '../components/Logo'
 import QuoteWidget from '../components/QuoteWidget'
 import { useSeo } from '../lib/useSeo'
+import { trackEvent } from '../lib/analytics'
 import FilePreviewModal, { type PreviewFileItem } from '../components/FilePreviewModal'
 
 const QRCodeSVG = lazy(() =>
@@ -180,6 +181,8 @@ export default function LivePage() {
       getUniqueLiveSlug().then(unique => {
         navigate(`/live/${unique}`, { replace: true })
       })
+    } else {
+      trackEvent('live_pad_joined', { room: rawSlug })
     }
   }, [rawSlug, navigate])
 

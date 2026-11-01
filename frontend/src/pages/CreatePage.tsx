@@ -8,6 +8,7 @@ import { encryptContent, computeAuthHash, generateSalt, encryptFile } from '../l
 import { extractFilesFromDataTransfer } from '../lib/fileDrop'
 import { getMimeType } from '../lib/fileTypes'
 import { useSeo } from '../lib/useSeo'
+import { trackEvent } from '../lib/analytics'
 import { uploadToFileBucket, needsFileBucket, discardUpload, BigUploadError, MAX_TOTAL_BYTES, FILE_LIFETIME_HOURS } from '../lib/bigUpload'
 
 type Mode = 'text' | 'file' | 'live'
@@ -160,6 +161,7 @@ export default function CreatePage() {
             await uploadLiveFile(targetSlug, fileToUpload, undefined, lockContent && viewPassword ? viewPassword : undefined)
           }
         }
+        trackEvent('share_created', { type: 'live', has_password: lockContent && !!viewPassword, file_count: files.length })
         navigate(`/live/${targetSlug}`)
       } catch (err) {
         const e = err as ApiError
@@ -201,6 +203,7 @@ export default function CreatePage() {
         await new Promise((r) => setTimeout(r, 800))
         sessionStorage.setItem('clip_edit_code_' + newSlug, editCode)
         sessionStorage.removeItem('clip_decrypt_' + newSlug)
+        trackEvent('share_created', { type: 'file_bundle', file_count: files.length, is_big: true })
         navigate(`/${newSlug}`)
       } catch (err) {
         if (upload) discardUpload(upload.slug, upload.token)
@@ -257,6 +260,7 @@ export default function CreatePage() {
       }
       sessionStorage.setItem('clip_edit_code_' + newSlug, editCode)
       sessionStorage.removeItem('clip_decrypt_' + newSlug)
+      trackEvent('share_created', { type: mode, encrypted: lockContent && !!viewPassword, file_count: files.length })
       navigate(`/${newSlug}`)
     } catch (err) {
       const e = err as ApiError

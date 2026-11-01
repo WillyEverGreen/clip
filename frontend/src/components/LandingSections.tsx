@@ -298,6 +298,79 @@ export default function LandingSections() {
         </div>
       </section>
 
+      {/* ── Comparison Matrix ───────────────────────────────────── */}
+      <section className="sx-section" id="compare">
+        <div className="sx-head sx-reveal">
+          <span className="sx-eyebrow">Comparison</span>
+          <h2>Why Clip is the <em>smarter way to share.</em></h2>
+          <p>Zero friction, zero surveillance, and peer-to-peer file streaming.</p>
+        </div>
+        <div className="sx-compare-wrap sx-reveal">
+          <table className="sx-compare-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th className="sx-col-clip-head">Clip</th>
+                <th>WeTransfer</th>
+                <th>Google Drive</th>
+                <th>Pastebin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Account Required</td>
+                <td className="sx-col-clip">❌ Zero (No signup)</td>
+                <td>Optional / Email required</td>
+                <td>✅ Google Account required</td>
+                <td>Optional</td>
+              </tr>
+              <tr>
+                <td>Large File Limits</td>
+                <td className="sx-col-clip">⚡ Unlimited (Clip Beam P2P)</td>
+                <td>2 GB (Free tier cap)</td>
+                <td>15 GB shared storage</td>
+                <td>512 KB (Text only)</td>
+              </tr>
+              <tr>
+                <td>End-to-End Encryption</td>
+                <td className="sx-col-clip">🔒 AES-256-GCM in browser</td>
+                <td>❌ Server unencrypted</td>
+                <td>❌ Server access</td>
+                <td>❌ Plaintext public</td>
+              </tr>
+              <tr>
+                <td>Collaborative Live Pad</td>
+                <td className="sx-col-clip">⚡ Yes + Phone Pair QR</td>
+                <td>❌ No</td>
+                <td>Requires Google Docs</td>
+                <td>❌ No</td>
+              </tr>
+              <tr>
+                <td>Data Retention</td>
+                <td className="sx-col-clip">🕒 Auto-destruct 2h / custom</td>
+                <td>7 days</td>
+                <td>Permanent cloud store</td>
+                <td>Public archive</td>
+              </tr>
+              <tr>
+                <td>Terminal / CLI Access</td>
+                <td className="sx-col-clip">💻 Direct curl support</td>
+                <td>❌ No</td>
+                <td>❌ Complex API</td>
+                <td>API key required</td>
+              </tr>
+              <tr>
+                <td>Cost</td>
+                <td className="sx-col-clip">🆓 100% Free &amp; Open Source</td>
+                <td>$12+/month for pro</td>
+                <td>Subscription tiers</td>
+                <td>Paid PRO subscriptions</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {/* ── FAQ ─────────────────────────────────────────────────── */}
       <section className="sx-section sx-section-narrow" id="faq">
         <div className="sx-head sx-reveal">

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowDownToLine, ArrowLeft, Ban, Radio, RotateCcw, Send, ShieldCheck, Upload, Users, X } from 'lucide-react'
 import Logo from '../components/Logo'
 import { useSeo } from '../lib/useSeo'
+import { trackEvent } from '../lib/analytics'
 import { colorForId } from '../lib/cuteNames'
 import { useBeam } from './useBeam'
 import { canStreamToDisk, MEMORY_LIMIT } from './diskWriter'
@@ -160,7 +161,10 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
 
   const pick = (list: FileList | null) => {
     const files = [...(list ?? [])]
-    if (files.length > 0) onSend(files)
+    if (files.length > 0) {
+      trackEvent('beam_send_started', { file_count: files.length })
+      onSend(files)
+    }
   }
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
@@ -174,6 +178,7 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
       setPinError('Enter the 6-digit PIN shown on the sending device.')
       return
     }
+    trackEvent('beam_receive_joined')
     onJoin(pin)
   }
 

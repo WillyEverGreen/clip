@@ -75,6 +75,7 @@ export default function AboutPage() {
         <a href="#film">Film</a>
         <a href="#features">Features</a>
         <a href="#beam">Beam</a>
+        <a href="#compare">Compare</a>
         <a href="#faq">FAQ</a>
         <Link to="/live">Live Pad</Link>
         <a href="https://github.com/WillyEverGreen/clip" target="_blank" rel="noreferrer">GitHub</a>
