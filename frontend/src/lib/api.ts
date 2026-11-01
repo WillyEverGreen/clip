@@ -511,7 +511,9 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatLocalDate(timestamp: number): string {
+  if (!timestamp || isNaN(timestamp) || timestamp <= 0) return '—'
   const d = new Date(timestamp)
+  if (isNaN(d.getTime())) return '—'
   const day = d.getDate().toString().padStart(2, '0')
   const month = d.toLocaleString('en-US', { month: 'short' })
   const year = d.getFullYear()

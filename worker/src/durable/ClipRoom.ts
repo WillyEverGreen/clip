@@ -139,10 +139,6 @@ export class ClipRoom extends DurableObject<Env> {
     const match = url.pathname.match(/(?:\/room\/|\/api\/live\/)([^\/]+)/)
     if (match && match[1]) {
       this.slug = match[1]
-      const now = Date.now()
-      if (!this.createdAt) this.createdAt = now
-      if (!this.updatedAt) this.updatedAt = now
-      if (!this.expiresAt) this.expiresAt = now + 24 * 3600 * 1000
     }
 
     // ── DELETE /room/:slug/terminate — terminate live room from admin ──────
@@ -174,6 +170,10 @@ export class ClipRoom extends DurableObject<Env> {
       const [client, server] = Object.values(pair)
 
       server.accept()
+      const now = Date.now()
+      if (!this.createdAt) this.createdAt = now
+      this.updatedAt = now
+      if (!this.expiresAt) this.expiresAt = now + 24 * 3600 * 1000
       const clientId = crypto.randomUUID()
       this.sockets.add(server)
       this.clientMap.set(clientId, server)
@@ -332,11 +332,32 @@ export class ClipRoom extends DurableObject<Env> {
     if (request.method === 'GET' && url.pathname.includes('/live-state')) {
       const isProt = !!this.roomSecurity?.isProtected
       const now = Date.now()
+      const hasActivity = (this.createdAt > 0) || (this.currentText.length > 0) || (this.currentFiles.length > 0) || (this.sockets.size > 0) || isProt
+      if (!hasActivity) {
+        return new Response(JSON.stringify({
+          slug: this.slug,
+          exists: false,
+          isInitialized: false,
+          text: '',
+          files: [],
+          peers: 0,
+          isProtected: false,
+          createdAt: 0,
+          updatedAt: 0,
+          expiresAt: 0,
+          fileCount: 0,
+          totalFileSize: 0,
+          textLength: 0,
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
       const effectiveCreatedAt = this.createdAt || now
-      const effectiveUpdatedAt = this.updatedAt || now
-      const effectiveExpiresAt = this.expiresAt || (now + 24 * 3600 * 1000)
+      const effectiveUpdatedAt = this.updatedAt || this.createdAt || now
+      const effectiveExpiresAt = this.expiresAt || (effectiveUpdatedAt + 24 * 3600 * 1000)
       return new Response(JSON.stringify({
         slug: this.slug,
+        exists: true,
         text: isProt ? '' : this.currentText,
         files: isProt ? [] : this.currentFiles,
         peers: this.sockets.size,

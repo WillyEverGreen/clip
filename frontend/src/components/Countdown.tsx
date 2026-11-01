@@ -26,6 +26,10 @@ export default function Countdown({ expiresAt }: Props) {
 
   const isPermanent = remaining > 365 * 86400 * 1000
 
+  if (!expiresAt || expiresAt <= 0 || isNaN(expiresAt)) {
+    return <span style={{ color: '#a1a1aa' }}>—</span>
+  }
+
   if (isPermanent) {
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem', color: '#10b981' }}>
