@@ -17,12 +17,12 @@ export default function Countdown({ expiresAt }: Props) {
     return () => { if (ref.current) clearInterval(ref.current) }
   }, [expiresAt])
 
-  const hours   = Math.floor(remaining / 3_600_000)
+  const hours = Math.floor(remaining / 3_600_000)
   const minutes = Math.floor((remaining % 3_600_000) / 60_000)
   const seconds = Math.floor((remaining % 60_000) / 1_000)
 
   const expired = remaining === 0
-  const color   = expired ? '#a1a1aa' : '#a1a1aa'
+  const color = expired ? '#a1a1aa' : '#a1a1aa'
 
   const isPermanent = remaining > 365 * 86400 * 1000
 
@@ -41,8 +41,8 @@ export default function Countdown({ expiresAt }: Props) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8125rem', color, fontVariantNumeric: 'tabular-nums' }}>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
       </svg>
       {expired
         ? 'Expired'

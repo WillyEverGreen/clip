@@ -2,6 +2,13 @@ import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { BASE } from './api'
 
+declare global {
+  interface Window {
+    dataLayer?: unknown[]
+    gtag?: (...args: unknown[]) => void
+  }
+}
+
 export const OPT_OUT_KEY = 'clip_analytics_opt_out'
 
 /**
@@ -40,6 +47,15 @@ export function reportPageView(pathname: string): void {
   if (typeof window === 'undefined') return
   if (isDeviceExcluded()) return
   if (pathname.startsWith('/admin')) return
+
+  // Google Analytics 4 virtual pageview dispatch
+  if (typeof window.gtag === 'function') {
+    window.gtag('event', 'page_view', {
+      page_path: pathname,
+      page_location: window.location.href,
+      page_title: document.title,
+    })
+  }
 
   const payload = {
     path: pathname,
@@ -85,3 +101,16 @@ export function useAnalytics(): void {
     reportPageView(location.pathname)
   }, [location.pathname])
 }
+
+/**
+ * Emits a custom conversion or engagement event to Google Analytics.
+ * Silently drops if excluded, under /admin, or if window is undefined.
+ */
+export function trackEvent(eventName: string, params?: Record<string, unknown>): void {
+  if (typeof window === 'undefined') return
+  if (isDeviceExcluded()) return
+  if (typeof window.gtag === 'function') {
+    window.gtag('event', eventName, params)
+  }
+}
+
