@@ -510,6 +510,29 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`
 }
 
+export function getTimeZoneAbbr(date: Date = new Date()): string {
+  try {
+    const tz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : ''
+    if (tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta') return 'IST'
+    const offset = -date.getTimezoneOffset()
+    if (offset === 330) return 'IST'
+
+    const parts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(date)
+    const tzPart = parts.find((p) => p.type === 'timeZoneName')
+    if (tzPart && !tzPart.value.startsWith('GMT') && !tzPart.value.startsWith('UTC')) {
+      return tzPart.value
+    }
+
+    const sign = offset >= 0 ? '+' : '-'
+    const absOffset = Math.abs(offset)
+    const tzHours = Math.floor(absOffset / 60)
+    const tzMins = (absOffset % 60).toString().padStart(2, '0')
+    return `GMT${sign}${tzHours}${tzMins !== '00' ? `:${tzMins}` : ''}`
+  } catch {
+    return 'IST'
+  }
+}
+
 export function formatLocalDate(timestamp: number): string {
   if (!timestamp || isNaN(timestamp) || timestamp <= 0) return '—'
   const d = new Date(timestamp)
@@ -519,13 +542,7 @@ export function formatLocalDate(timestamp: number): string {
   const year = d.getFullYear()
   const hours = d.getHours().toString().padStart(2, '0')
   const minutes = d.getMinutes().toString().padStart(2, '0')
+  const tz = getTimeZoneAbbr(d)
 
-  const offsetMinutes = -d.getTimezoneOffset()
-  const sign = offsetMinutes >= 0 ? '+' : '-'
-  const absOffset = Math.abs(offsetMinutes)
-  const tzHours = Math.floor(absOffset / 60).toString().padStart(2, '0')
-  const tzMins = (absOffset % 60).toString().padStart(2, '0')
-  const tzStr = `GMT${sign}${parseInt(tzHours, 10)}${tzMins !== '00' ? `:${tzMins}` : ''}`
-
-  return `${day} ${month} ${year} ${hours}:${minutes} ${tzStr}`
+  return `${day} ${month} ${year} ${hours}:${minutes} ${tz}`
 }

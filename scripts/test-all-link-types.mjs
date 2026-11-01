@@ -25,6 +25,29 @@ async function test(name, fn) {
 
 // ── Helpers under test ────────────────────────────────────────────────────────
 
+function getTimeZoneAbbr(date = new Date()) {
+  try {
+    const tz = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : ''
+    if (tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta') return 'IST'
+    const offset = -date.getTimezoneOffset()
+    if (offset === 330) return 'IST'
+
+    const parts = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' }).formatToParts(date)
+    const tzPart = parts.find((p) => p.type === 'timeZoneName')
+    if (tzPart && !tzPart.value.startsWith('GMT') && !tzPart.value.startsWith('UTC')) {
+      return tzPart.value
+    }
+
+    const sign = offset >= 0 ? '+' : '-'
+    const absOffset = Math.abs(offset)
+    const tzHours = Math.floor(absOffset / 60)
+    const tzMins = (absOffset % 60).toString().padStart(2, '0')
+    return `GMT${sign}${tzHours}${tzMins !== '00' ? `:${tzMins}` : ''}`
+  } catch {
+    return 'IST'
+  }
+}
+
 function formatLocalDate(timestamp) {
   if (!timestamp || isNaN(timestamp) || timestamp <= 0) return '—'
   const d = new Date(timestamp)
@@ -34,15 +57,9 @@ function formatLocalDate(timestamp) {
   const year = d.getFullYear()
   const hours = d.getHours().toString().padStart(2, '0')
   const minutes = d.getMinutes().toString().padStart(2, '0')
+  const tz = getTimeZoneAbbr(d)
 
-  const offsetMinutes = -d.getTimezoneOffset()
-  const sign = offsetMinutes >= 0 ? '+' : '-'
-  const absOffset = Math.abs(offsetMinutes)
-  const tzHours = Math.floor(absOffset / 60).toString().padStart(2, '0')
-  const tzMins = (absOffset % 60).toString().padStart(2, '0')
-  const tzStr = `GMT${sign}${parseInt(tzHours, 10)}${tzMins !== '00' ? `:${tzMins}` : ''}`
-
-  return `${day} ${month} ${year} ${hours}:${minutes} ${tzStr}`
+  return `${day} ${month} ${year} ${hours}:${minutes} ${tz}`
 }
 
 function calculateCountdown(expiresAt, now = Date.now()) {
@@ -79,7 +96,7 @@ await test('Valid Date Formatting: includes day, month, year, time, and timezone
   // Use a known epoch timestamp
   const ts = 1730443200000 // 2024-11-01T06:40:00.000Z
   const formatted = formatLocalDate(ts)
-  assert.match(formatted, /^\d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2} GMT[+-]\d+(?::\d{2})?$/)
+  assert.match(formatted, /^\d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2} (?:[A-Z]{2,5}|GMT[+-]\d+(?::\d{2})?)$/)
 })
 
 // ── 2. Standard Text Paste Link Tests ─────────────────────────────────────────
