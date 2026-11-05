@@ -52,6 +52,10 @@ frontend/src/pages/AdminPage.tsx
 frontend/src/components/Admin/
 ADMIN_GUIDE.md
 
+# Private 9ai Gateway (Local / Private - Do not push to GitHub)
+worker/src/handlers/nineAi.ts
+functions/9ai/
+
 # Local SEO & MCP Tools
 seo-monster/
 tools/

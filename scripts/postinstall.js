@@ -22,11 +22,12 @@ try {
   process.exit(1);
 }
 
-// Private admin modules are git-ignored on purpose. Give a fresh checkout placeholders so the
+// Private admin & 9ai modules are git-ignored on purpose. Give a fresh checkout placeholders so the
 // app builds; the real files, when present, are left untouched.
 const fs = require('fs');
 const privateFiles = [
   ['worker/src/handlers/admin.ts', 'worker/src/handlers/admin.stub.ts'],
+  ['worker/src/handlers/nineAi.ts', 'worker/src/handlers/nineAi.stub.ts'],
   ['frontend/src/pages/AdminPage.tsx', 'frontend/src/pages/AdminPage.stub.tsx'],
 ];
 const root = path.join(__dirname, '..');

@@ -8,6 +8,7 @@ FRONTEND_ORIGIN = "https://clip.foo.ng"
 B2_BUCKET = "clip-foo"
 B2_S3_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"
 B2_REGION = "us-east-005"
+ROUTER_URL = ""
 
 # Every 10 minutes: delete large files that have expired
 [triggers]

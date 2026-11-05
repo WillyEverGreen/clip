@@ -3,8 +3,16 @@
 interface Env {
 	PASTE_KV: KVNamespace;
 	FRONTEND_ORIGIN: "https://clip.foo.ng";
+	B2_BUCKET: "clip-foo";
+	B2_S3_ENDPOINT: "https://s3.us-east-005.backblazeb2.com";
+	B2_REGION: "us-east-005";
 	ADMIN_SECRET: string;
+	APP_PEPPER: string;
+	B2_KEY_ID: string;
+	B2_APP_KEY: string;
 	CLIP_DO: DurableObjectNamespace<import("./src/index").ClipRoom>;
 	BEAM_DO: DurableObjectNamespace<import("./src/index").BeamRoom>;
 	BEAM_LOBBY_DO: DurableObjectNamespace<import("./src/index").BeamLobby>;
+	BIG_DO: DurableObjectNamespace<import("./src/index").BigUploadStore>;
+	ANALYTICS_DO: DurableObjectNamespace<import("./src/index").AnalyticsStore>;
 }

@@ -23,7 +23,14 @@ export interface Env {
   B2_BUCKET?: string        // wrangler.toml [vars]
   B2_S3_ENDPOINT?: string   // wrangler.toml [vars], e.g. https://s3.us-east-005.backblazeb2.com
   B2_REGION?: string        // wrangler.toml [vars], e.g. us-east-005
-  SWEEP_CLOCK_SKEW_MS?: string  // tests only (wrangler dev --var): makes the cleanup job act as if this much time had passed
+  SWEEP_CLOCK_SKEW_MS?: string
+  ROUTER_URL?: string
+  ROUTER_KEY?: string
+  AUTH_TOKEN?: string
+  NINEAI_ROUTER_KEY?: string
+  NINEAI_AUTH_TOKEN?: string
+  DEFAULT_MODEL?: string
+  // tests only (wrangler dev --var): makes the cleanup job act as if this much time had passed
 }
 
 

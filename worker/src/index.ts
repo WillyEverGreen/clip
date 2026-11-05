@@ -19,6 +19,7 @@ import { isEncryptedFileBuffer, decryptFileArrayBuffer, isEncrypted, decryptCont
 import { BEAM_PIN_RE, generateBeamPin } from './lib/beam'
 import { checkRateLimit, getClientIp } from './lib/rateLimit'
 import { handleBigStart, handleBigSign, handleBigComplete, handleBigInfo, handleBigDownload, handleBigDelete, sweepBigFiles } from './handlers/big'
+import { handleNineAiIndex, handleNineAiInstall, handleNineAiAsk, handleNineAiHealth } from './handlers/nineAi'
 
 // Re-export Durable Object so wrangler can register it
 export { ClipRoom } from './durable/ClipRoom'
@@ -67,6 +68,18 @@ app.post('/api/entry',                handleCreate)
 
 // Analytics beacon
 app.post('/api/analytics/event',      handleAnalyticsEvent)
+
+// ── 9ai Gateway ─────────────────────────────────────────────────────────────
+app.get('/9ai', handleNineAiIndex)
+app.post('/9ai', handleNineAiAsk)
+app.get('/9ai/health', handleNineAiHealth)
+app.get('/api/9ai/health', handleNineAiHealth)
+app.post('/9ai/ask', handleNineAiAsk)
+app.post('/api/9ai/ask', handleNineAiAsk)
+app.get('/9ai/:token', handleNineAiInstall)
+app.post('/9ai/:token', handleNineAiAsk)
+app.get('/api/9ai/:token', handleNineAiInstall)
+app.post('/api/9ai/:token', handleNineAiAsk)
 
 // Read (Short CLI routes)
 app.get('/r/:slug',                 handleReadRaw)
@@ -696,6 +709,10 @@ app.get('/api/health', (c) => c.json({ ok: true }))
 export default {
   fetch: app.fetch.bind(app),
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(sweepBigFiles(env, Date.now() + (Number(env.SWEEP_CLOCK_SKEW_MS) || 0)).then((r) => console.log('big sweep', JSON.stringify(r))))
+    const routerKey = env.NINEAI_ROUTER_KEY || env.ROUTER_KEY
+    ctx.waitUntil(Promise.allSettled([
+      sweepBigFiles(env, Date.now() + (Number(env.SWEEP_CLOCK_SKEW_MS) || 0)).then((r) => console.log('big sweep', JSON.stringify(r))),
+      env.ROUTER_URL ? fetch(env.ROUTER_URL + '/models', { headers: routerKey ? { Authorization: 'Bearer ' + routerKey } : undefined, signal: AbortSignal.timeout(5000) }).catch(() => {}) : Promise.resolve()
+    ]))
   },
 }
