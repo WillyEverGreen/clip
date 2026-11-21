@@ -37,6 +37,7 @@ const {
   parseDevice,
   getVisitorHash,
   getExcludedIps,
+  isBotRequest,
   handleAnalyticsEvent,
   handleAdminAnalytics,
   handleAdminExcludedIps,
@@ -397,6 +398,66 @@ await test('7. GET /api/admin/analytics/detected-ip returns client IP', async ()
   const res = await worker.fetch(authReq, env)
   assert.equal(res.status, 200)
   assert.deepEqual(await res.json(), { ip: '203.0.113.195' })
+})
+
+console.log('\n--- Unit Tests: Genuine Traffic (bot filtering) ---')
+
+await test('8. isBotRequest flags crawlers, previews and scripts but not real browsers', () => {
+  const botUAs = [
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+    'Mozilla/5.0 (compatible; YandexBot/3.0)',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 Chrome-Lighthouse',
+    'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+    'curl/8.7.1',
+    'python-requests/2.32.3',
+  ]
+  for (const ua of botUAs) {
+    assert.equal(isBotRequest(ua), true, `Expected bot: ${ua}`)
+  }
+
+  const humanUAs = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+    // CUBOT is a real phone brand; a bare "bot" substring match would drop it
+    'Mozilla/5.0 (Linux; Android 11; CUBOT X50) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36',
+  ]
+  for (const ua of humanUAs) {
+    assert.equal(isBotRequest(ua), false, `Expected human: ${ua}`)
+  }
+})
+
+await test('9. Crawler beacon is dropped; real browser beacon is recorded', async () => {
+  const { env, store } = createMockEnv()
+
+  const botReq = new Request('https://clip.test/api/analytics/event', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain;charset=UTF-8',
+      'CF-Connecting-IP': '203.0.113.80',
+      'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    },
+    body: JSON.stringify({ path: '/about' }),
+  })
+  assert.equal((await worker.fetch(botReq, env)).status, 204)
+  assert.equal((await store.getStats('today')).totalViews, 0, 'Crawler must not be counted')
+
+  const humanReq = new Request('https://clip.test/api/analytics/event', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/plain;charset=UTF-8',
+      'CF-Connecting-IP': '203.0.113.81',
+      'CF-IPCountry': 'IN',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    },
+    body: JSON.stringify({ path: '/about' }),
+  })
+  assert.equal((await worker.fetch(humanReq, env)).status, 204)
+
+  const stats = await store.getStats('today')
+  assert.equal(stats.totalViews, 1, 'Real browser must be counted')
+  assert.equal(stats.uniqueVisitors, 1)
 })
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`)

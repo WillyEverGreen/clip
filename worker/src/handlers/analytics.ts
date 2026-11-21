@@ -40,6 +40,42 @@ export function parseDevice(ua: string): 'mobile' | 'tablet' | 'desktop' {
 }
 
 /**
+ * Matches crawlers, link-preview unfurlers, audit tools and scripted clients.
+ * Explicit names rather than a bare "bot" substring, so real devices such as
+ * CUBOT phones are not mistaken for crawlers.
+ */
+const BOT_UA_RE = new RegExp(
+  [
+    // Search engines & AI crawlers
+    'googlebot', 'google-inspectiontool', 'bingbot', 'bingpreview', 'msnbot', 'yandex', 'baiduspider',
+    'duckduckbot', 'applebot', 'slurp', 'sogou', 'exabot', 'petalbot', 'bytespider', 'gptbot',
+    'chatgpt-user', 'claudebot', 'anthropic-ai', 'ccbot', 'perplexitybot', 'youbot',
+    // SEO, audit and uptime tools
+    'ahrefs', 'semrush', 'mj12bot', 'dotbot', 'screaming frog', 'lighthouse', 'pagespeed', 'gtmetrix',
+    'pingdom', 'uptimerobot', 'statuscake', 'headlesschrome', 'phantomjs', 'selenium',
+    // Link previews and social unfurlers
+    'facebookexternalhit', 'facebookcatalog', 'twitterbot', 'linkedinbot', 'slackbot', 'discordbot',
+    'telegrambot', 'whatsapp', 'pinterest', 'embedly', 'quora link preview', 'skypeuripreview',
+    'vkshare', 'redditbot',
+    // Scripts and CLI clients
+    'python-requests', 'python-urllib', 'aiohttp', 'curl/', 'wget/', 'go-http-client', 'node-fetch',
+    'undici', 'axios/', 'httpclient', 'okhttp', 'scrapy', 'libwww-perl',
+  ].join('|'),
+  'i'
+)
+
+/**
+ * True when a User-Agent is a crawler, preview fetcher or scripted client,
+ * i.e. not a genuine visitor page view.
+ */
+export function isBotRequest(userAgent: string | undefined | null): boolean {
+  const ua = (userAgent || '').trim()
+  // Browsers always send a User-Agent; an absent one is not proof of a bot
+  if (!ua) return false
+  return BOT_UA_RE.test(ua)
+}
+
+/**
  * Computes a monthly rotating SHA-256 hash for privacy-preserving unique visitor counting.
  * Formula: SHA256(ip + '-' + yearMonth + '-' + pepper)
  */
@@ -133,8 +169,13 @@ export async function handleAnalyticsEvent(c: Context<{ Bindings: Env }>) {
     }
   }
 
-  // Derive metadata
+  // Exclusion Rule 4: crawlers, link previews and scripted clients are not genuine visitors
   const ua = c.req.header('User-Agent') || ''
+  if (isBotRequest(ua)) {
+    return c.body(null, 204)
+  }
+
+  // Derive metadata
   const device = parseDevice(ua)
   const country = (c.req.raw as unknown as { cf?: { country?: string } }).cf?.country || c.req.header('CF-IPCountry') || 'Unknown'
   const visitorHash = await getVisitorHash(ip, c.env.APP_PEPPER || 'clip-pepper')
