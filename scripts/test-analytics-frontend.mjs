@@ -193,7 +193,7 @@ await test('7. When opted in, reportPageView dispatches payload via navigator.se
   const call = beaconCalls[0]
   assert.equal(call.url, 'https://clip.test/api/analytics/event')
   assert.ok(call.data instanceof Blob, 'sendBeacon data must be a Blob')
-  assert.equal(call.data.type, 'application/json')
+  assert.equal(call.data.type, 'text/plain;charset=utf-8', 'beacon must use a CORS-safelisted type to avoid a preflight')
 
   const text = await call.data.text()
   const payload = JSON.parse(text)

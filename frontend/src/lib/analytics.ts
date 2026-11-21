@@ -67,7 +67,10 @@ export function reportPageView(pathname: string): void {
   // First try navigator.sendBeacon with a JSON Blob
   try {
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+      // text/plain is CORS-safelisted, so this stays a simple request.
+      // application/json forces a preflight, which sendBeacon (credentials: include)
+      // cannot satisfy against the API, so every beacon was being dropped.
+      const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain;charset=UTF-8' })
       const sent = navigator.sendBeacon(url, blob)
       if (sent) return
     }
