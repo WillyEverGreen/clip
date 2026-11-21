@@ -355,7 +355,7 @@ export function useLiveSocket(slug: string | undefined, options: LiveSocketOptio
                 setRoomClosedMessage(data.message || 'Room has been terminated by administrator.')
                 if (retryTimer) clearTimeout(retryTimer)
                 if (pingTimer) clearInterval(pingTimer)
-                try { ws.close(1000, 'Room terminated') } catch {}
+                try { ws.close(1000, 'Room terminated') } catch { /* intentionally empty */ }
                 break
 
               case 'pong':

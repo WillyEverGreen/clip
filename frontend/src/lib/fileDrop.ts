@@ -22,6 +22,7 @@ async function readAllDirectoryEntries(dirEntry: FileSystemDirectoryEntry): Prom
   const allEntries: FileSystemEntry[] = []
 
   // Keep reading batches until reader returns an empty list
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       const batch = await readBatch(reader)

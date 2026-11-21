@@ -258,7 +258,7 @@ function StartPanels({ onSend, onJoin, visible, onVisible, onRespond, unfinished
             </p>
             <ReceiveMode visible={visible} onVisible={onVisible} onRespond={onRespond} />
             <ol className="beam-steps" aria-label="How receiving works">
-              <li><b>1</b><span>Enter the sender's PIN, or switch on nearby so they can find you.</span></li>
+              <li><b>1</b><span>Enter the sender&apos;s PIN, or switch on nearby so they can find you.</span></li>
               <li><b>2</b><span>Accept each file when it appears, or accept all.</span></li>
               <li><b>3</b><span>Pick where it is saved. It is checked when it arrives.</span></li>
             </ol>

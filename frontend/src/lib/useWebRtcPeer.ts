@@ -89,7 +89,7 @@ export function useWebRtcPeer({
               onRemoteFileReceived(incoming.meta, fullBlob)
             }
           }
-        } catch {}
+        } catch { /* intentionally empty */ }
       } else if (event.data instanceof ArrayBuffer) {
         // Binary chunk payload: [36 bytes fileId UTF-8] + [chunk bytes]
         const view = new Uint8Array(event.data)
@@ -160,9 +160,9 @@ export function useWebRtcPeer({
       } else if (payload.type === 'candidate' && payload.candidate) {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(payload.candidate))
-        } catch {}
+        } catch { /* intentionally empty */ }
       }
-    } catch {}
+    } catch { /* intentionally empty */ }
   }, [myClientId, getOrCreatePC, sendWsSignal])
 
   // Connect to peers using lexicographical role assignment
@@ -188,7 +188,7 @@ export function useWebRtcPeer({
             type: 'offer',
             offer,
           })
-        } catch {}
+        } catch { /* intentionally empty */ }
       }
     })
 
@@ -225,7 +225,7 @@ export function useWebRtcPeer({
         try {
           dc.send(msg)
           sent = true
-        } catch {}
+        } catch { /* intentionally empty */ }
       }
     })
     return sent
@@ -272,7 +272,7 @@ export function useWebRtcPeer({
         }
         try {
           dc.send(packet.buffer)
-        } catch {}
+        } catch { /* intentionally empty */ }
       }
 
       sentBytes = sliceEnd

@@ -148,7 +148,7 @@ export default function CreatePage() {
           sessionStorage.removeItem('clip_live_pass_' + targetSlug)
           try {
             await setLiveSecurity(targetSlug, false)
-          } catch {}
+          } catch { /* intentionally empty */ }
         }
         if (content.trim()) {
           await seedLiveRoom(targetSlug, content.trim())

@@ -162,7 +162,7 @@ export default function ViewPage() {
               navigate(`/live/${slug}`, { replace: true })
               return
             }
-          } catch {}
+          } catch { /* intentionally empty */ }
           navigate('/404')
         }
         return
@@ -200,7 +200,7 @@ export default function ViewPage() {
             navigate(`/live/${slug}`, { replace: true })
             return
           }
-        } catch {}
+        } catch { /* intentionally empty */ }
         navigate('/404')
       }
     } finally {
@@ -902,7 +902,7 @@ export default function ViewPage() {
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>Keep Existing Password</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        Retains this clip's encryption password for the LivePad room.
+                        Retains this clip&apos;s encryption password for the LivePad room.
                       </div>
                     </div>
                   </label>
