@@ -16,6 +16,7 @@ const loaders = {
   about: () => import('./pages/AboutPage'),
   beam: () => import('./beam/BeamPage'),
   big: () => import('./pages/BigFilePage'),
+  alt: () => import('./pages/AlternativePage'),
 }
 const CreatePage  = lazyWithRetry(loaders.create)
 const ViewPage    = lazyWithRetry(loaders.view)
@@ -25,6 +26,7 @@ const ExpiredPage = lazyWithRetry(loaders.expired)
 const AboutPage   = lazyWithRetry(loaders.about)
 const BeamPage    = lazyWithRetry(loaders.beam)
 const BigFilePage = lazyWithRetry(loaders.big)
+const AlternativePage = lazyWithRetry(loaders.alt)
 
 /** Once the page in front of the visitor is up, fetch the main pages quietly so moving between them is instant. */
 function useWarmPages() {
@@ -93,6 +95,8 @@ export default function App() {
           <Route path="/live/:slug"  element={<LivePage />} />
           <Route path="/about"       element={<AboutPage />} />
           <Route path="/beam"        element={<BeamPage />} />
+          <Route path="/snapdrop-alternative"   element={<AlternativePage kind="snapdrop" />} />
+          <Route path="/wetransfer-alternative" element={<AlternativePage kind="wetransfer" />} />
           <Route path="/b/:slug"     element={<BigFilePage />} />
           <Route path="/admin"      element={<AdminPage />} />
           <Route path="/:slug"       element={<ViewPage />} />

@@ -408,6 +408,8 @@ export default function LandingSections() {
         <nav aria-label="Footer">
           <Link to="/">App</Link>
           <Link to="/live">Live Pad</Link>
+          <Link to="/snapdrop-alternative">vs Snapdrop</Link>
+          <Link to="/wetransfer-alternative">vs WeTransfer</Link>
           <a href="https://github.com/WillyEverGreen/clip" target="_blank" rel="noreferrer"><Code2 size={15} /> GitHub</a>
           <a href="https://github.com/Chronos778/quotes_api" target="_blank" rel="noreferrer"><Quote size={15} /> Quotes API</a>
         </nav>

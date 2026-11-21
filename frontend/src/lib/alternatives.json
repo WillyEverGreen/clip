@@ -1,0 +1,180 @@
+{
+  "snapdrop": {
+    "path": "/snapdrop-alternative",
+    "canonical": "https://clip.foo.ng/snapdrop-alternative",
+    "seoTitle": "Clip Beam vs Snapdrop & PairDrop - P2P File Transfer Compared",
+    "description": "An honest comparison of Clip Beam, Snapdrop and PairDrop: pairing across networks, resume, checksums, multiple receivers and encryption. Free, no account.",
+    "keywords": "snapdrop alternative, pairdrop alternative, p2p file transfer, browser to browser file transfer, send files without uploading, local file sharing",
+    "eyebrow": "Snapdrop & PairDrop alternative",
+    "h1": "Clip Beam vs Snapdrop and PairDrop",
+    "intro": "Snapdrop and PairDrop are great for moving a file to the laptop next to you. Clip Beam is built for the cases they do not cover: two people on different networks, several receivers at once, and a transfer that survives a dropped connection.",
+    "columns": {
+      "clip": "Clip Beam",
+      "other": "Snapdrop / PairDrop"
+    },
+    "rows": [
+      {
+        "feature": "Account needed",
+        "clip": "None",
+        "other": "None"
+      },
+      {
+        "feature": "Finding the other device",
+        "clip": "6-digit PIN, link, QR code or a nearby radar",
+        "other": "Snapdrop lists devices on the same network; PairDrop pairs with a shared room code"
+      },
+      {
+        "feature": "Across different networks",
+        "clip": "Yes, with optional TURN relay for strict networks",
+        "other": "PairDrop works with a room code; plain Snapdrop needs the same local network"
+      },
+      {
+        "feature": "Files per session",
+        "clip": "As many as you like, and you can add more while connected",
+        "other": "One at a time"
+      },
+      {
+        "feature": "Receivers per sender",
+        "clip": "Up to 8 at once, each with its own progress and time left",
+        "other": "One receiver per transfer"
+      },
+      {
+        "feature": "After a dropped connection",
+        "clip": "Continues where it stopped, and survives a reload in Chrome and Edge",
+        "other": "Starts again from the beginning"
+      },
+      {
+        "feature": "Integrity check",
+        "clip": "SHA-256 checked on both ends",
+        "other": "No end-to-end checksum shown to either person"
+      },
+      {
+        "feature": "Being asked before receiving",
+        "clip": "The receiver accepts, declines or blocks each sender",
+        "other": "Nearby devices appear automatically for the sender to pick"
+      },
+      {
+        "feature": "Cost",
+        "clip": "Free, open source, no size paywall",
+        "other": "Free"
+      }
+    ],
+    "whenOtherTitle": "When Snapdrop or PairDrop is the better choice",
+    "whenOther": [
+      "You and the other person are on the same Wi-Fi and need one quick file moved. Tapping a device that appears on its own is hard to beat.",
+      "You want the smallest possible surface area: one page, the devices it can see, and nothing else to configure.",
+      "You are fine restarting a transfer if the connection drops. For a screenshot or a PDF, that never matters."
+    ],
+    "crossLink": {
+      "label": "Clip vs WeTransfer",
+      "path": "/wetransfer-alternative"
+    },
+    "faq": [
+      {
+        "q": "Is Clip Beam a drop-in replacement for Snapdrop?",
+        "a": "For same-network transfers, effectively yes: open clip.foo.ng/beam, switch on receiving, and the nearby radar lists people who opted in. It also pairs by PIN, link or QR across networks, which is where it differs from plain Snapdrop."
+      },
+      {
+        "q": "Do both people need to keep the page open?",
+        "a": "Yes. Beam streams the file directly between the two browsers, so nothing is stored and both tabs must stay open until it finishes. If that does not suit you, upload the file to a normal Clip link instead and it can be downloaded later, until it expires."
+      },
+      {
+        "q": "Does Clip Beam check that the file arrived intact?",
+        "a": "Yes. Both sides compute a SHA-256 hash and compare it, so a damaged transfer is caught instead of saved."
+      },
+      {
+        "q": "Can I send to more than one person at once?",
+        "a": "Yes, up to 8 receivers in one session. Each one gets its own progress, speed and time-left, and each chooses Accept, Decline or Accept all for every file."
+      }
+    ]
+  },
+  "wetransfer": {
+    "path": "/wetransfer-alternative",
+    "canonical": "https://clip.foo.ng/wetransfer-alternative",
+    "seoTitle": "Clip vs WeTransfer - Send Large Files Without Uploading First",
+    "description": "Compare Clip and WeTransfer: browser-to-browser transfer with no upload, custom links, optional end-to-end encryption, expiry and cost. Free, no account.",
+    "keywords": "wetransfer alternative, send large files free, transfer files without uploading, wetransfer 2gb limit alternative, free file transfer no account",
+    "eyebrow": "WeTransfer alternative",
+    "h1": "Clip vs WeTransfer",
+    "intro": "WeTransfer uploads your file to a server and keeps it for a week. Clip can do that too, with custom links and a password lock, and it can also send the file straight from your browser to the other person's browser with nothing stored in between.",
+    "columns": {
+      "clip": "Clip",
+      "other": "WeTransfer"
+    },
+    "rows": [
+      {
+        "feature": "Account needed",
+        "clip": "None",
+        "other": "None on the free plan"
+      },
+      {
+        "feature": "Where the file goes",
+        "clip": "Browser to browser with Beam, or Clip storage for links",
+        "other": "Uploaded to WeTransfer servers first"
+      },
+      {
+        "feature": "Free size limit",
+        "clip": "No fixed limit in Chrome and Edge, which stream to disk; about 2 GB in Firefox and Safari",
+        "other": "Around 2 GB per transfer on the free plan"
+      },
+      {
+        "feature": "How long it stays",
+        "clip": "Beam stores nothing; files attached to links are deleted 2 hours after upload",
+        "other": "7 days on the free plan"
+      },
+      {
+        "feature": "Client-side encryption",
+        "clip": "Optional AES-256-GCM password lock applied in the browser",
+        "other": "Encrypted in transit; no end-to-end scheme you hold the key to"
+      },
+      {
+        "feature": "Custom link",
+        "clip": "Any slug you like, such as /my-notes",
+        "other": "Random link only"
+      },
+      {
+        "feature": "Text and code sharing",
+        "clip": "Markdown, KaTeX, syntax highlighting and a terminal-friendly raw view",
+        "other": "A message alongside a transfer, not a pastebin"
+      },
+      {
+        "feature": "Terminal access",
+        "clip": "curl -fL clip.foo.ng/r/<slug>",
+        "other": "No"
+      },
+      {
+        "feature": "Cost",
+        "clip": "Free, open source, no size paywall",
+        "other": "Free tier with paid plans"
+      }
+    ],
+    "whenOtherTitle": "When WeTransfer is the better choice",
+    "whenOther": [
+      "The recipient is not online when you send. WeTransfer stores the file; Beam needs both people connected at the same time.",
+      "You want a link that keeps working for a week without thinking about it. Clip links last from 10 minutes to 30 days, but files attached to them are deleted 2 hours after upload.",
+      "You want the brand reassurance a client already recognises. That is a real advantage, and no feature list replaces it."
+    ],
+    "crossLink": {
+      "label": "Clip vs Snapdrop & PairDrop",
+      "path": "/snapdrop-alternative"
+    },
+    "faq": [
+      {
+        "q": "Can Clip send files bigger than WeTransfer's free limit?",
+        "a": "Yes. Clip Beam streams straight from your disk to the other browser over WebRTC. Chrome and Edge write the file to disk as it arrives, so multi-gigabyte files work; Firefox and Safari keep it in memory, up to about 2 GB. Both people stay connected while it transfers."
+      },
+      {
+        "q": "Are my files stored on Clip's servers?",
+        "a": "With Beam, no: the bytes go directly between the two browsers. With a normal Clip link the file is stored so the recipient can download it later, and attached files are deleted 2 hours after upload."
+      },
+      {
+        "q": "Is Clip free?",
+        "a": "Yes. There is no account, no subscription and no file-size paywall. Clip is open source."
+      },
+      {
+        "q": "Can the recipient download after I close my laptop?",
+        "a": "Only if you used a Clip link rather than Beam. A Clip link stays available until it expires; a Beam transfer ends when either browser disconnects."
+      }
+    ]
+  }
+}

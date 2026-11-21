@@ -43,4 +43,6 @@ Clip is for developers, students and anyone who needs to move code, text, docume
 - https://clip.foo.ng/beam : Clip Beam
 - https://clip.foo.ng/live : Live Pad
 - https://clip.foo.ng/about : overview
+- https://clip.foo.ng/snapdrop-alternative : Clip Beam vs Snapdrop and PairDrop
+- https://clip.foo.ng/wetransfer-alternative : Clip vs WeTransfer
 - Source: https://github.com/WillyEverGreen/clip

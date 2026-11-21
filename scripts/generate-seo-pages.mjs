@@ -33,6 +33,7 @@ const withPreload = (html, prefix) => {
 const homeHtml = withPreload(template, 'CreatePage')
 fs.writeFileSync(templatePath, homeHtml, 'utf8')
 const faq = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../frontend/src/lib/faq.json'), 'utf8'))
+const alternatives = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../frontend/src/lib/alternatives.json'), 'utf8'))
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const ldScript = (obj) => `<script type="application/ld+json">${JSON.stringify(obj)}</script>`
 // The home page carries WebApplication and FAQPage markup that describes the home page; other routes get their own.
@@ -237,9 +238,77 @@ const routes = [
   },
 ]
 
-for (const route of routes) {
+// The comparison pages share their copy with the React page (alternatives.json),
+// so the pre-rendered HTML and the visible page cannot drift apart.
+const altRoutes = Object.values(alternatives).map((a) => ({
+  path: a.path.replace(/^\//, ''),
+  canonical: a.canonical,
+  title: a.seoTitle,
+  description: a.description,
+  keywords: a.keywords,
+  chunk: 'AlternativePage',
+  ld: () => [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: a.faq.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Clip', item: 'https://clip.foo.ng/' },
+        { '@type': 'ListItem', position: 2, name: a.h1, item: a.canonical },
+      ],
+    },
+  ],
+  fallbackHtml: `
+      <header style="max-width:800px;margin:2rem auto;padding:0 1rem;font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;line-height:1.6">
+        <h1>${esc(a.h1)}</h1>
+        <p>${esc(a.intro)}</p>
+        <nav style="display:flex;gap:1rem;flex-wrap:wrap;margin:1.5rem 0">
+          <a href="/" style="color:#38bdf8;text-decoration:none">Create Share</a>
+          <a href="/beam" style="color:#38bdf8;text-decoration:none">Clip Beam</a>
+          <a href="/snapdrop-alternative" style="color:#38bdf8;text-decoration:none">vs Snapdrop</a>
+          <a href="/wetransfer-alternative" style="color:#38bdf8;text-decoration:none">vs WeTransfer</a>
+          <a href="/about" style="color:#38bdf8;text-decoration:none">About Clip</a>
+        </nav>
+      </header>
+      <main style="max-width:800px;margin:0 auto 2rem;padding:0 1rem;font-family:system-ui,-apple-system,sans-serif;color:#cbd5e1;line-height:1.6">
+        <section>
+          <h2>${esc(a.columns.clip)} vs ${esc(a.columns.other)}</h2>
+          <table border="1" cellpadding="8" style="width:100%;border-collapse:collapse;margin:1rem 0;color:#e2e8f0;border-color:#334155">
+            <thead>
+              <tr style="background:#1e293b">
+                <th>Feature</th>
+                <th>${esc(a.columns.clip)}</th>
+                <th>${esc(a.columns.other)}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${a.rows.map((r) => `<tr><td><strong>${esc(r.feature)}</strong></td><td>${esc(r.clip)}</td><td>${esc(r.other)}</td></tr>`).join('\n              ')}
+            </tbody>
+          </table>
+        </section>
+        <section>
+          <h2>${esc(a.whenOtherTitle)}</h2>
+          <ul>
+            ${a.whenOther.map((p) => `<li>${esc(p)}</li>`).join('\n            ')}
+          </ul>
+        </section>
+        <section>
+          <h2>Questions</h2>
+          ${a.faq.map((f) => `<details><summary><strong>${esc(f.q)}</strong></summary><p>${esc(f.a)}</p></details>`).join('\n          ')}
+        </section>
+      </main>
+    `,
+}))
 
-  let html = withPreload(template, { about: 'AboutPage', live: 'LivePage', beam: 'BeamPage' }[route.path])
+const allRoutes = [...routes, ...altRoutes]
+
+for (const route of allRoutes) {
+
+  let html = withPreload(template, route.chunk || { about: 'AboutPage', live: 'LivePage', beam: 'BeamPage' }[route.path])
 
   // Replace Title
   html = html.replace(/<title>.*?<\/title>/s, `<title>${route.title}</title>`)
